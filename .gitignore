@@ -1,0 +1,36 @@
+# 虚拟环境
+venv/
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 数据索引（可重新构建）
+backend/index/
+
+# 日志
+*.log
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+package-lock.json
+yarn.lock
+
+# 构建产物
+dist/
+build/

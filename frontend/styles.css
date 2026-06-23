@@ -1,0 +1,1365 @@
+/* ============================================
+   菜厨厨 — 智能冰箱菜谱推荐
+   设计理念：清新、温暖、激发食欲、极简
+   色彩：燕麦底色 + 胡萝卜橙 + 牛油果绿
+   ============================================ */
+
+:root {
+  /* 主色系 */
+  --bg: #f5f1ea;           /* 燕麦色背景 */
+  --bg-warm: #faf7f1;      /* 更暖的卡片底 */
+  --bg-card: #ffffff;       /* 白卡片 */
+  --bg-soft: #f0ebe1;      /* 柔和分隔 */
+
+  /* 强调色 */
+  --carrot: #e8853a;       /* 胡萝卜橙 */
+  --carrot-light: #fce8d5; /* 浅橙底 */
+  --avocado: #5a8a3a;      /* 牛油果绿 */
+  --avocado-light: #e8f0e0;/* 浅绿底 */
+  --avocado-dark: #4a7330; /* 深绿 */
+
+  /* 文字 */
+  --text: #2d2620;         /* 主文字 */
+  --text-secondary: #5c5247;/* 次要文字 */
+  --text-muted: #9a8f80;   /* 弱化文字 */
+
+  /* 状态色 */
+  --fresh: #5a8a3a;        /* 新鲜-绿 */
+  --expiring: #e8853a;     /* 临期-橙 */
+  --expired: #d4433a;      /* 过期-红 */
+
+  /* 边框/阴影 */
+  --border: #e5dfd3;
+  --border-light: #f0ebe1;
+  --shadow-sm: 0 1px 2px rgba(45,38,32,0.06);
+  --shadow-md: 0 4px 12px rgba(45,38,32,0.08);
+  --shadow-lg: 0 12px 32px rgba(45,38,32,0.12);
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  /* 字体 */
+  --font-display: 'Noto Serif SC', 'Songti SC', serif;
+  --font-body: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+.hidden { display: none !important; }
+
+/* ============================================
+   底部导航
+   ============================================ */
+.bottom-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 100;
+  background: rgba(255,255,255,0.96);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px rgba(45,38,32,0.06);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav-inner {
+  max-width: 480px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 6px 12px;
+}
+
+.nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color 0.2s;
+}
+
+.nav-btn.active {
+  color: var(--avocado);
+}
+
+.nav-icon {
+  width: 22px;
+  height: 22px;
+}
+
+/* ============================================
+   通用布局
+   ============================================ */
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding-bottom: 80px;
+}
+
+.page {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================
+   首页 — 我的冰箱
+   ============================================ */
+.home-hero {
+  position: relative;
+  padding: 24px 20px 28px;
+  background: linear-gradient(160deg, #e8f0e0 0%, #f5f1ea 60%);
+  overflow: hidden;
+}
+
+.home-hero::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  right: -30px;
+  width: 160px;
+  height: 160px;
+  background: radial-gradient(circle, rgba(232,133,58,0.12) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+.home-greeting {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.home-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--text);
+  letter-spacing: -0.5px;
+  margin-bottom: 20px;
+}
+
+/* 一键生成菜单 CTA */
+.cta-generate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 24px;
+  background: var(--avocado);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-body);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(90,138,58,0.3);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.cta-generate:active {
+  transform: scale(0.97);
+  box-shadow: 0 4px 12px rgba(90,138,58,0.3);
+}
+
+.cta-generate svg {
+  width: 20px;
+  height: 20px;
+}
+
+.cta-generate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 冰盘库存区 */
+.fridge-section {
+  padding: 20px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.section-count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.btn-add-ingredient {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--avocado-light);
+  color: var(--avocado);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 600;
+  transition: transform 0.15s;
+}
+
+.btn-add-ingredient:active {
+  transform: scale(0.9);
+}
+
+/* 临期警示横幅 */
+.expiry-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--carrot-light);
+  border: 1px solid rgba(232,133,58,0.25);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #b5602a;
+}
+
+.expiry-banner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--carrot);
+  flex-shrink: 0;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 食材网格 */
+.ingredient-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.ingredient-card {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 14px 8px 10px;
+  text-align: center;
+  border: 2px solid transparent;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s;
+  overflow: hidden;
+}
+
+.ingredient-card:active {
+  transform: scale(0.95);
+}
+
+.ingredient-card.status-fresh {
+  border-color: transparent;
+}
+
+.ingredient-card.status-expiring {
+  border-color: var(--expiring);
+  background: linear-gradient(180deg, #fff5ed 0%, white 40%);
+}
+
+.ingredient-card.status-expired {
+  border-color: var(--expired);
+  background: linear-gradient(180deg, #fef0f0 0%, white 40%);
+  opacity: 0.7;
+}
+
+.ingredient-emoji {
+  font-size: 28px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.ingredient-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.ingredient-expiry {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ingredient-expiry.fresh { color: var(--fresh); }
+.ingredient-expiry.expiring { color: var(--expiring); }
+.ingredient-expiry.expired { color: var(--expired); }
+
+.ingredient-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  background: rgba(0,0,0,0.06);
+  border: none;
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ingredient-card:hover .ingredient-delete {
+  opacity: 1;
+}
+
+/* 空冰箱状态 */
+.empty-fridge {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.empty-fridge-icon {
+  font-size: 56px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-fridge-text {
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+/* ============================================
+   录入底部抽屉
+   ============================================ */
+.input-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+}
+
+.input-sheet-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45,38,32,0.4);
+  animation: fadeIn 0.2s ease;
+}
+
+.input-sheet-panel {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg-warm);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 12px 20px 32px;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.input-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.input-sheet-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.input-methods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.input-method-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s;
+}
+
+.input-method-btn:active {
+  transform: scale(0.96);
+}
+
+.input-method-btn svg {
+  width: 28px;
+  height: 28px;
+  color: var(--avocado);
+}
+
+.manual-input-area {
+  animation: fadeIn 0.2s ease;
+}
+
+.quick-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.quick-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.quick-tag:active {
+  transform: scale(0.94);
+}
+
+.quick-tag.selected {
+  background: var(--avocado);
+  color: white;
+  border-color: var(--avocado);
+}
+
+.manual-add-row {
+  display: flex;
+  gap: 8px;
+}
+
+.manual-add-row input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-family: var(--font-body);
+  background: var(--bg-card);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.manual-add-row input:focus {
+  border-color: var(--avocado);
+}
+
+.btn-add-manual {
+  padding: 12px 20px;
+  background: var(--avocado);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-done {
+  width: 100%;
+  padding: 14px;
+  background: var(--avocado);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+/* ============================================
+   推荐结果 — Tinder 式滑动卡片
+   ============================================ */
+.swipe-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.swipe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-warm);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.swipe-header-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.swipe-header-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 标签筛选条 */
+.tag-filter-bar {
+  display: flex;
+  gap: 8px;
+  padding: 12px 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tag-filter-bar::-webkit-scrollbar { display: none; }
+
+.tag-filter {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.tag-filter.active {
+  background: var(--avocado);
+  color: white;
+  border-color: var(--avocado);
+}
+
+/* 卡片堆叠区 */
+.card-stack-container {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: hidden;
+}
+
+.card-stack {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  height: 480px;
+}
+
+.swipe-card {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  will-change: transform;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+}
+
+.swipe-card.dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+.swipe-card-image {
+  width: 100%;
+  height: 260px;
+  object-fit: cover;
+  background: var(--bg-soft);
+}
+
+.swipe-card-placeholder {
+  width: 100%;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--avocado-light) 0%, var(--carrot-light) 100%);
+  font-size: 64px;
+}
+
+.swipe-card-match-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  padding: 6px 14px;
+  background: rgba(90,138,58,0.95);
+  color: white;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+}
+
+.swipe-card-body {
+  padding: 16px 18px;
+}
+
+.swipe-card-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.swipe-card-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.swipe-card-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swipe-card-reason {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--avocado-light);
+  border-radius: var(--radius-sm);
+}
+
+.swipe-card-ingredients {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ingredient-chip {
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ingredient-chip.have {
+  background: var(--avocado-light);
+  color: var(--avocado-dark);
+}
+
+.ingredient-chip.missing {
+  background: var(--carrot-light);
+  color: #b5602a;
+}
+
+/* 滑动指示器 */
+.swipe-indicators {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  padding: 8px 20px 20px;
+}
+
+.swipe-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.15s;
+}
+
+.swipe-btn:active { transform: scale(0.9); }
+
+.swipe-btn-pass {
+  background: white;
+  color: var(--expired);
+}
+
+.swipe-btn-cook {
+  background: var(--avocado);
+  color: white;
+  width: 72px;
+  height: 72px;
+}
+
+.swipe-btn-pass svg, .swipe-btn-cook svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 滑动飞出动画 */
+.swipe-card.fly-left {
+  transform: translateX(-150%) rotate(-20deg) !important;
+  opacity: 0;
+}
+
+.swipe-card.fly-right {
+  transform: translateX(150%) rotate(20deg) !important;
+  opacity: 0;
+}
+
+/* 卡片空状态 */
+.swipe-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+}
+
+.swipe-empty-icon {
+  font-size: 56px;
+  margin-bottom: 12px;
+}
+
+/* ============================================
+   菜谱详情
+   ============================================ */
+.recipe-detail-page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.recipe-detail-hero {
+  position: relative;
+  width: 100%;
+  height: 280px;
+  overflow: hidden;
+}
+
+.recipe-detail-hero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recipe-detail-hero-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--avocado-light) 0%, var(--carrot-light) 100%);
+  font-size: 72px;
+}
+
+.recipe-detail-back {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  width: 36px;
+  height: 36px;
+  background: rgba(255,255,255,0.9);
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  z-index: 1;
+}
+
+.recipe-detail-body {
+  padding: 20px;
+  margin-top: -24px;
+  background: var(--bg);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  position: relative;
+  z-index: 1;
+}
+
+.recipe-detail-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 900;
+  margin-bottom: 10px;
+}
+
+.recipe-detail-meta {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.recipe-detail-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recipe-section-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  margin: 24px 0 12px;
+}
+
+.ingredient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ingredient-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+
+.ingredient-row.have {
+  border-left: 3px solid var(--avocado);
+}
+
+.ingredient-row.missing {
+  border-left: 3px solid var(--carrot);
+}
+
+.ingredient-row-name {
+  font-weight: 500;
+}
+
+.ingredient-row-status {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.ingredient-row-status.have {
+  background: var(--avocado-light);
+  color: var(--avocado-dark);
+}
+
+.ingredient-row-status.missing {
+  background: var(--carrot-light);
+  color: #b5602a;
+}
+
+/* 步骤列表 */
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-item {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  background: var(--avocado);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.step-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+/* 开始烹饪按钮 */
+.btn-start-cooking {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  margin-top: 28px;
+  background: var(--avocado);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(90,138,58,0.25);
+}
+
+.btn-start-cooking:active {
+  transform: scale(0.97);
+}
+
+/* ============================================
+   沉浸式烹饪模式
+   ============================================ */
+.cooking-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--bg-warm);
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.3s ease;
+}
+
+.cooking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  border-bottom: 1px solid var(--border-light);
+}
+
+.cooking-close {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-card);
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.cooking-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cooking-progress {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.cooking-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 28px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.cooking-step-num {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--avocado);
+  margin-bottom: 24px;
+  padding: 6px 18px;
+  background: var(--avocado-light);
+  border-radius: 100px;
+}
+
+.cooking-step-text {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 320px;
+  margin-bottom: 40px;
+}
+
+.cooking-tap-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.cooking-footer {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.cooking-nav-btn {
+  flex: 1;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.cooking-nav-next {
+  background: var(--avocado);
+  color: white;
+  border-color: var(--avocado);
+}
+
+/* 烹饪完成 */
+.cooking-done-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.cooking-done-text {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--avocado);
+  margin-bottom: 8px;
+}
+
+.cooking-done-sub {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* ============================================
+   发现页
+   ============================================ */
+.discover-page {
+  padding: 20px;
+}
+
+.discover-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 900;
+  margin-bottom: 20px;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.category-card {
+  padding: 20px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.category-card:active { transform: scale(0.96); }
+
+.category-card-1 { background: linear-gradient(135deg, #e8f0e0, #d4e8c8); }
+.category-card-2 { background: linear-gradient(135deg, #fce8d5, #f8d5b8); }
+.category-card-3 { background: linear-gradient(135deg, #e8e0f0, #d5c8e8); }
+.category-card-4 { background: linear-gradient(135deg, #f0e8e0, #e8d5c8); }
+
+.category-card-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.category-card-count {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 菜谱列表 */
+.recipe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recipe-list-card {
+  display: flex;
+  gap: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.recipe-list-card:active { transform: scale(0.98); }
+
+.recipe-list-thumb {
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--bg-soft);
+}
+
+.recipe-list-thumb-placeholder {
+  width: 100px;
+  height: 100px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--avocado-light);
+  font-size: 36px;
+}
+
+.recipe-list-info {
+  flex: 1;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.recipe-list-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.recipe-list-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+}
+
+/* ============================================
+   我的页
+   ============================================ */
+.me-page {
+  padding: 20px;
+}
+
+.me-header {
+  text-align: center;
+  padding: 20px 0 28px;
+}
+
+.me-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--avocado), var(--avocado-dark));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 12px;
+  font-size: 32px;
+}
+
+.me-name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.me-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.me-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.me-stat-card {
+  text-align: center;
+  padding: 16px 8px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+}
+
+.me-stat-num {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--avocado);
+}
+
+.me-stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.me-section-title {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.me-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.me-menu-item:active {
+  background: var(--bg-soft);
+}
+
+.me-menu-arrow {
+  color: var(--text-muted);
+}
+
+/* ============================================
+   加载状态
+   ============================================ */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--avocado);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Toast 提示
+   ============================================ */
+.toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  background: rgba(45,38,32,0.9);
+  color: white;
+  border-radius: 100px;
+  font-size: 14px;
+  z-index: 400;
+  animation: toastIn 0.3s ease, toastOut 0.3s ease 2s forwards;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+  to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
