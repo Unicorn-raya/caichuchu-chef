@@ -1,8 +1,13 @@
 # 菜厨厨后端 Dockerfile
-# 适用于 Render / Railway / Fly.io / Koyeb 等 Python 主机
+# 适用于 Cloudflare Containers / Render / Railway 等
 FROM python:3.11-slim
 
 WORKDIR /app
+
+# 换源：apt 用阿里云镜像，pip 用清华镜像（加速国内构建）
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null \
+    || sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list 2>/dev/null \
+    || true
 
 # 安装编译依赖（numpy/scipy 编译需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,9 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # 先拷贝依赖文件，利用构建缓存
 COPY backend/requirements.txt ./backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    -r backend/requirements.txt
 
-# 拷贝数据与后端代码（data/images 为符号链接，COPY 会跟随并复制实际图片）
+# 拷贝数据与后端代码
 COPY data/ ./data/
 COPY backend/ ./backend/
 
@@ -23,7 +29,7 @@ RUN cd backend && python build_index.py
 # 运行目录（app 包在 backend/ 下）
 WORKDIR /app/backend
 
-# Render/Railway 通过 PORT 注入端口
+# Cloudflare/Render/Railway 通过 PORT 注入端口
 ENV PORT=8000
 EXPOSE 8000
 
