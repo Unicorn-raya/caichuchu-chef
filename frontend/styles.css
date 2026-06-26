@@ -597,6 +597,9 @@ body {
 
 .tag-filter {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -608,10 +611,34 @@ body {
   transition: all 0.15s;
 }
 
+.tag-filter .tag-check {
+  width: 12px;
+  height: 12px;
+}
+
+.tag-filter .tag-count {
+  font-size: 11px;
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
 .tag-filter.active {
-  background: var(--avocado);
+  background: var(--carrot);
   color: white;
-  border-color: var(--avocado);
+  border-color: var(--carrot);
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(232,133,58,0.3);
+}
+
+.tag-filter.active .tag-count {
+  opacity: 0.8;
+}
+
+.swipe-result-count {
+  padding: 4px 20px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* 卡片堆叠区 */
@@ -1127,7 +1154,59 @@ body {
   font-family: var(--font-display);
   font-size: 26px;
   font-weight: 900;
+  margin-bottom: 16px;
+}
+
+/* 发现页搜索栏 */
+.discover-search-bar {
+  position: relative;
   margin-bottom: 20px;
+}
+
+.discover-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.discover-search-input {
+  width: 100%;
+  padding: 12px 16px 12px 42px;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 15px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.discover-search-input:focus {
+  border-color: var(--carrot);
+}
+
+.discover-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.discover-search-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.discover-search-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-secondary);
+  font-size: 15px;
 }
 
 .category-grid {
@@ -1271,6 +1350,20 @@ body {
   padding: 16px 8px;
   background: var(--bg-card);
   border-radius: var(--radius);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.me-stat-card.clickable {
+  cursor: pointer;
+}
+
+.me-stat-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.me-stat-card.clickable:active {
+  transform: translateY(0);
 }
 
 .me-stat-num {
@@ -1362,4 +1455,399 @@ body {
 
 @keyframes toastOut {
   to { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}
+
+/* ============================================
+   详情列表页（已做菜谱、消耗食材）
+   ============================================ */
+.detail-list-page {
+  padding: 0 0 40px;
+}
+
+.detail-empty {
+  text-align: center;
+  padding: 80px 20px;
+  color: var(--text-secondary);
+}
+
+.detail-empty-small {
+  text-align: center;
+  padding: 24px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ============================================
+   邮票边框网格（已做菜谱）
+   ============================================ */
+.stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  padding: 20px;
+}
+
+.stamp-card {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  /* 邮票边框：双层虚线 */
+  padding: 4px;
+  border: 2px dashed var(--border);
+  box-shadow: 0 2px 8px rgba(45,38,32,0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stamp-card:active {
+  transform: scale(0.97);
+}
+
+/* 邮票内边框 */
+.stamp-card .stamp-inner {
+  border: 1px solid var(--border-light);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stamp-count-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 13px;
+  background: var(--carrot);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(232,133,58,0.5);
+  border: 2px solid var(--bg);
+}
+
+.stamp-img,
+.stamp-img-placeholder {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  background: var(--bg-soft);
+}
+
+.stamp-title {
+  padding: 8px 4px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+   食材记录页
+   ============================================ */
+.ingredient-record-section {
+  padding: 20px;
+  border-bottom: 8px solid var(--bg-soft);
+}
+
+.ingredient-record-section:last-child {
+  border-bottom: none;
+}
+
+.ingredient-record-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  margin-bottom: 8px;
+}
+
+.ingredient-record-count {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.ingredient-record-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
+
+.ingredient-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ingredient-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ingredient-tag-item.consumed {
+  background: var(--avocado-light);
+  color: var(--avocado-dark);
+}
+
+.ingredient-tag-item.supplemented {
+  background: var(--carrot-light);
+  color: #b56020;
+}
+
+.ingredient-tag-emoji {
+  font-size: 16px;
+}
+
+.ingredient-tag-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.6);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ============================================
+   修改过期时间弹窗
+   ============================================ */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45,38,32,0.5);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-panel {
+  position: relative;
+  width: 90%;
+  max-width: 340px;
+  background: var(--bg-card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  animation: slideUp 0.25s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  border: none;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.modal-close:hover { background: var(--border); }
+
+.modal-body {
+  padding: 20px;
+}
+
+.expiry-edit-info {
+  text-align: center;
+  padding: 16px;
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+}
+
+.expiry-edit-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.expiry-edit-current {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.expiry-preset-label,
+.expiry-custom-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.expiry-preset-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.expiry-preset-btn {
+  padding: 8px 16px;
+  background: var(--bg-soft);
+  border: 2px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.expiry-preset-btn:active,
+.expiry-preset-btn.selected {
+  background: var(--carrot-light);
+  border-color: var(--carrot);
+  color: var(--carrot);
+}
+
+.expiry-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expiry-custom-row input {
+  flex: 1;
+  padding: 12px 16px;
+  background: var(--bg-soft);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  text-align: center;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.expiry-custom-row input:focus {
+  border-color: var(--carrot);
+}
+
+.expiry-custom-unit {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.modal-footer {
+  display: flex;
+  gap: 12px;
+  padding: 0 20px 20px;
+}
+
+.modal-btn-cancel,
+.modal-btn-confirm {
+  flex: 1;
+  padding: 14px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.modal-btn-cancel {
+  background: var(--bg-soft);
+  border: none;
+  color: var(--text-secondary);
+}
+
+.modal-btn-cancel:active {
+  background: var(--border);
+}
+
+.modal-btn-confirm {
+  background: var(--carrot);
+  border: none;
+  color: white;
+}
+
+.modal-btn-confirm:active {
+  background: #d07030;
+}
+
+/* ============================================
+   长按视觉反馈
+   ============================================ */
+.long-press-indicator {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232,133,58,0.3) 0%, rgba(232,133,58,0.1) 70%, transparent 100%);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: 1000;
+  transition: transform 0.15s ease-out;
+}
+
+.long-press-indicator.active {
+  transform: translate(-50%, -50%) scale(1);
+  animation: pulse-ring 2s ease-out forwards;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* 长按时卡片样式 */
+.ingredient-card.long-pressing {
+  transform: scale(0.95);
+  box-shadow: 0 0 0 3px var(--carrot);
 }

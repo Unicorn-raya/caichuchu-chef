@@ -31,6 +31,7 @@ class SearchRequest(BaseModel):
     mode: str = "scrappy"  # "scrappy" | "proper"
     top_k: int = 12
     tags: list[str] = []  # 标签筛选（如：快手, 素菜, 下饭肉菜）
+    show_all: bool = False  # 标签筛选时跳过严格过滤，显示所有匹配标签的菜谱
 
 
 class Recommendation(BaseModel):

@@ -80,6 +80,42 @@
     </div>
   </div>
 
+  <!-- 修改过期时间弹窗 -->
+  <div id="expiryEditModal" class="modal hidden">
+    <div class="modal-backdrop" onclick="closeExpiryModal()"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 class="modal-title">修改过期时间</h3>
+        <button class="modal-close" onclick="closeExpiryModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="expiry-edit-info" id="expiryEditInfo"></div>
+        <div class="expiry-presets">
+          <p class="expiry-preset-label">快速选择</p>
+          <div class="expiry-preset-btns">
+            <button class="expiry-preset-btn" onclick="setExpiryDays(1)">1天</button>
+            <button class="expiry-preset-btn" onclick="setExpiryDays(3)">3天</button>
+            <button class="expiry-preset-btn" onclick="setExpiryDays(7)">7天</button>
+            <button class="expiry-preset-btn" onclick="setExpiryDays(14)">14天</button>
+            <button class="expiry-preset-btn" onclick="setExpiryDays(30)">30天</button>
+          </div>
+        </div>
+        <div class="expiry-custom">
+          <p class="expiry-custom-label">自定义天数</p>
+          <div class="expiry-custom-row">
+            <input type="number" id="expiryDaysInput" min="1" max="365" value="7" />
+            <span class="expiry-custom-unit">天</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn-cancel" onclick="closeExpiryModal()">取消</button>
+        <button class="modal-btn-confirm" onclick="confirmExpiryChange()">确认修改</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

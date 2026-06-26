@@ -86,6 +86,7 @@ async def search_recipes(request: SearchRequest):
         mode=request.mode,
         top_k=request.top_k,
         tags=request.tags if request.tags else None,
+        show_all=request.show_all,
     )
     return results
 

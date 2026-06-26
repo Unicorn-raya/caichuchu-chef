@@ -97,8 +97,9 @@ class RecipeRAG:
         ingredients: list[str],
         mode: str = "scrappy",
         top_k: int = 12,
-        rag_top_n: int = 60,
+        rag_top_n: int = 150,
         tags: list[str] | None = None,
+        show_all: bool = False,
     ) -> list[dict]:
         """RAG 检索 + 规则评分
 
@@ -106,9 +107,20 @@ class RecipeRAG:
         1. 将用户食材编码为查询向量
         2. 通过余弦相似度检索 top-N 菜谱候选（语义召回）
         3. 对候选菜谱应用规则评分（覆盖率 + 加权 + 过滤排序）
+
+        当 show_all=True（标签筛选模式）时，跳过 RAG 检索，
+        直接对所有匹配标签的菜谱评分，确保返回完整结果。
         """
         if self.embeddings is None or not self.recipes:
             raise RuntimeError("索引未加载，请先调用 build_index 或 load_index")
+
+        if show_all and tags:
+            # 标签筛选模式：直接对所有匹配标签的菜谱评分
+            results = recommend_recipes(
+                self.recipes, ingredients, mode, top_k,
+                tags=tags, show_all=True,
+            )
+            return results
 
         self._load_model()
 

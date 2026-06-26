@@ -2,7 +2,15 @@
    菜厨厨 — 前端应用逻辑
    ============================================ */
 
-const API_BASE = ""; // 同源
+// 后端 API 地址：本地同源为空；线上部署时通过 config.js 设置 window.CCC_API_BASE
+const API_BASE = window.CCC_API_BASE || "";
+
+// 资源（图片等）URL：若设置后端地址，则资源也走后端
+function assetUrl(path) {
+  if (!path) return path;
+  if (path.startsWith("http")) return path;
+  return `${API_BASE}${path}`;
+}
 const STORAGE_KEY = "caichuchu_fridge";
 const STATS_KEY = "caichuchu_stats";
 
@@ -36,16 +44,24 @@ let fridge = []; // { name, addedAt }
 let shelfLifeData = {};
 let allRecipes = [];
 let allTags = [];
-let searchResults = [];
+let allSearchResults = []; // 原始搜索结果（无标签过滤）
+let searchResults = []; // 当前显示的结果（可能经过标签过滤）
 let swipeIndex = 0;
 let selectedTags = [];
 let cookingSteps = [];
 let cookingStepIndex = 0;
 let cookingRecipeTitle = "";
+let cookingRecipeId = "";
+let cookingMissingIngredients = [];
 
-// ============================================
-// 初始化
-// ============================================
+// 长按计时器
+let longPressTimer = null;
+let longPressTarget = null;
+const LONG_PRESS_DURATION = 1000; // 1秒
+
+// 弹窗状态
+let editingIngredientIndex = -1;
+let editingIngredientName = "";
 async function init() {
   loadFridge();
   loadStats();
@@ -73,9 +89,21 @@ function saveFridge() {
 function loadStats() {
   try {
     const data = localStorage.getItem(STATS_KEY);
-    window.userStats = data ? JSON.parse(data) : { cooked: 0, saved: 0, favorites: [] };
+    const parsed = data ? JSON.parse(data) : {};
+    // 兼容旧数据，确保新字段存在
+    window.userStats = {
+      cooked: parsed.cooked || 0,
+      saved: parsed.saved || 0,
+      favorites: parsed.favorites || [],
+      cookedRecipes: parsed.cookedRecipes || {},   // { recipeId: { title, count, lastCooked } }
+      consumedIngredients: parsed.consumedIngredients || {},  // { ingredientName: count }
+      supplementedIngredients: parsed.supplementedIngredients || {},  // { ingredientName: count }
+    };
   } catch {
-    window.userStats = { cooked: 0, saved: 0, favorites: [] };
+    window.userStats = {
+      cooked: 0, saved: 0, favorites: [],
+      cookedRecipes: {}, consumedIngredients: {}, supplementedIngredients: {},
+    };
   }
 }
 
@@ -115,11 +143,11 @@ async function fetchTags() {
   }
 }
 
-async function searchRecipes(ingredients, mode, tags) {
+async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false) {
   const res = await fetch(`${API_BASE}/api/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ingredients, mode, top_k: 20, tags: tags || [] }),
+    body: JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll }),
   });
   if (!res.ok) throw new Error("搜索失败");
   return res.json();
@@ -243,12 +271,19 @@ function renderIngredientGrid() {
 
   return `
     <div class="ingredient-grid">
-      ${sorted.map((item, idx) => {
+      ${sorted.map((item) => {
         const s = getExpiryStatus(item.name, item.addedAt);
         const emoji = INGREDIENT_EMOJI[item.name] || "🥘";
+        const idx = fridge.indexOf(item);
         return `
-          <div class="ingredient-card status-${s.status}">
-            <button class="ingredient-delete" onclick="removeIngredient(${fridge.indexOf(item)})">×</button>
+          <div class="ingredient-card status-${s.status}"
+               onmousedown="handleMouseDown(${idx}, event)"
+               onmouseup="handleMouseUp(event)"
+               onmouseleave="handleMouseLeave(event)"
+               ontouchstart="handleTouchStart(${idx}, event)"
+               ontouchend="handleTouchEnd(event)"
+               ontouchmove="handleTouchMove(event)">
+            <button class="ingredient-delete" onclick="event.stopPropagation();removeIngredient(${idx})">×</button>
             <span class="ingredient-emoji">${emoji}</span>
             <div class="ingredient-name">${item.name}</div>
             <div class="ingredient-expiry ${s.status}">${getExpiryText(s.status, s.daysLeft)}</div>
@@ -347,7 +382,9 @@ async function generateMenu() {
   `;
 
   try {
-    searchResults = await searchRecipes(ingredients, "scrappy", []);
+    // 获取更多结果用于本地标签过滤
+    allSearchResults = await searchRecipes(ingredients, "scrappy", [], 30);
+    searchResults = allSearchResults;
     selectedTags = [];
     swipeIndex = 0;
     renderSwipePage();
@@ -373,11 +410,22 @@ function renderSwipePage() {
       </div>
 
       <div class="tag-filter-bar">
-        ${allTags.map((tag) => `
-          <div class="tag-filter ${selectedTags.includes(tag.value) ? "active" : ""}" onclick="toggleTagFilter('${tag.value}')">
-            ${tag.label}
-          </div>
-        `).join("")}
+        ${allTags.map((tag) => {
+          const isActive = selectedTags.includes(tag.value);
+          return `
+            <div class="tag-filter ${isActive ? "active" : ""}" onclick="toggleTagFilter('${tag.value}')">
+              ${isActive ? '<svg class="tag-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
+              ${tag.label}
+              ${tag.count ? `<span class="tag-count">${tag.count}</span>` : ""}
+            </div>
+          `;
+        }).join("")}
+      </div>
+
+      <div class="swipe-result-count">
+        ${selectedTags.length > 0
+          ? `已选 ${selectedTags.length} 个标签 · 匹配 ${searchResults.length} 道菜`
+          : `共 ${searchResults.length} 道推荐菜谱`}
       </div>
 
       <div class="card-stack-container" id="cardStackContainer">
@@ -402,11 +450,16 @@ function renderCardStack() {
   const remaining = searchResults.slice(swipeIndex, swipeIndex + 3);
 
   if (remaining.length === 0) {
+    const hasTagFilter = selectedTags.length > 0;
     return `
       <div class="swipe-empty">
-        <div class="swipe-empty-icon">🍽️</div>
-        <div style="font-size:16px;font-weight:600;margin-bottom:4px">没有更多推荐了</div>
-        <div style="font-size:13px">试试调整标签筛选或添加更多食材</div>
+        <div class="swipe-empty-icon">${hasTagFilter ? "🏷️" : "🍽️"}</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">
+          ${hasTagFilter ? "该标签下暂无匹配菜谱" : "没有更多推荐了"}
+        </div>
+        <div style="font-size:13px">
+          ${hasTagFilter ? "试试取消标签或选择其他标签" : "试试调整标签筛选或添加更多食材"}
+        </div>
       </div>
     `;
   }
@@ -436,7 +489,7 @@ function renderSwipeCard(rec, stackIdx) {
   return `
     <div class="swipe-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
       ${image
-        ? `<img class="swipe-card-image" src="${image}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        ? `<img class="swipe-card-image" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
            <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
         : `<div class="swipe-card-placeholder">${emoji}</div>`
       }
@@ -558,13 +611,41 @@ function toggleTagFilter(tag) {
   if (idx >= 0) selectedTags.splice(idx, 1);
   else selectedTags.push(tag);
 
-  // 重新搜索
-  const ingredients = fridge.map((i) => i.name);
-  searchRecipes(ingredients, "scrappy", selectedTags).then((results) => {
-    searchResults = results;
+  if (selectedTags.length === 0) {
+    // 取消所有标签，恢复原始搜索结果
+    searchResults = allSearchResults;
     swipeIndex = 0;
-    renderSwipeCardsOnly();
-  });
+    renderSwipePage();
+  } else {
+    // 有标签选中：重新搜索，获取该标签下所有匹配菜谱
+    const ingredients = fridge.map((i) => i.name);
+    const tagBar = document.querySelector(".tag-filter-bar");
+    if (tagBar) {
+      // 显示加载状态
+      const cards = document.querySelector(".card-stack-container");
+      if (cards) {
+        cards.innerHTML = `<div style="display:flex;justify-content:center;padding:60px 0"><div class="loading-spinner"></div></div>`;
+      }
+    }
+
+    searchRecipes(ingredients, "scrappy", selectedTags, 200, true).then((results) => {
+      // 按需补充食材数量从少到多排序
+      searchResults = results.sort((a, b) => {
+        const aMissing = (a.missing || []).length;
+        const bMissing = (b.missing || []).length;
+        if (aMissing !== bMissing) return aMissing - bMissing;
+        // 同等缺失数下，按匹配度降序
+        return b.matchPercent - a.matchPercent;
+      });
+      swipeIndex = 0;
+      renderSwipePage();
+    }).catch(() => {
+      showToast("筛选失败，请重试");
+      searchResults = allSearchResults;
+      swipeIndex = 0;
+      renderSwipePage();
+    });
+  }
 }
 
 function backToHome() {
@@ -598,7 +679,7 @@ function showRecipeDetail(rec) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         </button>
         ${image
-          ? `<img src="${image}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          ? `<img src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
              <div class="recipe-detail-hero-placeholder" style="display:none">${emoji}</div>`
           : `<div class="recipe-detail-hero-placeholder">${emoji}</div>`
         }
@@ -636,7 +717,7 @@ function showRecipeDetail(rec) {
           `).join("")}
         </div>
 
-        <button class="btn-start-cooking" onclick="startCooking('${recipe.id}')">
+        <button class="btn-start-cooking" onclick="startCooking('${recipe.id}', ${JSON.stringify(rec.missing || []).replace(/"/g, '&quot;')})">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           开始沉浸烹饪
         </button>
@@ -653,13 +734,15 @@ function backToSwipe() {
 // ============================================
 // 沉浸式烹饪模式
 // ============================================
-async function startCooking(recipeId) {
+async function startCooking(recipeId, missingIngredients) {
   const recipe = allRecipes.find((r) => r.id === recipeId);
   if (!recipe) return;
 
   cookingSteps = recipe.steps || [];
   cookingStepIndex = 0;
   cookingRecipeTitle = recipe.title;
+  cookingRecipeId = recipeId;
+  cookingMissingIngredients = missingIngredients || [];
 
   const mode = document.getElementById("cookingMode");
   mode.classList.remove("hidden");
@@ -694,6 +777,41 @@ function renderCookingStep() {
     // 更新统计
     window.userStats.cooked++;
     window.userStats.saved += fridge.length;
+
+    // 记录已做菜谱（含次数）
+    if (!window.userStats.cookedRecipes) {
+      window.userStats.cookedRecipes = {};
+    }
+    const cookKey = cookingRecipeId;
+    if (window.userStats.cookedRecipes[cookKey]) {
+      window.userStats.cookedRecipes[cookKey].count++;
+      window.userStats.cookedRecipes[cookKey].lastCooked = Date.now();
+    } else {
+      window.userStats.cookedRecipes[cookKey] = {
+        title: cookingRecipeTitle,
+        count: 1,
+        lastCooked: Date.now(),
+      };
+    }
+
+    // 记录消耗的食材（冰箱里的）
+    if (!window.userStats.consumedIngredients) {
+      window.userStats.consumedIngredients = {};
+    }
+    fridge.forEach((item) => {
+      window.userStats.consumedIngredients[item.name] =
+        (window.userStats.consumedIngredients[item.name] || 0) + 1;
+    });
+
+    // 记录经常补充的食材（推荐菜谱中需采买的）
+    if (!window.userStats.supplementedIngredients) {
+      window.userStats.supplementedIngredients = {};
+    }
+    cookingMissingIngredients.forEach((ing) => {
+      window.userStats.supplementedIngredients[ing] =
+        (window.userStats.supplementedIngredients[ing] || 0) + 1;
+    });
+
     saveStats();
     return;
   }
@@ -750,18 +868,63 @@ function renderDiscover() {
   return `
     <div class="page discover-page">
       <h1 class="discover-title">发现好菜</h1>
-      <div class="category-grid">
-        ${catEntries.map(([key, cat], i) => `
-          <div class="category-card ${catColors[i % 4]}" onclick="showCategory('${key}')">
-            <div class="category-card-title">${cat.label}</div>
-            <div class="category-card-count">${cat.count} 道菜</div>
-          </div>
-        `).join("")}
+
+      <div class="discover-search-bar">
+        <svg class="discover-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="discoverSearchInput" class="discover-search-input" placeholder="搜索菜谱名或食材…" oninput="filterDiscoverRecipes(this.value)" />
       </div>
 
-      <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px">热门菜谱</div>
+      <div id="discoverContent">
+        <div class="category-grid">
+          ${catEntries.map(([key, cat], i) => `
+            <div class="category-card ${catColors[i % 4]}" onclick="showCategory('${key}')">
+              <div class="category-card-title">${cat.label}</div>
+              <div class="category-card-count">${cat.count} 道菜</div>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px">热门菜谱</div>
+        <div class="recipe-list" id="discoverRecipeList">
+          ${allRecipes.slice(0, 20).map((r) => renderRecipeListCard(r)).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function filterDiscoverRecipes(query) {
+  query = query.trim().toLowerCase();
+  const content = document.getElementById("discoverContent");
+  if (!content) return;
+
+  if (!query) {
+    // 恢复原始内容
+    renderPage("discover");
+    return;
+  }
+
+  // 搜索菜谱名或食材
+  const matched = allRecipes.filter((r) => {
+    const titleMatch = r.title.toLowerCase().includes(query);
+    const ingredientMatch = r.requiredIngredients.some((ing) =>
+      ing.toLowerCase().includes(query)
+    );
+    return titleMatch || ingredientMatch;
+  });
+
+  content.innerHTML = `
+    <div class="discover-search-result">
+      <div class="discover-search-count">找到 ${matched.length} 道相关菜谱</div>
       <div class="recipe-list">
-        ${allRecipes.slice(0, 20).map((r) => renderRecipeListCard(r)).join("")}
+        ${matched.length > 0
+          ? matched.map((r) => renderRecipeListCard(r)).join("")
+          : `<div class="discover-search-empty">
+               <div style="font-size:36px;margin-bottom:8px">🔍</div>
+               <div>没有找到相关菜谱</div>
+               <div style="font-size:13px;color:var(--text-muted);margin-top:4px">试试其他关键词</div>
+             </div>`
+        }
       </div>
     </div>
   `;
@@ -776,7 +939,7 @@ function renderRecipeListCard(recipe) {
   return `
     <div class="recipe-list-card" onclick="showRecipeDetailDirect('${recipe.id}')">
       ${image
-        ? `<img class="recipe-list-thumb" src="${image}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        ? `<img class="recipe-list-thumb" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
@@ -841,15 +1004,15 @@ function renderMe() {
       </div>
 
       <div class="me-stats">
-        <div class="me-stat-card">
+        <div class="me-stat-card clickable" onclick="showCookedRecipes()">
           <div class="me-stat-num">${stats.cooked}</div>
           <div class="me-stat-label">已做菜谱</div>
         </div>
-        <div class="me-stat-card">
+        <div class="me-stat-card clickable" onclick="showConsumedIngredients()">
           <div class="me-stat-num">${stats.saved}</div>
           <div class="me-stat-label">消耗食材</div>
         </div>
-        <div class="me-stat-card">
+        <div class="me-stat-card clickable" onclick="renderPage('home')">
           <div class="me-stat-num">${fridge.length}</div>
           <div class="me-stat-label">冰箱库存</div>
         </div>
@@ -876,6 +1039,130 @@ function renderMe() {
   `;
 }
 
+// ============================================
+// 已做菜谱页面
+// ============================================
+function showCookedRecipes() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  const cooked = window.userStats.cookedRecipes || {};
+  const entries = Object.entries(cooked).sort((a, b) => b[1].lastCooked - a[1].lastCooked);
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">已做菜谱</div>
+        <div style="width:50px"></div>
+      </div>
+
+      ${entries.length === 0 ? `
+        <div class="detail-empty">
+          <div style="font-size:48px;margin-bottom:12px">🍳</div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有做过菜</div>
+          <div style="font-size:13px;color:var(--text-muted)">完成一次烹饪后这里会显示记录</div>
+        </div>
+      ` : `
+        <div class="stamp-grid">
+          ${entries.map(([recipeId, info]) => {
+            const recipe = allRecipes.find((r) => r.id === recipeId);
+            const image = recipe && recipe.images && recipe.images.length > 0
+              ? recipe.images[0] : null;
+            const emoji = recipe ? getRecipeEmoji(recipe) : "🍽️";
+            return `
+              <div class="stamp-card" onclick="${recipe ? `showRecipeDetailDirect('${recipeId}')` : ''}">
+                <div class="stamp-count-badge">${info.count}</div>
+                <div class="stamp-inner">
+                  ${image
+                    ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${info.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                       <div class="stamp-img-placeholder" style="display:none">${emoji}</div>`
+                    : `<div class="stamp-img-placeholder">${emoji}</div>`
+                  }
+                  <div class="stamp-title">${info.title}</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// ============================================
+// 消耗食材页面
+// ============================================
+function showConsumedIngredients() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  const consumed = window.userStats.consumedIngredients || {};
+  const supplemented = window.userStats.supplementedIngredients || {};
+
+  // 消耗食材按次数排序
+  const consumedList = Object.entries(consumed).sort((a, b) => b[1] - a[1]);
+  // 经常补充按次数排序
+  const supplementedList = Object.entries(supplemented).sort((a, b) => b[1] - a[1]);
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">食材记录</div>
+        <div style="width:50px"></div>
+      </div>
+
+      <div class="ingredient-record-section">
+        <div class="ingredient-record-title">
+          <span>🥬 已消耗食材</span>
+          <span class="ingredient-record-count">${consumedList.length} 种</span>
+        </div>
+        ${consumedList.length === 0 ? `
+          <div class="detail-empty-small">还没有消耗记录</div>
+        ` : `
+          <div class="ingredient-tag-list">
+            ${consumedList.map(([name, count]) => `
+              <div class="ingredient-tag-item consumed">
+                <span class="ingredient-tag-emoji">${INGREDIENT_EMOJI[name] || "🥘"}</span>
+                <span class="ingredient-tag-name">${name}</span>
+                <span class="ingredient-tag-badge">${count}</span>
+              </div>
+            `).join("")}
+          </div>
+        `}
+      </div>
+
+      <div class="ingredient-record-section">
+        <div class="ingredient-record-title">
+          <span>🛒 经常补充的食材</span>
+          <span class="ingredient-record-count">${supplementedList.length} 种</span>
+        </div>
+        <div class="ingredient-record-hint">推荐菜谱中需要采买的食材，建议下次购物时补充</div>
+        ${supplementedList.length === 0 ? `
+          <div class="detail-empty-small">还没有补充记录</div>
+        ` : `
+          <div class="ingredient-tag-list">
+            ${supplementedList.map(([name, count]) => `
+              <div class="ingredient-tag-item supplemented">
+                <span class="ingredient-tag-emoji">${INGREDIENT_EMOJI[name] || "🥘"}</span>
+                <span class="ingredient-tag-name">${name}</span>
+                <span class="ingredient-tag-badge">${count}</span>
+              </div>
+            `).join("")}
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
 function clearAllData() {
   if (confirm("确定清空冰箱所有食材？")) {
     fridge = [];
@@ -897,6 +1184,211 @@ function showToast(msg) {
   toast.textContent = msg;
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 2500);
+}
+
+// ============================================
+// 过期时间修改弹窗
+// ============================================
+function openExpiryModal(index) {
+  editingIngredientIndex = index;
+  const item = fridge[index];
+  editingIngredientName = item.name;
+
+  const s = getExpiryStatus(item.name, item.addedAt);
+  const daysLeft = Math.max(0, Math.ceil(s.daysLeft));
+  const shelfLife = s.shelfLife;
+
+  document.getElementById("expiryEditInfo").innerHTML = `
+    <div class="expiry-edit-name">${item.name}</div>
+    <div class="expiry-edit-current">
+      当前：剩余 ${daysLeft} 天（保质期 ${shelfLife} 天）
+    </div>
+  `;
+
+  document.getElementById("expiryDaysInput").value = Math.max(1, daysLeft);
+  document.getElementById("expiryEditModal").classList.remove("hidden");
+
+  // 重置快速选择按钮状态
+  document.querySelectorAll(".expiry-preset-btn").forEach(btn => btn.classList.remove("selected"));
+}
+
+function closeExpiryModal() {
+  document.getElementById("expiryEditModal").classList.add("hidden");
+  editingIngredientIndex = -1;
+  editingIngredientName = "";
+}
+
+function setExpiryDays(days) {
+  document.getElementById("expiryDaysInput").value = days;
+
+  // 高亮选中的按钮
+  document.querySelectorAll(".expiry-preset-btn").forEach(btn => {
+    btn.classList.toggle("selected", parseInt(btn.textContent) === days);
+  });
+}
+
+function confirmExpiryChange() {
+  const days = parseInt(document.getElementById("expiryDaysInput").value);
+  if (days < 1 || days > 365 || isNaN(days)) {
+    showToast("请输入 1-365 之间的天数");
+    return;
+  }
+
+  // 重新计算 addedAt，让剩余保质期为指定天数
+  const s = getExpiryStatus(fridge[editingIngredientIndex].name, fridge[editingIngredientIndex].addedAt);
+  const elapsed = s.shelfLife - days; // 已经过去的天数
+  const newAddedAt = Date.now() / 1000 - elapsed * 86400;
+
+  fridge[editingIngredientIndex].addedAt = newAddedAt;
+  saveFridge();
+
+  closeExpiryModal();
+  renderPage("home");
+  showToast(`已将 ${editingIngredientName} 保质期设为 ${days} 天`);
+}
+
+// ============================================
+// 长按处理
+// ============================================
+
+// 长按视觉反馈元素
+let longPressIndicator = null;
+
+function showLongPressIndicator(element) {
+  if (!longPressIndicator) {
+    longPressIndicator = document.createElement("div");
+    longPressIndicator.className = "long-press-indicator";
+    document.body.appendChild(longPressIndicator);
+  }
+
+  const rect = element.getBoundingClientRect();
+  longPressIndicator.style.left = rect.left + rect.width / 2 + "px";
+  longPressIndicator.style.top = rect.top + rect.height / 2 + "px";
+  longPressIndicator.classList.add("active");
+}
+
+function hideLongPressIndicator() {
+  if (longPressIndicator) {
+    longPressIndicator.classList.remove("active");
+  }
+}
+
+function handleLongPress(index) {
+  hideLongPressIndicator();
+  // 尝试震动反馈
+  if (navigator.vibrate) {
+    navigator.vibrate(50);
+  }
+  openExpiryModal(index);
+}
+
+function handleTouchStart(index, event) {
+  // 跳过删除按钮
+  if (event.target.classList.contains("ingredient-delete")) {
+    return;
+  }
+
+  event.preventDefault();
+
+  // 清除之前的计时器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+
+  longPressTarget = index;
+  const element = event.currentTarget;
+  showLongPressIndicator(element);
+
+  longPressTimer = setTimeout(() => {
+    handleLongPress(index);
+    longPressTimer = null;
+    longPressTarget = null;
+  }, LONG_PRESS_DURATION);
+}
+
+function handleTouchEnd(event) {
+  hideLongPressIndicator();
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    longPressTarget = null;
+  }
+}
+
+function handleTouchMove(event) {
+  // 如果手指滑动了，取消长按
+  if (longPressTimer) {
+    const touch = event.touches[0];
+    if (touch) {
+      const element = event.currentTarget;
+      const rect = element.getBoundingClientRect();
+      const distance = Math.sqrt(
+        Math.pow(touch.clientX - (rect.left + rect.width / 2), 2) +
+        Math.pow(touch.clientY - (rect.top + rect.height / 2), 2)
+      );
+      // 移动超过 10px 取消
+      if (distance > 10) {
+        hideLongPressIndicator();
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    }
+  }
+}
+
+// 鼠标长按支持（桌面端）
+let mouseDownTime = 0;
+
+function handleMouseDown(index, event) {
+  // 跳过删除按钮
+  if (event.target.classList.contains("ingredient-delete")) {
+    return;
+  }
+
+  event.preventDefault();
+  mouseDownTime = Date.now();
+
+  // 清除之前的计时器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+
+  longPressTarget = index;
+  const element = event.currentTarget;
+  showLongPressIndicator(element);
+
+  longPressTimer = setTimeout(() => {
+    handleLongPress(index);
+    longPressTimer = null;
+    longPressTarget = null;
+    mouseDownTime = 0;
+  }, LONG_PRESS_DURATION);
+}
+
+function handleMouseUp(event) {
+  hideLongPressIndicator();
+  // 如果点击时间太短（不是长按），清除计时器
+  if (longPressTimer && mouseDownTime > 0 && Date.now() - mouseDownTime < 500) {
+    // 这是普通点击，不触发长按
+  }
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressTarget = null;
+  mouseDownTime = 0;
+}
+
+function handleMouseLeave(event) {
+  hideLongPressIndicator();
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressTarget = null;
+  mouseDownTime = 0;
 }
 
 // ============================================

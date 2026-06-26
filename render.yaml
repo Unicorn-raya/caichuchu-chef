@@ -1,0 +1,13 @@
+# Render 一键部署配置
+# 在 Render 控制台新建服务时选择 "Blueprint"，指向本仓库即可
+services:
+  - type: web
+    name: caichuchu-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/recipes
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8000

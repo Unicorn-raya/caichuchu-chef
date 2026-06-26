@@ -41,7 +41,121 @@ ALIAS_MAP: dict[str, str] = {
     "香醋": "醋",
     "生抽酱油": "生抽",
     "老抽酱油": "老抽",
+    "五花肉": "猪肉",
+    "带皮五花肉": "猪肉",
+    "后腿肉": "猪肉",
+    "里脊肉": "猪肉",
+    "梅花肉": "猪肉",
+    "前腿肉": "猪肉",
+    "活虾": "虾",
+    "明虾": "虾",
+    "基围虾": "虾",
+    "黑虎虾": "虾",
+    "虾仁": "虾",
+    "草鱼": "鱼",
+    "鲫鱼": "鱼",
+    "鲤鱼": "鱼",
+    "鲈鱼": "鱼",
+    "带鱼": "鱼",
+    "鳕鱼": "鱼",
 }
+
+# ============================================
+# 食材等价类（同一组内的食材可以互相替代）
+# 例如：猪肉末和牛肉末可互换
+# ============================================
+EQUIVALENCE_GROUPS: list[list[str]] = [
+    # 肉末类互换（不同肉类的肉末可以互相替代）
+    ["猪肉末", "牛肉末", "羊肉末", "鸡肉末", "肉末", "肉沫", "肉糜"],
+    # 肉丁类互换
+    ["猪肉丁", "牛肉丁", "羊肉丁", "鸡肉丁", "鸡丁", "肉丁"],
+    # 肉丝类互换
+    ["猪肉丝", "牛肉丝", "羊肉丝", "鸡肉丝", "鸡丝", "肉丝"],
+    # 肉片类互换
+    ["猪肉片", "牛肉片", "羊肉片", "鸡肉片", "鸡片", "肉片"],
+    # 猪肉部位等价
+    ["猪肉", "五花肉", "里脊", "排骨"],
+    # 鸡肉部位等价
+    ["鸡肉", "鸡胸肉", "鸡腿", "鸡翅"],
+    # 牛肉部位等价
+    ["牛肉", "牛腩"],
+    # 蔬菜等价
+    ["辣椒", "干辣椒", "小米辣", "小米椒", "青椒", "彩椒"],
+    ["葱", "大葱", "小葱", "香葱", "葱花"],
+    ["姜", "生姜", "姜片", "姜末"],
+    ["蒜", "大蒜", "蒜瓣", "蒜末"],
+    # 酱油类
+    ["酱油", "生抽", "老抽"],
+    # 食用油类
+    ["食用油", "植物油", "花生油", "菜籽油", "橄榄油"],
+    # 糖类
+    ["糖", "白糖", "冰糖", "红糖"],
+    # 豆制品
+    ["豆腐", "嫩豆腐", "老豆腐", "内酯豆腐"],
+]
+
+# 泛化映射：菜谱需要的食材 -> 库存中可以替代的"泛化形式"
+# 例如：菜谱要"肉末"，库存有"猪肉"就算匹配（猪肉可以剁成肉末）
+GENERALIZATION_MAP: dict[str, list[str]] = {
+    # 肉末形态 -> 整块肉类可替代
+    "肉末": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "肉沫": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "肉糜": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "猪肉末": ["猪肉"],
+    "牛肉末": ["牛肉"],
+    "羊肉末": ["羊肉"],
+    "鸡肉末": ["鸡肉"],
+    # 肉丁形态
+    "肉丁": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "猪肉丁": ["猪肉"],
+    "牛肉丁": ["牛肉"],
+    "鸡肉丁": ["鸡肉"],
+    "鸡丁": ["鸡肉"],
+    # 肉丝形态
+    "肉丝": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "猪肉丝": ["猪肉"],
+    "牛肉丝": ["牛肉"],
+    "鸡肉丝": ["鸡肉"],
+    "鸡丝": ["鸡肉"],
+    # 肉片形态
+    "肉片": ["猪肉", "牛肉", "羊肉", "鸡肉"],
+    "猪肉片": ["猪肉"],
+    "牛肉片": ["牛肉"],
+    "鸡肉片": ["鸡肉"],
+    "鸡片": ["鸡肉"],
+}
+
+
+def _build_equivalence_map() -> dict[str, str]:
+    """用并查集构建食材等价映射，返回 {食材: 等价类代表}"""
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x: str, y: str) -> None:
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    for group in EQUIVALENCE_GROUPS:
+        for i in range(1, len(group)):
+            union(group[0], group[i])
+
+    return {x: find(x) for x in parent}
+
+
+# 预计算等价映射
+_EQUIV_MAP = _build_equivalence_map()
+
+
+def _equiv_key(item: str) -> str:
+    """获取食材的等价类代表，若无等价类则返回自身"""
+    return _EQUIV_MAP.get(item, item)
 
 # 家常主菜分类
 HOME_MAIN_DISH_CATEGORIES = {"aquatic", "meat_dish", "vegetable_dish"}
@@ -91,11 +205,72 @@ COMMON_HOME_MAIN_DISH_KEYWORDS = [
 ]
 
 
+# 常见基础调料集合：这些在 missingCore 中会被排除，
+# 因为大多数家庭厨房常备，不需要专门采买。
+# 用 normalize_item 归一化后的小写形式。
+BASIC_SEASONINGS: set[str] = {
+    "盐", "糖", "冰糖", "白糖", "红糖", "酱油", "生抽", "老抽",
+    "醋", "香醋", "料酒", "黄酒", "米酒", "食用油", "植物油", "花生油", "菜籽油", "橄榄油", "油",
+    "葱", "大葱", "小葱", "香葱", "葱花",
+    "姜", "生姜", "姜片", "姜末",
+    "蒜", "大蒜", "蒜瓣", "蒜末",
+    "辣椒", "干辣椒", "小米辣", "小米椒", "青椒",
+    "花椒", "八角", "桂皮", "香叶", "丁香", "草果", "小茴香", "五香粉", "十三香",
+    "胡椒粉", "白胡椒粉", "黑胡椒粉", "白胡椒", "黑胡椒", "胡椒",
+    "淀粉", "生粉", "水淀粉",
+    "蚝油", "豆瓣酱", "甜面酱", "黄豆酱", "海鲜酱", "番茄酱", "芝麻酱",
+    "味精", "鸡精",
+    "芝麻", "白芝麻", "黑芝麻", "芝麻油", "香油",
+    "清水", "开水", "温水", "凉水",
+    "蜂蜜", "可乐", "啤酒",
+}
+
+# 标点/数量修饰词，用于判断食材名是否带修饰（如"生抽3汤匙"）
+
+
+def is_basic_seasoning(item: str) -> bool:
+    """判断食材是否属于常见基础调料（应从 missingCore 中排除）。
+
+    判断逻辑：对食材名做归一化后，若命中 BASIC_SEASONINGS 集合，
+    或去掉数量/单位后命中，则视为调料。
+    注意：不做宽松的前缀匹配，避免把"蒜薹"误判为"蒜"。
+    """
+    norm = normalize_item(item)
+    if not norm:
+        return True
+    if norm in BASIC_SEASONINGS:
+        return True
+    # 处理带数量/单位的调料，如"生抽3汤匙" -> "生抽"
+    import re
+    stripped = re.sub(
+        r"[0-9０-９一二三四五六七八九十百千万半两]+|(克|千克|斤|两|毫升|升|g|kg|ml|l|L|个|颗|枚|根|片|瓣|勺|匙|碗|盒|支|只|条|块|朵|把|杯|份|汤匙|茶匙|大匙|小匙)",
+        "",
+        item,
+    )
+    stripped = re.sub(r"[，。；;、,./\\|!！?？:：()\[\]{}（）【】\s]+", "", stripped).strip()
+    if stripped in BASIC_SEASONINGS:
+        return True
+    # 组合调料拆分判断（如"葱姜蒜"整体算调料）
+    if norm in ("葱姜蒜", "葱姜末", "蒜末姜末"):
+        return True
+    return False
+
+
 def normalize_item(value: str) -> str:
     """归一化食材名称：去除数量、单位、标点，应用别名映射"""
     import re
 
-    cleaned = re.sub(r"[0-9０-９一二三四五六七八九十百千万半两]+", "", value)
+    # 修复：先把"五花肉"等含数字的食材名替换成占位符，避免被数字正则误删
+    # 数字正则会把"五花肉"->"花肉"，所以先保护含"五"的食材
+    protected = value
+    protect_map = {"五花肉": "__WC_PROTECT_WUHUA__"}
+    for k, v in protect_map.items():
+        protected = protected.replace(k, v)
+
+    cleaned = re.sub(r"[0-9０-９一二三四五六七八九十百千万半两]+", "", protected)
+    # 恢复被保护的食材名
+    for v, k in {v: k for k, v in protect_map.items()}.items():
+        cleaned = cleaned.replace(v, k)
     cleaned = re.sub(
         r"(克|千克|斤|两|毫升|升|g|kg|ml|l|L|个|颗|枚|根|片|瓣|勺|匙|碗|盒|支|只|条|块|朵|把|杯|份)",
         "",
@@ -110,14 +285,57 @@ def normalize_item(value: str) -> str:
 
 
 def item_matches(inventory: set[str], item: str) -> bool:
-    """检查食材是否在库存中（含组合食材的拆分匹配）"""
+    """检查食材是否在库存中（含等价类匹配、泛化匹配和组合拆分）
+
+    匹配优先级：
+    1. 精确匹配（含对菜谱食材做归一化后再匹配）
+    2. 等价类匹配（猪肉末↔牛肉末等互换）
+    3. 泛化匹配（猪肉可替代菜谱中的肉末/肉丁形态）
+    4. 组合食材拆分（葱姜蒜、酱油等）
+
+    注意：inventory 中的值已经是 normalize_item 处理过的，
+    但 item（来自菜谱）是原始字符串，需要先归一化再比较。
+    """
+    # 0. 先对菜谱食材做归一化（库存已归一化）
+    norm_item = normalize_item(item)
+
+    # 1. 精确匹配（用归一化后的值比较）
+    if norm_item in inventory:
+        return True
     if item in inventory:
         return True
-    if item == "葱姜蒜":
+
+    # 2. 等价类匹配
+    item_key = _equiv_key(norm_item)
+    if item_key != norm_item:
+        for inv_item in inventory:
+            if _equiv_key(inv_item) == item_key:
+                return True
+    # 也用原始 item 试一次等价类（兼容未归一化的等价组定义）
+    item_key_orig = _equiv_key(item)
+    if item_key_orig != item:
+        for inv_item in inventory:
+            if _equiv_key(inv_item) == item_key_orig:
+                return True
+
+    # 3. 泛化匹配：菜谱要肉末/肉丁，库存有整块肉
+    for check_item in (norm_item, item):
+        if check_item in GENERALIZATION_MAP:
+            for gen_item in GENERALIZATION_MAP[check_item]:
+                if gen_item in inventory:
+                    return True
+                gen_key = _equiv_key(gen_item)
+                if gen_key != gen_item:
+                    for inv_item in inventory:
+                        if _equiv_key(inv_item) == gen_key:
+                            return True
+
+    # 4. 组合食材拆分
+    if norm_item in ("葱姜蒜", "葱姜") or item == "葱姜蒜":
         return "葱" in inventory or "姜" in inventory or "蒜" in inventory
-    if item == "酱油":
+    if norm_item in ("酱油",) or item == "酱油":
         return "酱油" in inventory or "生抽" in inventory or "老抽" in inventory
-    if item == "辣椒":
+    if norm_item == "辣椒" or item == "辣椒":
         return "辣椒" in inventory or "干辣椒" in inventory
     return False
 
@@ -145,11 +363,18 @@ def score_recipe(
       - 核心食材权重 2，调料权重 0.75
     - scrappy 模式（凑凑吃）：覆盖率*100 - 缺核心*18 - 缺调料*4 - 难度*3 + 快手奖励 + 少买奖励
     - proper 模式（出好菜）：覆盖率*72 - 缺核心*8 - 缺调料*2 + 难度奖励 + 卖相奖励 - 超时惩罚
+
+    missingCore 会排除常见基础调料（盐/糖/酱油/醋/油/葱姜蒜等），
+    只保留"需要专门采买的主料/配菜"。
     """
     required = list(dict.fromkeys(recipe.requiredIngredients))
     existing = [item for item in required if item_matches(inventory, item)]
     missing = [item for item in required if not item_matches(inventory, item)]
-    missing_core = [item for item in recipe.coreIngredients if not item_matches(inventory, item)]
+    # missingCore 排除常见基础调料，只算需要专门采买的主料/配菜
+    missing_core = [
+        item for item in recipe.coreIngredients
+        if not item_matches(inventory, item) and not is_basic_seasoning(item)
+    ]
     missing_seasonings = [item for item in recipe.seasonings if not item_matches(inventory, item)]
 
     core_hits = len([item for item in recipe.coreIngredients if item_matches(inventory, item)])
@@ -218,26 +443,38 @@ def filter_and_sort(
     recommendations: Iterable[dict],
     mode: str,
     top_k: int = 12,
+    show_all: bool = False,
 ) -> list[dict]:
-    """过滤和排序推荐结果"""
+    """过滤和排序推荐结果
+
+    show_all=True 时跳过严格过滤（用于标签筛选，显示所有匹配标签的菜谱）
+    """
     results = []
     for item in recommendations:
-        # 过滤：至少有一个已有食材，或覆盖率 >= 35%
-        if len(item["existing"]) == 0 and item["matchPercent"] < 35:
-            continue
-        # 模式过滤
-        if mode == "scrappy":
-            if len(item["missingCore"]) > 3 or item["recipe"].category == "drink":
+        if not show_all:
+            # 放宽过滤：只要有1个已有食材就保留，不再要求 matchPercent >= 35%
+            if len(item["existing"]) == 0:
                 continue
+            # 模式过滤：scrappy 模式允许缺核心 5 个（原为3）
+            if mode == "scrappy":
+                if len(item["missingCore"]) > 5 or item["recipe"].category == "drink":
+                    continue
+            else:
+                if len(item["missingCore"]) > 7 or item["recipe"].category in ("drink", "condiment"):
+                    continue
         else:
-            if len(item["missingCore"]) > 5 or item["recipe"].category in ("drink", "condiment"):
-                continue
+            # show_all 模式：不做分类过滤，显示所有匹配标签的菜谱
+            pass
         results.append(item)
 
-    # 排序：家常主菜排名 > 评分
-    results.sort(
-        key=lambda x: (-home_main_dish_rank(x["recipe"]), -x["score"])
-    )
+    if show_all:
+        # 标签筛选模式：按缺失食材数量升序排序（前端也会再排一次）
+        results.sort(key=lambda x: (len(x["missingCore"]), -x["score"]))
+    else:
+        # 正常模式：家常主菜排名 > 评分
+        results.sort(
+            key=lambda x: (-home_main_dish_rank(x["recipe"]), -x["score"])
+        )
     return results[:top_k]
 
 
@@ -247,6 +484,7 @@ def recommend_recipes(
     mode: str = "scrappy",
     top_k: int = 12,
     tags: list[str] | None = None,
+    show_all: bool = False,
 ) -> list[dict]:
     """完整的规则推荐流程：标签过滤 → 评分 → 过滤 → 排序"""
     # 标签筛选
@@ -261,4 +499,4 @@ def recommend_recipes(
         result = score_recipe(recipe, inventory, mode)
         if result is not None:
             recommendations.append(result)
-    return filter_and_sort(recommendations, mode, top_k)
+    return filter_and_sort(recommendations, mode, top_k, show_all=show_all)
