@@ -24,6 +24,8 @@ COPY data/ ./data/
 COPY backend/ ./backend/
 
 # 构建向量索引（首次会下载 sentence-transformers 模型 ~470MB）
+# 使用 HuggingFace 镜像加速国内下载
+ENV HF_ENDPOINT=https://hf-mirror.com
 RUN cd backend && python build_index.py
 
 # 运行目录（app 包在 backend/ 下）
