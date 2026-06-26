@@ -34,3 +34,7 @@ yarn.lock
 # 构建产物
 dist/
 build/
+
+# Cloudflare
+.wrangler/
+.dev.vars
