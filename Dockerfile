@@ -4,7 +4,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖（编译 numpy/sentence-transformers 用）
+# 安装编译依赖（numpy/scipy 编译需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# 拷贝数据与后端代码
+# 拷贝数据与后端代码（data/images 为符号链接，COPY 会跟随并复制实际图片）
 COPY data/ ./data/
 COPY backend/ ./backend/
 
