@@ -6,4 +6,4 @@
  *   2. 把下方域名改成你的后端地址（不要带末尾斜杠）
  *   3. 前端部署到 Vercel 后即可调用后端 API
  */
-window.CCC_API_BASE = ""; // 例如: "https://caichuchu-backend.onrender.com"
+window.CCC_API_BASE = "https://sealray-caichuchu-backend.hf.space";
