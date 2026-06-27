@@ -924,6 +924,13 @@ async function startCooking(recipeId, missingIngredients) {
   cookingRecipeId = recipeId;
   cookingMissingIngredients = missingIngredients || [];
 
+  // 重置烹饪主体结构（完成态会用 innerHTML 覆盖，需恢复原始元素）
+  document.getElementById("cookingBody").innerHTML = `
+    <div class="cooking-step-num" id="cookingStepNum">第 1 步</div>
+    <div class="cooking-step-text" id="cookingStepText"></div>
+    <div class="cooking-tap-hint">轻点进入下一步 · 双击返回上一步</div>
+  `;
+
   const mode = document.getElementById("cookingMode");
   mode.classList.remove("hidden");
   renderCookingStep();
