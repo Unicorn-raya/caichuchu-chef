@@ -1017,16 +1017,35 @@ function cookingPrev() {
   }
 }
 
+// 单击/双击检测：单击→下一步，双击→上一步
+let cookingTapTimer = null;
+function handleCookingTap() {
+  // 烹饪已完成时不处理点击（由"完成"按钮控制）
+  if (cookingStepIndex >= cookingSteps.length) return;
+  if (cookingTapTimer) {
+    // 第二次点击（双击）：取消单击，执行上一步
+    clearTimeout(cookingTapTimer);
+    cookingTapTimer = null;
+    cookingPrev();
+  } else {
+    // 第一次点击（单击）：等待 280ms 判断是否双击
+    cookingTapTimer = setTimeout(() => {
+      cookingTapTimer = null;
+      cookingNext();
+    }, 280);
+  }
+}
+
 function exitCookingMode() {
   document.getElementById("cookingMode").classList.add("hidden");
   if (window.wakeLock) {
     window.wakeLock.release();
     window.wakeLock = null;
   }
-  // 返回首页
-  document.getElementById("bottomNav").style.display = "";
-  renderPage("home");
-  showToast("烹饪完成，冰箱已更新");
+  // 不强制跳页：底层菜谱详情页仍在，用户可通过其返回按钮回到上级页
+  if (cookingStepIndex >= cookingSteps.length) {
+    showToast("烹饪完成，冰箱已更新");
+  }
 }
 
 // ============================================

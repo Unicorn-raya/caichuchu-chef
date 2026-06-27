@@ -73,10 +73,10 @@
       </button>
       <div class="cooking-progress" id="cookingProgress">1 / 5</div>
     </div>
-    <div class="cooking-body" id="cookingBody" onclick="cookingNext()">
+    <div class="cooking-body" id="cookingBody" onclick="handleCookingTap()">
       <div class="cooking-step-num" id="cookingStepNum">第 1 步</div>
       <div class="cooking-step-text" id="cookingStepText"></div>
-      <div class="cooking-tap-hint">点击屏幕进入下一步</div>
+      <div class="cooking-tap-hint">轻点进入下一步 · 双击返回上一步</div>
     </div>
     <div class="cooking-footer">
       <button class="cooking-nav-btn" onclick="event.stopPropagation();cookingPrev()">上一步</button>
