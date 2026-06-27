@@ -13,6 +13,7 @@ function assetUrl(path) {
 }
 const STORAGE_KEY = "caichuchu_fridge";
 const STATS_KEY = "caichuchu_stats";
+const AI_MODELS_KEY = "caichuchu_ai_models";
 
 // 常见食材快捷标签
 const COMMON_INGREDIENTS = [
@@ -112,6 +113,65 @@ function saveStats() {
 }
 
 // ============================================
+// AI 模型管理
+// ============================================
+function loadAIModels() {
+  try {
+    const data = localStorage.getItem(AI_MODELS_KEY);
+    const parsed = data ? JSON.parse(data) : {};
+    return {
+      models: parsed.models || [],
+      defaultModelId: parsed.defaultModelId || null,
+    };
+  } catch {
+    return { models: [], defaultModelId: null };
+  }
+}
+
+function saveAIModels(config) {
+  localStorage.setItem(AI_MODELS_KEY, JSON.stringify(config));
+}
+
+function getDefaultAIModel() {
+  const config = loadAIModels();
+  if (!config.defaultModelId) return null;
+  return config.models.find((m) => m.id === config.defaultModelId) || null;
+}
+
+/**
+ * 调用 AI 模型生成内容（OpenAI 兼容协议）
+ * @param {string} prompt 用户提示
+ * @returns {Promise<string>} AI 返回的文本
+ */
+async function callAI(prompt) {
+  const model = getDefaultAIModel();
+  if (!model) {
+    throw new Error("NO_AI_MODEL");
+  }
+  const res = await fetch(`${model.url}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${model.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model.model,
+      messages: [
+        { role: "system", content: "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。回答控制在 300 字以内。" },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.7,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim() || "（AI 未返回内容）";
+}
+
+// ============================================
 // API 调用
 // ============================================
 async function fetchShelfLife() {
@@ -198,6 +258,9 @@ function renderPage(page) {
       break;
     case "discover":
       app.innerHTML = renderDiscover();
+      break;
+    case "calendar":
+      renderCalendarPage();
       break;
     case "me":
       app.innerHTML = renderMe();
@@ -309,6 +372,120 @@ function removeIngredient(index) {
   saveFridge();
   renderPage("home");
   showToast("已移除");
+}
+
+// ============================================
+// 食材详情页（AI 推荐这个食材常做的菜）
+// ============================================
+async function openIngredientDetail(index) {
+  const item = fridge[index];
+  if (!item) return;
+  const name = item.name;
+  const emoji = INGREDIENT_EMOJI[name] || "🥘";
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  // 预先渲染骨架
+  app.innerHTML = `
+    <div class="page ingredient-detail-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="backFromIngredientDetail()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">食材灵感</div>
+        <div style="width:50px"></div>
+      </div>
+
+      <div class="ingredient-detail-hero">
+        <div class="ingredient-detail-emoji">${emoji}</div>
+        <div class="ingredient-detail-name">${name}</div>
+      </div>
+
+      <div id="ingredientDetailContent" class="ingredient-detail-content">
+        <div class="ai-loading">
+          <div class="loading-spinner"></div>
+          <div class="ai-loading-text">AI 正在思考这道食材的灵感菜谱…</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 同时查找本地菜谱中含此食材的菜
+  const localMatches = allRecipes
+    .filter((r) => r.requiredIngredients.some((i) => i.includes(name) || name.includes(i)))
+    .slice(0, 6);
+
+  const contentEl = document.getElementById("ingredientDetailContent");
+  const defaultModel = getDefaultAIModel();
+
+  if (!defaultModel) {
+    contentEl.innerHTML = `
+      <div class="ai-empty">
+        <div class="ai-empty-icon">🤖</div>
+        <div class="ai-empty-title">尚未配置 AI 模型</div>
+        <div class="ai-empty-sub">配置 AI 模型后，可获取专属这道食材的灵感菜谱推荐</div>
+        <button class="ai-empty-btn" onclick="showAIModels()">前往配置</button>
+      </div>
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+    `;
+    return;
+  }
+
+  try {
+    const prompt = `我冰箱里有食材「${name}」。请推荐 4-5 道以这个食材为主角的常见家常菜，每道菜用一句话说明做法亮点和搭配食材。用列表形式输出，开头用一句话概括这个食材的特点。`;
+    const aiText = await callAI(prompt);
+    contentEl.innerHTML = `
+      <div class="ai-result">
+        <div class="ai-result-header">
+          <span class="ai-result-badge">AI 灵感</span>
+          <span class="ai-result-model">${defaultModel.name || defaultModel.model}</span>
+        </div>
+        <div class="ai-result-text">${formatAIText(aiText)}</div>
+      </div>
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+    `;
+  } catch (e) {
+    const msg = e.message === "NO_AI_MODEL" ? "尚未配置 AI 模型" : e.message;
+    contentEl.innerHTML = `
+      <div class="ai-empty">
+        <div class="ai-empty-icon">⚠️</div>
+        <div class="ai-empty-title">AI 生成失败</div>
+        <div class="ai-empty-sub">${msg}</div>
+      </div>
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+    `;
+  }
+}
+
+function renderLocalIngredientMatches(matches, name) {
+  return `
+    <div class="local-match-section">
+      <div class="local-match-title">📚 含「${name}」的菜谱</div>
+      <div class="recipe-list" style="padding:0">
+        ${matches.map((r) => renderRecipeListCard(r)).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function formatAIText(text) {
+  // 简单的 markdown 转 HTML：换行、加粗、列表
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/^\s*[-•]\s+(.+)$/gm, "<li>$1</li>");
+  html = html.replace(/(<li>[\s\S]+?<\/li>)/g, "<ul>$1</ul>");
+  html = html.replace(/\n\n/g, "</p><p>");
+  html = `<p>${html}</p>`;
+  return html;
+}
+
+function backFromIngredientDetail() {
+  document.getElementById("bottomNav").style.display = "";
+  renderPage("home");
 }
 
 // ============================================
@@ -991,6 +1168,288 @@ function showRecipeDetailDirect(recipeId) {
 }
 
 // ============================================
+// 做菜日历（日历模式 + 鱼骨图时间线模式）
+// ============================================
+let calendarMode = "calendar"; // 'calendar' | 'timeline'
+let calendarMonth = new Date();
+let timelineHighlightKey = null; // 时间线模式下高亮的日期 key
+
+function getCookedHistory() {
+  // 从 userStats.cookedRecipes 读取所有做菜记录
+  const cooked = (window.userStats && window.userStats.cookedRecipes) || {};
+  const records = [];
+  Object.entries(cooked).forEach(([recipeId, info]) => {
+    // 同一菜做过多次：每次都算一条记录（用 count 推算时间，但只有 lastCooked 准确）
+    // 简化：只显示最后一次做的时间，但显示总次数
+    records.push({
+      recipeId,
+      title: info.title,
+      count: info.count,
+      timestamp: info.lastCooked,
+    });
+  });
+  return records.sort((a, b) => b.timestamp - a.timestamp); // 新→旧
+}
+
+function getCookedDatesSet() {
+  // 返回 Set<YYYY-MM-DD>
+  const set = new Set();
+  getCookedHistory().forEach((r) => {
+    const d = new Date(r.timestamp);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    set.add(key);
+  });
+  return set;
+}
+
+function showCalendar() {
+  // 兼容旧入口：直接跳到 calendar 标签页
+  renderPage("calendar");
+}
+
+// 注入演示数据（用于查看日历/时间线效果）
+function loadDemoCalendarData() {
+  if (!allRecipes || allRecipes.length === 0) {
+    showToast("菜谱未加载完成，请稍候");
+    return;
+  }
+  // 从真实菜谱中挑 8 道，分布在过去 30 天
+  const picks = [];
+  const usedIds = new Set();
+  const sampleCount = Math.min(8, allRecipes.length);
+  while (picks.length < sampleCount) {
+    const r = allRecipes[Math.floor(Math.random() * allRecipes.length)];
+    if (usedIds.has(r.id)) continue;
+    usedIds.add(r.id);
+    picks.push(r);
+  }
+
+  const now = Date.now();
+  const dayMs = 86400000;
+  const cookedRecipes = {};
+  picks.forEach((r, i) => {
+    // 分布在最近 30 天，越靠前时间越近
+    const daysAgo = Math.floor(i * 3.5) + Math.floor(Math.random() * 2);
+    const ts = now - daysAgo * dayMs - Math.floor(Math.random() * 8) * 3600000;
+    cookedRecipes[r.id] = {
+      title: r.title,
+      count: 1 + Math.floor(Math.random() * 3),
+      lastCooked: ts,
+    };
+  });
+
+  window.userStats = window.userStats || {
+    cooked: 0, saved: 0, favorites: [],
+    cookedRecipes: {}, consumedIngredients: {}, supplementedIngredients: {},
+  };
+  window.userStats.cookedRecipes = cookedRecipes;
+  window.userStats.cooked = Object.keys(cookedRecipes).length;
+  saveStats();
+  renderCalendarPage();
+  showToast("已加载演示数据");
+}
+
+function clearDemoCalendarData() {
+  if (!confirm("确定清空所有做菜记录？")) return;
+  window.userStats = window.userStats || {};
+  window.userStats.cookedRecipes = {};
+  window.userStats.cooked = 0;
+  saveStats();
+  renderCalendarPage();
+  showToast("已清空");
+}
+
+function renderCalendarPage() {
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="page calendar-page">
+      <div class="calendar-page-header">
+        <h1 class="calendar-page-title">做菜日历</h1>
+        <button class="cal-demo-btn" onclick="loadDemoCalendarData()" title="加载演示数据">✨ 演示</button>
+      </div>
+
+      <div class="calendar-tabs">
+        <button class="calendar-tab ${calendarMode === 'calendar' ? 'active' : ''}" onclick="switchCalendarMode('calendar')">📅 日历模式</button>
+        <button class="calendar-tab ${calendarMode === 'timeline' ? 'active' : ''}" onclick="switchCalendarMode('timeline')">🐟 时间线</button>
+      </div>
+
+      <div id="calendarContent">
+        ${calendarMode === 'calendar' ? renderCalendarMode() : renderTimelineMode()}
+      </div>
+    </div>
+  `;
+}
+
+function switchCalendarMode(mode) {
+  calendarMode = mode;
+  if (mode === 'calendar') timelineHighlightKey = null;
+  renderCalendarPage();
+}
+
+// 从日历模式点击有做菜的天 → 跳到时间线并滚动到对应卡片
+function jumpToTimeline(dateKey) {
+  timelineHighlightKey = dateKey;
+  calendarMode = 'timeline';
+  renderCalendarPage();
+  // 渲染后滚动到对应卡片
+  setTimeout(() => {
+    const el = document.getElementById('fishbone-item-' + dateKey);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // 没有精确匹配，提示
+      showToast('该日期记录已在时间线中');
+    }
+  }, 50);
+}
+
+// 日历模式：月历视图
+function renderCalendarMode() {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const cookedSet = getCookedDatesSet();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startWeekday = firstDay.getDay(); // 0=周日
+  const daysInMonth = lastDay.getDate();
+
+  const monthLabel = `${year}年${month + 1}月`;
+  const prevMonth = () => { calendarMonth = new Date(year, month - 1, 1); renderCalendarPage(); };
+  const nextMonth = () => { calendarMonth = new Date(year, month + 1, 1); renderCalendarPage(); };
+
+  const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+  let cells = "";
+
+  // 周标题
+  weekdays.forEach((w) => {
+    cells += `<div class="cal-weekday">${w}</div>`;
+  });
+
+  // 前置空格
+  for (let i = 0; i < startWeekday; i++) {
+    cells += `<div class="cal-cell empty"></div>`;
+  }
+
+  // 当月每一天
+  let cookedCount = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const hasCooked = cookedSet.has(key);
+    const isToday = key === todayKey;
+    if (hasCooked) cookedCount++;
+    cells += `
+      <div class="cal-cell ${hasCooked ? 'has-cooked' : ''} ${isToday ? 'is-today' : ''}"
+            ${hasCooked ? `onclick="jumpToTimeline('${key}')"` : ''}>
+        <div class="cal-day-num">${d}</div>
+        ${hasCooked ? '<div class="cal-dot"></div>' : ''}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="calendar-mode">
+      <div class="cal-nav">
+        <button class="cal-nav-btn" onclick="prevCalMonth()">‹</button>
+        <div class="cal-nav-label">${monthLabel}</div>
+        <button class="cal-nav-btn" onclick="nextCalMonth()">›</button>
+      </div>
+      <div class="cal-summary">本月做菜 <strong>${cookedCount}</strong> 天</div>
+      <div class="cal-grid">
+        ${cells}
+      </div>
+      <div class="cal-legend">
+        <div class="cal-legend-item"><div class="cal-dot"></div><span>有做菜</span></div>
+        <div class="cal-legend-item"><div class="cal-today-marker"></div><span>今天</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function prevCalMonth() {
+  const y = calendarMonth.getFullYear();
+  const m = calendarMonth.getMonth();
+  calendarMonth = new Date(y, m - 1, 1);
+  renderCalendarPage();
+}
+
+function nextCalMonth() {
+  const y = calendarMonth.getFullYear();
+  const m = calendarMonth.getMonth();
+  calendarMonth = new Date(y, m + 1, 1);
+  renderCalendarPage();
+}
+
+// 时间线模式：鱼骨图
+function renderTimelineMode() {
+  const records = getCookedHistory();
+
+  if (records.length === 0) {
+    return `
+      <div class="timeline-empty">
+        <div style="font-size:48px;margin-bottom:12px">🐟</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有做菜记录</div>
+        <div style="font-size:13px;color:var(--text-muted)">完成一次烹饪后这里会显示鱼骨时间线</div>
+      </div>
+    `;
+  }
+
+  // 鱼骨图：左右交替的卡片
+  const bones = records.map((r, idx) => {
+    const side = idx % 2 === 0 ? "left" : "right";
+    const date = new Date(r.timestamp);
+    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
+    const timeStr = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const isHighlighted = dateKey === timelineHighlightKey;
+    const recipe = allRecipes.find((x) => x.id === r.recipeId);
+    const emoji = recipe ? getRecipeEmoji(recipe) : "🍽️";
+    const image = recipe && recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+
+    return `
+      <div class="fishbone-item side-${side} ${isHighlighted ? 'highlighted' : ''}" id="fishbone-item-${dateKey}">
+        <div class="fishbone-card" onclick="showRecipeDetailDirect('${r.recipeId}')">
+          ${image
+            ? `<img class="fishbone-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="fishbone-card-emoji" style="display:none">${emoji}</div>`
+            : `<div class="fishbone-card-emoji">${emoji}</div>`
+          }
+          <div class="fishbone-card-body">
+            <div class="fishbone-card-title">${r.title}</div>
+            <div class="fishbone-card-meta">
+              <span>${dateStr}</span>
+              <span>${timeStr}</span>
+              ${r.count > 1 ? `<span class="fishbone-count">×${r.count}</span>` : ''}
+            </div>
+          </div>
+        </div>
+        <div class="fishbone-bone side-${side}"></div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="fishbone-timeline">
+      <div class="fishbone-head">🐟</div>
+      <div class="fishbone-spine"></div>
+      <div class="fishbone-items">
+        ${bones}
+      </div>
+      <div class="fishbone-tail">
+        <div class="fishbone-tail-line"></div>
+        <div class="fishbone-tail-fins">
+          <div class="fin fin-left"></div>
+          <div class="fin fin-right"></div>
+        </div>
+      </div>
+      <div class="fishbone-tail-label">最早记录</div>
+    </div>
+  `;
+}
+
+// ============================================
 // 我的页
 // ============================================
 function renderMe() {
@@ -1019,6 +1478,10 @@ function renderMe() {
       </div>
 
       <div class="me-section-title">设置</div>
+      <div class="me-menu-item" onclick="showAIModels()">
+        <span>🤖 AI模型管理</span>
+        <span class="me-menu-arrow">›</span>
+      </div>
       <div class="me-menu-item" onclick="showToast('偏好设置开发中')">
         <span>🍽️ 饮食偏好</span>
         <span class="me-menu-arrow">›</span>
@@ -1173,6 +1636,188 @@ function clearAllData() {
 }
 
 // ============================================
+// AI 模型管理页面
+// ============================================
+function showAIModels() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  const config = loadAIModels();
+  const defaultModel = config.models.find((m) => m.id === config.defaultModelId);
+
+  app.innerHTML = `
+    <div class="page ai-models-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">AI模型管理</div>
+        <div style="width:50px"></div>
+      </div>
+
+      <div class="ai-models-intro">
+        <div class="ai-models-intro-icon">🤖</div>
+        <div class="ai-models-intro-text">
+          配置 OpenAI 兼容的模型后，点击冰箱中的食材卡片即可获取 AI 生成的灵感菜谱推荐。
+        </div>
+      </div>
+
+      <div class="ai-default-section">
+        <div class="ai-section-title">默认模型</div>
+        ${defaultModel ? `
+          <div class="ai-default-card">
+            <div class="ai-default-name">${defaultModel.name}</div>
+            <div class="ai-default-model">${defaultModel.model}</div>
+            <div class="ai-default-url">${defaultModel.url}</div>
+          </div>
+        ` : `
+          <div class="ai-default-empty">
+            <div class="ai-default-empty-text">尚未设置默认模型</div>
+            <div class="ai-default-empty-sub">新增模型后可设为默认</div>
+          </div>
+        `}
+      </div>
+
+      <div class="ai-list-section">
+        <div class="ai-section-title">
+          <span>所有模型</span>
+          <button class="ai-add-btn" onclick="openAIModelEditor()">+ 新增模型</button>
+        </div>
+
+        ${config.models.length === 0 ? `
+          <div class="ai-list-empty">
+            <div style="font-size:40px;margin-bottom:8px">📭</div>
+            <div>还没有模型，点击右上角新增</div>
+          </div>
+        ` : `
+          <div class="ai-model-list">
+            ${config.models.map((m) => `
+              <div class="ai-model-item ${m.id === config.defaultModelId ? 'is-default' : ''}">
+                <div class="ai-model-item-info" onclick="setdefaultAIModel('${m.id}')">
+                  <div class="ai-model-item-name">
+                    ${m.name}
+                    ${m.id === config.defaultModelId ? '<span class="ai-default-tag">默认</span>' : ''}
+                  </div>
+                  <div class="ai-model-item-model">${m.model}</div>
+                  <div class="ai-model-item-url">${m.url}</div>
+                </div>
+                <div class="ai-model-item-actions">
+                  <button class="ai-model-action-btn" onclick="event.stopPropagation();openAIModelEditor('${m.id}')">编辑</button>
+                  <button class="ai-model-action-btn danger" onclick="event.stopPropagation();deleteAIModel('${m.id}')">删除</button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function setdefaultAIModel(modelId) {
+  const config = loadAIModels();
+  config.defaultModelId = modelId;
+  saveAIModels(config);
+  showAIModels();
+  showToast("已设为默认");
+}
+
+function deleteAIModel(modelId) {
+  const config = loadAIModels();
+  const model = config.models.find((m) => m.id === modelId);
+  if (!model) return;
+  if (!confirm(`确定删除模型「${model.name}」？`)) return;
+  config.models = config.models.filter((m) => m.id !== modelId);
+  if (config.defaultModelId === modelId) config.defaultModelId = null;
+  saveAIModels(config);
+  showAIModels();
+  showToast("已删除");
+}
+
+function openAIModelEditor(modelId) {
+  const config = loadAIModels();
+  const editing = modelId ? config.models.find((m) => m.id === modelId) : null;
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="page ai-editor-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showAIModels()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">${editing ? '编辑模型' : '新增模型'}</div>
+        <div style="width:50px"></div>
+      </div>
+
+      <div class="ai-editor-form">
+        <div class="ai-form-group">
+          <label class="ai-form-label">模型名称</label>
+          <input type="text" id="aiFormName" class="ai-form-input" placeholder="如：我的GPT" value="${editing ? editing.name : ''}" />
+          <div class="ai-form-hint">用于在列表中识别</div>
+        </div>
+
+        <div class="ai-form-group">
+          <label class="ai-form-label">API 地址 (Base URL)</label>
+          <input type="text" id="aiFormUrl" class="ai-form-input" placeholder="如：https://api.openai.com/v1" value="${editing ? editing.url : ''}" />
+          <div class="ai-form-hint">OpenAI 兼容协议，不要带末尾斜杠</div>
+        </div>
+
+        <div class="ai-form-group">
+          <label class="ai-form-label">API Key</label>
+          <input type="password" id="aiFormKey" class="ai-form-input" placeholder="sk-..." value="${editing ? editing.apiKey : ''}" />
+          <div class="ai-form-hint">仅保存在本地浏览器</div>
+        </div>
+
+        <div class="ai-form-group">
+          <label class="ai-form-label">模型 ID</label>
+          <input type="text" id="aiFormModel" class="ai-form-input" placeholder="如：gpt-4o-mini" value="${editing ? editing.model : ''}" />
+          <div class="ai-form-hint">模型供应商提供的模型标识</div>
+        </div>
+
+        <button class="ai-form-save" onclick="saveAIModelForm('${modelId || ''}')">保存</button>
+        ${!editing && config.models.length === 0 ? '<div class="ai-form-hint-center">保存后将自动设为默认模型</div>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+function saveAIModelForm(modelId) {
+  const name = document.getElementById("aiFormName").value.trim();
+  const url = document.getElementById("aiFormUrl").value.trim();
+  const apiKey = document.getElementById("aiFormKey").value.trim();
+  const model = document.getElementById("aiFormModel").value.trim();
+
+  if (!name || !url || !apiKey || !model) {
+    showToast("请填写完整信息");
+    return;
+  }
+  // 去掉末尾斜杠
+  const cleanUrl = url.replace(/\/+$/, "");
+
+  const config = loadAIModels();
+  if (modelId) {
+    // 编辑
+    const idx = config.models.findIndex((m) => m.id === modelId);
+    if (idx >= 0) {
+      config.models[idx] = { ...config.models[idx], name, url: cleanUrl, apiKey, model };
+    }
+  } else {
+    // 新增
+    const newModel = {
+      id: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+      name, url: cleanUrl, apiKey, model,
+    };
+    config.models.push(newModel);
+    // 第一个模型自动设为默认
+    if (!config.defaultModelId) config.defaultModelId = newModel.id;
+  }
+  saveAIModels(config);
+  showAIModels();
+  showToast(modelId ? "已更新" : "已添加");
+}
+
+// ============================================
 // Toast
 // ============================================
 function showToast(msg) {
@@ -1309,11 +1954,20 @@ function handleTouchStart(index, event) {
 
 function handleTouchEnd(event) {
   hideLongPressIndicator();
-  if (longPressTimer) {
+  // 短按：长按计时器还在（说明未触发长按）→ 打开食材详情
+  if (longPressTimer && longPressTarget !== null && longPressTarget !== undefined) {
+    const targetIdx = longPressTarget;
     clearTimeout(longPressTimer);
     longPressTimer = null;
     longPressTarget = null;
+    openIngredientDetail(targetIdx);
+    return;
   }
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+  longPressTarget = null;
 }
 
 function handleTouchMove(event) {
@@ -1369,9 +2023,15 @@ function handleMouseDown(index, event) {
 
 function handleMouseUp(event) {
   hideLongPressIndicator();
-  // 如果点击时间太短（不是长按），清除计时器
-  if (longPressTimer && mouseDownTime > 0 && Date.now() - mouseDownTime < 500) {
-    // 这是普通点击，不触发长按
+  // 短按：长按计时器还在（说明未触发长按）→ 打开食材详情
+  if (longPressTimer && longPressTarget !== null && longPressTarget !== undefined) {
+    const targetIdx = longPressTarget;
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    longPressTarget = null;
+    mouseDownTime = 0;
+    openIngredientDetail(targetIdx);
+    return;
   }
   if (longPressTimer) {
     clearTimeout(longPressTimer);
