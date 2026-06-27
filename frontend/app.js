@@ -9,6 +9,10 @@ const API_BASE = window.CCC_API_BASE || "";
 function assetUrl(path) {
   if (!path) return path;
   if (path.startsWith("http")) return path;
+  // 本地静态资源走相对路径（Vercel 同源部署 + CDN）
+  if (path.startsWith("/data/images/")) {
+    return path;  // /data/images/xxx -> 同源 frontend/data/images/xxx
+  }
   return `${API_BASE}${path}`;
 }
 const STORAGE_KEY = "caichuchu_fridge";
@@ -185,6 +189,20 @@ async function fetchShelfLife() {
 }
 
 async function fetchRecipes() {
+  // 优先从本地静态 recipes.json 加载（保证图片路径与本地图片一致）
+  try {
+    const res = await fetch(`/data/recipes.json`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.recipes && data.recipes.length > 0) {
+        allRecipes = data.recipes;
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn("本地 recipes.json 加载失败，回退到后端 API", e);
+  }
+  // 回退：后端 API
   try {
     const res = await fetch(`${API_BASE}/api/recipes`);
     const data = await res.json();
