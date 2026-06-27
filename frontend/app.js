@@ -852,7 +852,7 @@ function showRecipeDetail(rec) {
   app.innerHTML = `
     <div class="page recipe-detail-page">
       <div class="recipe-detail-hero">
-        <button class="recipe-detail-back" onclick="backToSwipe()">
+        <button class="recipe-detail-back" onclick="goBackFromRecipeDetail()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         </button>
         ${image
@@ -907,6 +907,9 @@ function backToSwipe() {
   document.getElementById("bottomNav").style.display = "none";
   renderSwipePage();
 }
+
+// 记录菜谱详情页的返回动作（不同入口返回到不同上级页面）
+let recipeDetailBackFn = null;
 
 // ============================================
 // 沉浸式烹饪模式
@@ -1132,15 +1135,18 @@ function renderRecipeListCard(recipe) {
   `;
 }
 
+let currentDiscoverCategory = null; // 当前在发现页查看的分类（null 表示分类总览）
+
 function showCategory(category) {
   const recipes = allRecipes.filter((r) => r.category === category);
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
+  currentDiscoverCategory = category;
 
   app.innerHTML = `
     <div class="page discover-page">
       <div class="swipe-header">
-        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('discover')">
+        <button class="swipe-header-back" onclick="currentDiscoverCategory=null;document.getElementById('bottomNav').style.display='';renderPage('discover')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
@@ -1157,6 +1163,38 @@ function showCategory(category) {
 function showRecipeDetailDirect(recipeId) {
   const recipe = allRecipes.find((r) => r.id === recipeId);
   if (!recipe) return;
+  // 根据当前所在页面设置返回动作
+  const activeNav = document.querySelector(".nav-btn.active");
+  const activePage = activeNav ? activeNav.dataset.page : null;
+  if (activePage === "discover") {
+    // 从发现页进入：如果在分类列表视图，返回分类列表；否则返回发现首页
+    const cat = currentDiscoverCategory;
+    if (cat) {
+      recipeDetailBackFn = () => showCategory(cat);
+    } else {
+      recipeDetailBackFn = () => {
+        document.getElementById("bottomNav").style.display = "";
+        renderPage("discover");
+      };
+    }
+  } else if (activePage === "calendar") {
+    recipeDetailBackFn = () => renderPage("calendar");
+  } else if (activePage === "me") {
+    recipeDetailBackFn = () => {
+      document.getElementById("bottomNav").style.display = "";
+      renderPage("me");
+    };
+  } else if (activePage === "home") {
+    recipeDetailBackFn = () => {
+      document.getElementById("bottomNav").style.display = "";
+      renderPage("home");
+    };
+  } else {
+    recipeDetailBackFn = () => {
+      document.getElementById("bottomNav").style.display = "none";
+      renderSwipePage();
+    };
+  }
   const rec = {
     recipe,
     matchPercent: 0,
@@ -1165,6 +1203,16 @@ function showRecipeDetailDirect(recipeId) {
     reason: "浏览菜谱",
   };
   showRecipeDetail(rec);
+}
+
+// 菜谱详情页返回：根据入口回到对应上级页
+function goBackFromRecipeDetail() {
+  if (recipeDetailBackFn) {
+    recipeDetailBackFn();
+    recipeDetailBackFn = null;
+  } else {
+    backToSwipe();
+  }
 }
 
 // ============================================
