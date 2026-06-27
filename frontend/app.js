@@ -118,17 +118,23 @@ function saveStats() {
 
 // ============================================
 // AI 模型管理
+// 模型用途：recommend(推荐菜谱) / recognize(语音图像识别)
 // ============================================
 function loadAIModels() {
   try {
     const data = localStorage.getItem(AI_MODELS_KEY);
     const parsed = data ? JSON.parse(data) : {};
-    return {
-      models: parsed.models || [],
-      defaultModelId: parsed.defaultModelId || null,
-    };
+    // 向后兼容：旧数据没有 uses 字段，把 defaultModelId 对应模型标记为 recommend
+    const legacyDefault = parsed.defaultModelId || null;
+    const models = (parsed.models || []).map((m) => ({
+      ...m,
+      uses: Array.isArray(m.uses)
+        ? m.uses
+        : (legacyDefault && m.id === legacyDefault ? ["recommend"] : []),
+    }));
+    return { models };
   } catch {
-    return { models: [], defaultModelId: null };
+    return { models: [] };
   }
 }
 
@@ -136,19 +142,69 @@ function saveAIModels(config) {
   localStorage.setItem(AI_MODELS_KEY, JSON.stringify(config));
 }
 
-function getDefaultAIModel() {
+// 获取指定用途的模型
+function getAIModelByUse(use) {
   const config = loadAIModels();
-  if (!config.defaultModelId) return null;
-  return config.models.find((m) => m.id === config.defaultModelId) || null;
+  return config.models.find((m) => m.uses && m.uses.includes(use)) || null;
+}
+
+function getRecommendModel() {
+  return getAIModelByUse("recommend");
+}
+
+function getRecognizeModel() {
+  return getAIModelByUse("recognize");
+}
+
+// 向后兼容
+function getDefaultAIModel() {
+  return getRecommendModel();
 }
 
 /**
  * 调用 AI 模型生成内容（OpenAI 兼容协议）
  * @param {string} prompt 用户提示
+ * @param {string} useCase 用途：recommend(默认) / recognize
+ * @param {string} systemPrompt 自定义 system 提示
  * @returns {Promise<string>} AI 返回的文本
  */
-async function callAI(prompt) {
-  const model = getDefaultAIModel();
+async function callAI(prompt, useCase = "recommend", systemPrompt) {
+  const model = useCase === "recognize" ? getRecognizeModel() : getRecommendModel();
+  if (!model) {
+    throw new Error("NO_AI_MODEL");
+  }
+  const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。回答控制在 300 字以内。";
+  const res = await fetch(`${model.url}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${model.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model.model,
+      messages: [
+        { role: "system", content: sys },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.7,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim() || "（AI 未返回内容）";
+}
+
+/**
+ * 调用 AI 视觉模型识别图片中的食材（OpenAI 兼容协议 vision）
+ * @param {string} imageBase64 带 data:前缀的 base64 图片
+ * @param {string} prompt 提示文本
+ * @returns {Promise<string>} AI 返回的文本
+ */
+async function callAIVision(imageBase64, prompt) {
+  const model = getRecognizeModel();
   if (!model) {
     throw new Error("NO_AI_MODEL");
   }
@@ -161,10 +217,15 @@ async function callAI(prompt) {
     body: JSON.stringify({
       model: model.model,
       messages: [
-        { role: "system", content: "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。回答控制在 300 字以内。" },
-        { role: "user", content: prompt },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: imageBase64 } },
+          ],
+        },
       ],
-      temperature: 0.7,
+      temperature: 0.2,
     }),
   });
   if (!res.ok) {
@@ -172,7 +233,7 @@ async function callAI(prompt) {
     throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "（AI 未返回内容）";
+  return data.choices?.[0]?.message?.content?.trim() || "";
 }
 
 // ============================================
@@ -517,10 +578,19 @@ function openInputSheet() {
 function closeInputSheet() {
   document.getElementById("inputSheet").classList.add("hidden");
   document.getElementById("manualInputArea").classList.add("hidden");
+  document.getElementById("voiceInputArea").classList.add("hidden");
+  document.getElementById("aiResultArea").classList.add("hidden");
+  // 停止语音识别
+  if (voiceRecognition) {
+    voiceRecognition.stop();
+    voiceRecognition = null;
+  }
   renderPage("home");
 }
 
 function showManualInput() {
+  document.getElementById("voiceInputArea").classList.add("hidden");
+  document.getElementById("aiResultArea").classList.add("hidden");
   document.getElementById("manualInputArea").classList.remove("hidden");
 }
 
@@ -559,6 +629,242 @@ function addManualIngredient() {
   input.value = "";
   renderQuickTags();
   showToast(`已添加 ${name}`);
+}
+
+// ============================================
+// 语音输入 & 拍照识别（多模态 AI）
+// ============================================
+let voiceRecognition = null;
+
+function showVoiceInput() {
+  // 隐藏其他输入区，显示语音区
+  document.getElementById("manualInputArea").classList.add("hidden");
+  document.getElementById("aiResultArea").classList.add("hidden");
+  const voiceArea = document.getElementById("voiceInputArea");
+  voiceArea.classList.remove("hidden");
+  voiceArea.innerHTML = `
+    <div class="voice-input-panel">
+      <div class="voice-mic-btn" id="voiceMicBtn" onclick="toggleVoiceRecording()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+      </div>
+      <div class="voice-status" id="voiceStatus">点击麦克风开始说话</div>
+      <div class="voice-transcript" id="voiceTranscript"></div>
+    </div>
+  `;
+}
+
+function toggleVoiceRecording() {
+  const micBtn = document.getElementById("voiceMicBtn");
+  if (voiceRecognition) {
+    // 正在录音 → 停止
+    voiceRecognition.stop();
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    showToast("当前浏览器不支持语音识别");
+    return;
+  }
+
+  const model = getRecognizeModel();
+  if (!model) {
+    showToast("请先在AI模型管理中设置「语音/图像识别」模型");
+    return;
+  }
+
+  const recognition = new SR();
+  recognition.lang = "zh-CN";
+  // continuous=true：持续识别，允许停顿，说多个食材时不会中途断开
+  // 用户说完所有食材后点击麦克风手动停止
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  micBtn.classList.add("recording");
+  document.getElementById("voiceStatus").textContent = "正在聆听…说完后点击麦克风停止";
+  document.getElementById("voiceTranscript").textContent = "";
+
+  // 累积已确认的文本（final 结果），避免每次回调都从头拼接导致 interim 重复
+  let finalText = "";
+  recognition.onresult = (event) => {
+    let interimText = "";
+    for (let i = 0; i < event.results.length; i++) {
+      const res = event.results[i];
+      if (res.isFinal) {
+        finalText += res[0].transcript;
+      } else {
+        interimText += res[0].transcript;
+      }
+    }
+    document.getElementById("voiceTranscript").textContent = (finalText + interimText).trim();
+  };
+
+  recognition.onerror = (event) => {
+    micBtn.classList.remove("recording");
+    document.getElementById("voiceStatus").textContent = "识别失败：" + event.error;
+    voiceRecognition = null;
+  };
+
+  recognition.onend = () => {
+    micBtn.classList.remove("recording");
+    voiceRecognition = null;
+    const transcript = document.getElementById("voiceTranscript").textContent.trim();
+    if (transcript) {
+      document.getElementById("voiceStatus").textContent = "正在用AI提取食材…";
+      extractIngredientsFromText(transcript);
+    } else {
+      document.getElementById("voiceStatus").textContent = "未识别到语音，请重试";
+    }
+  };
+
+  recognition.start();
+  voiceRecognition = recognition;
+}
+
+async function extractIngredientsFromText(text) {
+  try {
+    const prompt = `请从以下语音文本中提取食材名称，只返回食材名称列表，用逗号分隔，不要其他文字。例如：番茄,鸡蛋,牛肉。\n\n语音文本：${text}`;
+    const result = await callAI(prompt, "recognize", "你是一个食材识别助手，只返回食材名称列表，用逗号分隔，不要任何其他文字。");
+    const ingredients = result.split(/[,，、\n]/).map((s) => s.trim()).filter((s) => s && s.length <= 10);
+    showAIResult(ingredients, "voice");
+  } catch (e) {
+    document.getElementById("voiceStatus").textContent = "AI提取失败：" + (e.message || "");
+  }
+}
+
+function showPhotoInput() {
+  document.getElementById("manualInputArea").classList.add("hidden");
+  document.getElementById("voiceInputArea").classList.add("hidden");
+  document.getElementById("aiResultArea").classList.add("hidden");
+  document.getElementById("photoFileInput").click();
+}
+
+function handlePhotoSelect(event) {
+  const file = event.target.files[0];
+  event.target.value = ""; // 允许重复选择同一文件
+  if (!file) return;
+
+  const model = getRecognizeModel();
+  if (!model) {
+    showToast("请先在AI模型管理中设置「语音/图像识别」模型");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result;
+    // 压缩图片避免过大
+    const compressed = await compressImage(base64, 1024);
+    showPhotoPreview(compressed);
+    try {
+      const prompt = "请识别图片中的食材，只返回食材名称列表，用逗号分隔，不要其他文字。例如：番茄,鸡蛋,牛肉。如果没有食材返回空。";
+      const result = await callAIVision(compressed, prompt);
+      const ingredients = result.split(/[,，、\n]/).map((s) => s.trim()).filter((s) => s && s.length <= 10);
+      showAIResult(ingredients, "photo", compressed);
+    } catch (err) {
+      const resultArea = document.getElementById("aiResultArea");
+      resultArea.classList.remove("hidden");
+      resultArea.innerHTML = `<div class="ai-result-error">识别失败：${err.message || "请重试"}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// 压缩图片到指定最大边长
+function compressImage(base64, maxSize) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) {
+          height = Math.round(height * maxSize / width);
+          width = maxSize;
+        } else {
+          width = Math.round(width * maxSize / height);
+          height = maxSize;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => resolve(base64);
+    img.src = base64;
+  });
+}
+
+function showPhotoPreview(base64) {
+  const aiResultArea = document.getElementById("aiResultArea");
+  aiResultArea.classList.remove("hidden");
+  aiResultArea.innerHTML = `
+    <div class="ai-result-preview">
+      <img src="${base64}" alt="预览" class="ai-result-preview-img" />
+      <div class="ai-result-loading">
+        <div class="loading-spinner"></div>
+        <span>正在用AI识别食材…</span>
+      </div>
+    </div>
+  `;
+}
+
+// 显示AI识别结果（语音/拍照通用）
+function showAIResult(ingredients, source, photoBase64) {
+  const resultArea = document.getElementById("aiResultArea");
+  resultArea.classList.remove("hidden");
+  if (!ingredients || ingredients.length === 0) {
+    resultArea.innerHTML = `
+      <div class="ai-result-empty">
+        <div style="font-size:32px;margin-bottom:8px">🤔</div>
+        <div>未识别到食材，请重试</div>
+      </div>
+    `;
+    return;
+  }
+  const inFridge = new Set(fridge.map((i) => i.name));
+  resultArea.innerHTML = `
+    ${photoBase64 ? `<img src="${photoBase64}" alt="预览" class="ai-result-preview-img" />` : ""}
+    <div class="ai-result-title">AI 识别到 ${ingredients.length} 个食材</div>
+    <div class="ai-result-chips" id="aiResultChips">
+      ${ingredients.map((name) => `
+        <div class="ai-result-chip ${inFridge.has(name) ? "in-fridge" : ""}" data-name="${name}" onclick="toggleAIResultChip(this)">
+          <span class="ai-result-chip-name">${name}</span>
+          <span class="ai-result-chip-check">${inFridge.has(name) ? "已添加" : "✚"}</span>
+        </div>
+      `).join("")}
+    </div>
+    <button class="ai-result-add-btn" onclick="confirmAddAIIngredients()">添加到冰箱</button>
+  `;
+}
+
+function toggleAIResultChip(el) {
+  if (el.classList.contains("in-fridge")) return; // 已在冰箱的不允许操作
+  el.classList.toggle("selected");
+}
+
+function confirmAddAIIngredients() {
+  const chips = document.querySelectorAll(".ai-result-chip.selected");
+  if (chips.length === 0) {
+    showToast("请选择要添加的食材");
+    return;
+  }
+  let added = 0;
+  chips.forEach((chip) => {
+    const name = chip.dataset.name;
+    if (!fridge.find((i) => i.name === name)) {
+      fridge.push({ name, addedAt: Date.now() / 1000 });
+      added++;
+    }
+  });
+  saveFridge();
+  document.getElementById("aiResultArea").classList.add("hidden");
+  document.getElementById("voiceInputArea").classList.add("hidden");
+  renderQuickTags();
+  document.getElementById("manualInputArea").classList.remove("hidden");
+  showToast(`已添加 ${added} 个食材`);
 }
 
 // ============================================
@@ -630,9 +936,6 @@ function renderSwipePage() {
       <div class="swipe-indicators">
         <button class="swipe-btn swipe-btn-pass" onclick="swipeLeft()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-        </button>
-        <button class="swipe-btn swipe-btn-cook" onclick="swipeRight()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/><path d="M5.71 17.11a17.04 17.04 0 0 1 11.4-11.4"/></svg>
         </button>
       </div>
     </div>
@@ -749,13 +1052,17 @@ function setupCardSwipe() {
 
   const onEnd = () => {
     if (!dragState) return;
-    const { card, dx } = dragState;
+    const { card, dx, dy } = dragState;
     card.classList.remove("dragging");
 
     if (dx < -100) {
       swipeLeft();
     } else if (dx > 100) {
       swipeRight();
+    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      // 点击：直接进入做菜流程
+      const rec = searchResults[swipeIndex];
+      if (rec) startCooking(rec.recipe.id, rec.missing || []);
     } else {
       card.style.transform = "";
     }
@@ -788,7 +1095,8 @@ function swipeRight() {
     setTimeout(() => {
       const rec = searchResults[swipeIndex];
       swipeIndex++;
-      showRecipeDetail(rec);
+      // 右滑直接进入做菜流程（跳过详情页）
+      startCooking(rec.recipe.id, rec.missing || []);
     }, 300);
   }
 }
@@ -1067,7 +1375,7 @@ function exitCookingMode() {
     window.wakeLock.release();
     window.wakeLock = null;
   }
-  // 不强制跳页：底层菜谱详情页仍在，用户可通过其返回按钮回到上级页
+  // 不强制跳页：底层页面（推荐页或详情页）仍在，用户可继续操作
   if (cookingStepIndex >= cookingSteps.length) {
     showToast("烹饪完成，冰箱已更新");
   }
@@ -1734,7 +2042,13 @@ function showAIModels() {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
   const config = loadAIModels();
-  const defaultModel = config.models.find((m) => m.id === config.defaultModelId);
+
+  // 使用中：有用途标签的模型
+  const inUseModels = config.models.filter((m) => m.uses && m.uses.length > 0);
+  const recommendModel = config.models.find((m) => m.uses && m.uses.includes("recommend"));
+  const recognizeModel = config.models.find((m) => m.uses && m.uses.includes("recognize"));
+
+  const useLabel = (use) => use === "recommend" ? "推荐菜谱" : "语音/图像识别";
 
   app.innerHTML = `
     <div class="page ai-models-page">
@@ -1750,24 +2064,36 @@ function showAIModels() {
       <div class="ai-models-intro">
         <div class="ai-models-intro-icon">🤖</div>
         <div class="ai-models-intro-text">
-          配置 OpenAI 兼容的模型后，点击冰箱中的食材卡片即可获取 AI 生成的灵感菜谱推荐。
+          配置 OpenAI 兼容的模型后，可为「推荐菜谱」和「语音/图像识别」分别指定模型。点击下方模型卡片设置用途。
         </div>
       </div>
 
       <div class="ai-default-section">
-        <div class="ai-section-title">默认模型</div>
-        ${defaultModel ? `
-          <div class="ai-default-card">
-            <div class="ai-default-name">${defaultModel.name}</div>
-            <div class="ai-default-model">${defaultModel.model}</div>
-            <div class="ai-default-url">${defaultModel.url}</div>
+        <div class="ai-section-title">使用中</div>
+        ${inUseModels.length > 0 ? `
+          <div class="ai-inuse-list">
+            ${inUseModels.map((m) => `
+              <div class="ai-inuse-card">
+                <div class="ai-inuse-name">${m.name}</div>
+                <div class="ai-inuse-model">${m.model}</div>
+                <div class="ai-inuse-tags">
+                  ${m.uses.map((u) => `<span class="ai-use-tag ${u}">${useLabel(u)}</span>`).join("")}
+                </div>
+              </div>
+            `).join("")}
           </div>
         ` : `
           <div class="ai-default-empty">
-            <div class="ai-default-empty-text">尚未设置默认模型</div>
-            <div class="ai-default-empty-sub">新增模型后可设为默认</div>
+            <div class="ai-default-empty-text">尚未指定使用中的模型</div>
+            <div class="ai-default-empty-sub">点击下方模型卡片设置用途</div>
           </div>
         `}
+        ${(!recommendModel || !recognizeModel) && config.models.length > 0 ? `
+          <div class="ai-use-hint">
+            ${!recommendModel ? '⚠️ 未指定「推荐菜谱」模型，食材灵感推荐不可用<br>' : ''}
+            ${!recognizeModel ? '⚠️ 未指定「语音/图像识别」模型，语音和拍照功能不可用' : ''}
+          </div>
+        ` : ''}
       </div>
 
       <div class="ai-list-section">
@@ -1784,14 +2110,15 @@ function showAIModels() {
         ` : `
           <div class="ai-model-list">
             ${config.models.map((m) => `
-              <div class="ai-model-item ${m.id === config.defaultModelId ? 'is-default' : ''}">
-                <div class="ai-model-item-info" onclick="setdefaultAIModel('${m.id}')">
+              <div class="ai-model-item ${m.uses && m.uses.length > 0 ? 'is-default' : ''}" onclick="openAIUseEditor('${m.id}')">
+                <div class="ai-model-item-info">
                   <div class="ai-model-item-name">
                     ${m.name}
-                    ${m.id === config.defaultModelId ? '<span class="ai-default-tag">默认</span>' : ''}
+                    ${m.uses && m.uses.length > 0 ? m.uses.map((u) => `<span class="ai-use-tag ${u}">${useLabel(u)}</span>`).join("") : ''}
                   </div>
                   <div class="ai-model-item-model">${m.model}</div>
                   <div class="ai-model-item-url">${m.url}</div>
+                  <div class="ai-model-item-hint">点击设置用途</div>
                 </div>
                 <div class="ai-model-item-actions">
                   <button class="ai-model-action-btn" onclick="event.stopPropagation();openAIModelEditor('${m.id}')">编辑</button>
@@ -1806,12 +2133,68 @@ function showAIModels() {
   `;
 }
 
-function setdefaultAIModel(modelId) {
+// 点击模型卡片 → 弹窗设置用途标签（多选）
+function openAIUseEditor(modelId) {
   const config = loadAIModels();
-  config.defaultModelId = modelId;
+  const model = config.models.find((m) => m.id === modelId);
+  if (!model) return;
+  const currentUses = model.uses || [];
+
+  // 如果该用途已被其他模型占用，提示将切换
+  const recommendOwner = config.models.find((m) => m.id !== modelId && m.uses && m.uses.includes("recommend"));
+  const recognizeOwner = config.models.find((m) => m.id !== modelId && m.uses && m.uses.includes("recognize"));
+
+  const modal = document.getElementById("aiUseModal");
+  document.getElementById("aiUseModalModelName").textContent = model.name;
+  document.getElementById("aiUseModalModelId").value = modelId;
+
+  const tagRecommend = document.getElementById("aiUseTagRecommend");
+  const tagRecognize = document.getElementById("aiUseTagRecognize");
+  tagRecommend.classList.toggle("selected", currentUses.includes("recommend"));
+  tagRecognize.classList.toggle("selected", currentUses.includes("recognize"));
+
+  // 提示
+  const hintEl = document.getElementById("aiUseModalHint");
+  const hints = [];
+  if (!currentUses.includes("recommend") && recommendOwner) hints.push(`「推荐菜谱」当前由 ${recommendOwner.name} 使用，选中后将切换`);
+  if (!currentUses.includes("recognize") && recognizeOwner) hints.push(`「语音/图像识别」当前由 ${recognizeOwner.name} 使用，选中后将切换`);
+  hintEl.innerHTML = hints.length > 0 ? hints.join("<br>") : "";
+
+  modal.classList.remove("hidden");
+}
+
+function toggleAIUseTag(el) {
+  el.classList.toggle("selected");
+}
+
+function confirmAIUses() {
+  const modelId = document.getElementById("aiUseModalModelId").value;
+  const config = loadAIModels();
+  const model = config.models.find((m) => m.id === modelId);
+  if (!model) return;
+
+  const uses = [];
+  if (document.getElementById("aiUseTagRecommend").classList.contains("selected")) uses.push("recommend");
+  if (document.getElementById("aiUseTagRecognize").classList.contains("selected")) uses.push("recognize");
+
+  // 同一用途只允许一个模型使用：清除其他模型的相同用途
+  uses.forEach((u) => {
+    config.models.forEach((m) => {
+      if (m.id !== modelId && m.uses && m.uses.includes(u)) {
+        m.uses = m.uses.filter((x) => x !== u);
+      }
+    });
+  });
+
+  model.uses = uses;
   saveAIModels(config);
+  document.getElementById("aiUseModal").classList.add("hidden");
   showAIModels();
-  showToast("已设为默认");
+  showToast(uses.length > 0 ? "已设置用途" : "已清除用途");
+}
+
+function cancelAIUses() {
+  document.getElementById("aiUseModal").classList.add("hidden");
 }
 
 function deleteAIModel(modelId) {
@@ -1820,7 +2203,6 @@ function deleteAIModel(modelId) {
   if (!model) return;
   if (!confirm(`确定删除模型「${model.name}」？`)) return;
   config.models = config.models.filter((m) => m.id !== modelId);
-  if (config.defaultModelId === modelId) config.defaultModelId = null;
   saveAIModels(config);
   showAIModels();
   showToast("已删除");
@@ -1868,7 +2250,7 @@ function openAIModelEditor(modelId) {
         </div>
 
         <button class="ai-form-save" onclick="saveAIModelForm('${modelId || ''}')">保存</button>
-        ${!editing && config.models.length === 0 ? '<div class="ai-form-hint-center">保存后将自动设为默认模型</div>' : ''}
+        ${!editing && config.models.length === 0 ? '<div class="ai-form-hint-center">保存后请在模型卡片上设置用途</div>' : ''}
       </div>
     </div>
   `;
@@ -1898,11 +2280,13 @@ function saveAIModelForm(modelId) {
     // 新增
     const newModel = {
       id: "m_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
-      name, url: cleanUrl, apiKey, model,
+      name, url: cleanUrl, apiKey, model, uses: [],
     };
     config.models.push(newModel);
-    // 第一个模型自动设为默认
-    if (!config.defaultModelId) config.defaultModelId = newModel.id;
+    // 第一个模型自动设为推荐用途
+    if (!config.models.some((m) => m.uses && m.uses.includes("recommend"))) {
+      newModel.uses = ["recommend"];
+    }
   }
   saveAIModels(config);
   showAIModels();

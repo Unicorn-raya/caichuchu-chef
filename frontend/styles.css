@@ -2297,6 +2297,265 @@ body {
   margin-top: 12px;
 }
 
+/* AI 用途标签 */
+.ai-use-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ai-use-tag.recommend {
+  background: var(--avocado);
+  color: #fff;
+}
+.ai-use-tag.recognize {
+  background: #6366f1;
+  color: #fff;
+}
+
+/* 使用中卡片 */
+.ai-inuse-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-inuse-card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  border: 2px solid var(--avocado);
+  box-shadow: var(--shadow-sm);
+}
+.ai-inuse-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.ai-inuse-model {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  margin-bottom: 8px;
+}
+.ai-inuse-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ai-use-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #d97706;
+  line-height: 1.6;
+}
+
+.ai-model-item-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* AI 用途选择弹窗 */
+.ai-use-modal-model-name {
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 16px;
+  padding: 10px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+.ai-use-modal-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  text-align: center;
+}
+.ai-use-tags-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+.ai-use-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 12px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  background: var(--bg-card);
+  transition: all 0.15s;
+}
+.ai-use-option.selected {
+  border-color: var(--avocado);
+  background: var(--avocado-light);
+}
+.ai-use-option-icon {
+  font-size: 28px;
+}
+.ai-use-option-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.ai-use-modal-hint {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #d97706;
+  line-height: 1.6;
+  text-align: center;
+}
+
+/* 语音输入区 */
+.voice-input-area {
+  padding: 8px 0;
+}
+.voice-input-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 0;
+}
+.voice-mic-btn {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--avocado);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: transform 0.15s;
+}
+.voice-mic-btn svg {
+  width: 32px;
+  height: 32px;
+}
+.voice-mic-btn:active {
+  transform: scale(0.92);
+}
+.voice-mic-btn.recording {
+  background: var(--expired);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 0 16px rgba(239, 68, 68, 0); }
+}
+.voice-status {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.voice-transcript {
+  font-size: 15px;
+  color: var(--text);
+  text-align: center;
+  min-height: 24px;
+  padding: 0 16px;
+  line-height: 1.5;
+}
+
+/* AI 识别结果区 */
+.ai-result-area {
+  padding: 8px 0;
+}
+.ai-result-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+.ai-result-preview-img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: var(--radius);
+  object-fit: cover;
+}
+.ai-result-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.ai-result-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+.ai-result-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ai-result-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 2px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--bg-card);
+  transition: all 0.15s;
+}
+.ai-result-chip.selected {
+  border-color: var(--avocado);
+  background: var(--avocado-light);
+}
+.ai-result-chip.in-fridge {
+  opacity: 0.5;
+  cursor: default;
+  background: var(--bg-soft);
+}
+.ai-result-chip-check {
+  font-size: 12px;
+  color: var(--avocado);
+  font-weight: 700;
+}
+.ai-result-chip.in-fridge .ai-result-chip-check {
+  color: var(--text-muted);
+}
+.ai-result-add-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--avocado);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-result-add-btn:active {
+  transform: scale(0.98);
+}
+.ai-result-empty,
+.ai-result-error {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.ai-result-error {
+  color: var(--expired);
+}
+
 /* ============================================
    做菜日历页
    ============================================ */
