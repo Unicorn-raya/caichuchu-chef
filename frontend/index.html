@@ -45,15 +45,16 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
           <span>手动选择</span>
         </button>
-        <button class="input-method-btn" onclick="alert('语音输入功能开发中')">
+        <button class="input-method-btn" onclick="showVoiceInput()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
           <span>语音输入</span>
         </button>
-        <button class="input-method-btn" onclick="alert('拍照识别功能开发中')">
+        <button class="input-method-btn" onclick="showPhotoInput()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
           <span>拍照识别</span>
         </button>
       </div>
+      <input type="file" id="photoFileInput" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelect(event)" />
       <div id="manualInputArea" class="manual-input-area hidden">
         <div class="quick-tags" id="quickTags"></div>
         <div class="manual-add-row">
@@ -61,6 +62,8 @@
           <button class="btn-add-manual" onclick="addManualIngredient()">添加</button>
         </div>
       </div>
+      <div id="voiceInputArea" class="voice-input-area hidden"></div>
+      <div id="aiResultArea" class="ai-result-area hidden"></div>
       <button class="btn-done" onclick="closeInputSheet()">完成</button>
     </div>
   </div>
@@ -115,6 +118,37 @@
       <div class="modal-footer">
         <button class="modal-btn-cancel" onclick="closeExpiryModal()">取消</button>
         <button class="modal-btn-confirm" onclick="confirmExpiryChange()">确认修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI模型用途选择弹窗 -->
+  <div id="aiUseModal" class="modal hidden">
+    <div class="modal-backdrop" onclick="cancelAIUses()"></div>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 class="modal-title">设置模型用途</h3>
+        <button class="modal-close" onclick="cancelAIUses()">×</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="aiUseModalModelId" />
+        <div class="ai-use-modal-model-name" id="aiUseModalModelName"></div>
+        <p class="ai-use-modal-label">选择该模型的用途（可多选）</p>
+        <div class="ai-use-tags-row">
+          <div class="ai-use-option" id="aiUseTagRecommend" onclick="toggleAIUseTag(this)">
+            <span class="ai-use-option-icon">🍳</span>
+            <span class="ai-use-option-text">推荐菜谱</span>
+          </div>
+          <div class="ai-use-option" id="aiUseTagRecognize" onclick="toggleAIUseTag(this)">
+            <span class="ai-use-option-icon">🎙️</span>
+            <span class="ai-use-option-text">语音/图像识别</span>
+          </div>
+        </div>
+        <div class="ai-use-modal-hint" id="aiUseModalHint"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn-cancel" onclick="cancelAIUses()">取消</button>
+        <button class="modal-btn-confirm" onclick="confirmAIUses()">确定</button>
       </div>
     </div>
   </div>
