@@ -1,8 +1,8 @@
 ---
 title: 菜厨厨 Chef API
 emoji: 🍳
-colorFrom: orange
-colorTo: yellow
+colorFrom: yellow
+colorTo: pink
 sdk: docker
 app_port: 7860
 pinned: false
