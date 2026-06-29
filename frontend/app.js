@@ -885,6 +885,8 @@ async function generateMenu() {
   try {
     // 获取更多结果用于本地标签过滤
     allSearchResults = await searchRecipes(ingredients, "scrappy", [], 30);
+    // 按 sortScore 升序排列（越简单的菜排在前面）
+    allSearchResults.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
     searchResults = allSearchResults;
     selectedTags = [];
     swipeIndex = 0;
@@ -1132,12 +1134,16 @@ function toggleTagFilter(tag) {
     }
 
     searchRecipes(ingredients, "scrappy", selectedTags, 200, true).then((results) => {
-      // 按需补充食材数量从少到多排序
+      // 综合排序：缺失数(少→多) + sortScore(小→大) + 匹配度(高→低)
       searchResults = results.sort((a, b) => {
         const aMissing = (a.missing || []).length;
         const bMissing = (b.missing || []).length;
         if (aMissing !== bMissing) return aMissing - bMissing;
-        // 同等缺失数下，按匹配度降序
+        // 同等缺失数下，按 sortScore 升序（简单优先）
+        const aScore = a.recipe.sortScore || 10;
+        const bScore = b.recipe.sortScore || 10;
+        if (aScore !== bScore) return aScore - bScore;
+        // 同等复杂度下，按匹配度降序
         return b.matchPercent - a.matchPercent;
       });
       swipeIndex = 0;
