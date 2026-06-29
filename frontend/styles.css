@@ -561,7 +561,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 12px 20px;
   background: var(--bg-warm);
   border-bottom: 1px solid var(--border-light);
 }
@@ -587,7 +587,7 @@ body {
 .tag-filter-bar {
   display: flex;
   gap: 8px;
-  padding: 12px 20px;
+  padding: 8px 20px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -635,7 +635,7 @@ body {
 }
 
 .swipe-result-count {
-  padding: 4px 20px 8px;
+  padding: 2px 20px 4px;
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
@@ -648,15 +648,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  padding: 8px 16px;
   overflow: hidden;
 }
 
 .card-stack {
   position: relative;
   width: 100%;
-  max-width: 360px;
-  height: 480px;
+  max-width: 420px;
+  height: 540px;
 }
 
 .swipe-card {
@@ -679,14 +679,14 @@ body {
 
 .swipe-card-image {
   width: 100%;
-  height: 260px;
+  height: 280px;
   object-fit: cover;
   background: var(--bg-soft);
 }
 
 .swipe-card-placeholder {
   width: 100%;
-  height: 260px;
+  height: 280px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -764,20 +764,168 @@ body {
   color: #b5602a;
 }
 
+/* ============================================
+   组合卡片（多道菜推荐）
+   ============================================ */
+.combo-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.combo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+  background: linear-gradient(135deg, var(--avocado) 0%, #4d8c2a 100%);
+  color: #fff;
+}
+.combo-badge {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 4px 12px;
+  border-radius: 100px;
+  backdrop-filter: blur(4px);
+}
+.combo-match {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.combo-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  flex: 1;
+}
+
+.combo-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: transform 0.12s, background 0.12s;
+  border: 1px solid transparent;
+}
+.combo-item:active {
+  transform: scale(0.98);
+  background: var(--avocado-light);
+  border-color: var(--avocado);
+}
+
+.combo-item-image {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-card);
+}
+.combo-item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.combo-item-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+.combo-item-kind {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.combo-item-kind.meat {
+  background: #dc2626;
+}
+.combo-item-kind.veg {
+  background: #16a34a;
+}
+
+.combo-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+}
+.combo-item-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.combo-item-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.combo-item-match {
+  color: var(--avocado-dark);
+  font-weight: 600;
+}
+.combo-item-missing {
+  font-size: 11px;
+  line-height: 1.4;
+}
+.combo-missing-ok {
+  color: var(--avocado-dark);
+  font-weight: 600;
+}
+.combo-missing-text {
+  color: #b5602a;
+}
+
+.combo-card-footer {
+  padding: 8px 16px 14px;
+  text-align: center;
+}
+.combo-footer-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* 滑动指示器 */
 .swipe-indicators {
   display: flex;
-  gap: 16px;
+  gap: 24px;
   justify-content: center;
-  padding: 8px 20px 20px;
+  align-items: center;
+  padding: 6px 20px 14px;
 }
 
 .swipe-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: none;
   cursor: pointer;
@@ -787,32 +935,55 @@ body {
 
 .swipe-btn:active { transform: scale(0.9); }
 
-.swipe-btn-pass {
+.swipe-btn-prev {
   background: white;
-  color: var(--expired);
+  color: var(--text-secondary);
 }
 
-.swipe-btn-cook {
+.swipe-btn-next {
   background: var(--avocado);
   color: white;
-  width: 72px;
-  height: 72px;
 }
 
-.swipe-btn-pass svg, .swipe-btn-cook svg {
-  width: 24px;
-  height: 24px;
+.swipe-indicator-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 20px 8px;
+}
+
+.swipe-btn-prev svg, .swipe-btn-next svg {
+  width: 22px;
+  height: 22px;
 }
 
 /* 滑动飞出动画 */
 .swipe-card.fly-left {
-  transform: translateX(-150%) rotate(-20deg) !important;
-  opacity: 0;
+  animation: fly-left 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .swipe-card.fly-right {
-  transform: translateX(150%) rotate(20deg) !important;
-  opacity: 0;
+  animation: fly-right 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fly-left {
+  from {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-150%) rotate(-20deg);
+    opacity: 0;
+  }
+}
+
+@keyframes fly-right {
+  from {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(150%) rotate(20deg);
+    opacity: 0;
+  }
 }
 
 /* 卡片空状态 */
@@ -1403,6 +1574,127 @@ body {
 
 .me-menu-arrow {
   color: var(--text-muted);
+}
+
+.me-menu-value {
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ============================================
+   饮食偏好 / 过敏源 选择页
+   ============================================ */
+.pref-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.pref-intro {
+  padding: 14px 20px 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.pref-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 20px 16px;
+}
+
+.pref-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.pref-tag-icon {
+  font-size: 16px;
+}
+
+.pref-tag-check {
+  width: 14px;
+  height: 14px;
+}
+
+.pref-tag.active {
+  background: var(--carrot);
+  color: white;
+  border-color: var(--carrot);
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(232,133,58,0.3);
+}
+
+.pref-actions {
+  padding: 12px 20px 24px;
+}
+
+.pref-btn-save {
+  width: 100%;
+  padding: 14px;
+  background: var(--avocado);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(124,164,76,0.3);
+}
+
+.pref-btn-save:active {
+  transform: scale(0.98);
+}
+
+/* ============================================
+   过敏源红色标识
+   ============================================ */
+/* 单菜卡片：右侧竖条标识 */
+.allergen-flag {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  background: #dc2626;
+  color: white;
+  padding: 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-radius: 6px 0 0 6px;
+  z-index: 5;
+  box-shadow: -2px 0 8px rgba(220,38,38,0.4);
+}
+
+/* 组合卡片菜品项：内联红色小标签 */
+.combo-item-allergen {
+  display: inline-flex;
+  align-items: center;
+  background: #dc2626;
+  color: white;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  margin-left: 4px;
 }
 
 /* ============================================
