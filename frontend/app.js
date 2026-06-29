@@ -18,6 +18,31 @@ function assetUrl(path) {
 const STORAGE_KEY = "caichuchu_fridge";
 const STATS_KEY = "caichuchu_stats";
 const AI_MODELS_KEY = "caichuchu_ai_models";
+const DIET_PREFS_KEY = "caichuchu_diet_prefs";
+const ALLERGENS_KEY = "caichuchu_allergens";
+
+// 饮食偏好选项（硬过滤：不符合的菜谱不进入推荐队列）
+const DIET_PREFERENCE_OPTIONS = [
+  { value: "no_spicy", label: "不吃辣", icon: "🌶️" },
+  { value: "light", label: "清淡", icon: "🍃" },
+  { value: "low_calorie", label: "低卡", icon: "🔥" },
+  { value: "low_oil", label: "少油", icon: "💧" },
+  { value: "vegetarian", label: "素食", icon: "🥬" },
+  { value: "quick", label: "快手", icon: "⚡" },
+  { value: "beginner", label: "新手友好", icon: "🎓" },
+];
+
+// 过敏源选项（软处理：含过敏源的菜谱会标识，且排序权重降低，但仍可能出现）
+const ALLERGEN_OPTIONS = [
+  { value: "peanut", label: "花生", icon: "🥜", keywords: ["花生"] },
+  { value: "soybean", label: "黄豆", icon: "🫘", keywords: ["黄豆", "大豆", "豆腐", "豆浆", "豆瓣酱", "豆瓣", "豆干", "腐竹", "豆皮", "豆芽"] },
+  { value: "milk", label: "牛奶", icon: "🥛", keywords: ["牛奶", "奶酪", "黄油", "奶油", "酸奶", "炼乳", "芝士", "奶粉"] },
+  { value: "egg", label: "鸡蛋", icon: "🥚", keywords: ["鸡蛋", "鸭蛋", "鹅蛋", "蛋清", "蛋黄"] },
+  { value: "seafood", label: "海鲜", icon: "🦐", keywords: ["虾", "蟹", "贝", "蛤", "蚝", "龙虾", "扇贝", "鱿鱼", "墨鱼", "海带", "紫菜", "鲍鱼", "海参"] },
+  { value: "wheat", label: "小麦", icon: "🌾", keywords: ["小麦", "面粉", "面条", "馒头", "饺子皮", "馄饨皮", "面饼"] },
+  { value: "nuts", label: "坚果", icon: "🌰", keywords: ["核桃", "杏仁", "腰果", "松子", "榛子", "开心果", "夏威夷果"] },
+  { value: "fish", label: "鱼", icon: "🐟", keywords: ["鱼"] },
+];
 
 // 常见食材快捷标签
 const COMMON_INGREDIENTS = [
@@ -58,6 +83,8 @@ let cookingStepIndex = 0;
 let cookingRecipeTitle = "";
 let cookingRecipeId = "";
 let cookingMissingIngredients = [];
+let dietPreferences = []; // 用户饮食偏好（硬过滤）
+let allergens = []; // 用户过敏源（软处理：标识 + 排序权重降低）
 
 // 长按计时器
 let longPressTimer = null;
@@ -70,6 +97,8 @@ let editingIngredientName = "";
 async function init() {
   loadFridge();
   loadStats();
+  loadDietPrefs();
+  loadAllergens();
   await Promise.all([fetchShelfLife(), fetchRecipes(), fetchTags()]);
   setupNavigation();
   renderPage("home");
@@ -114,6 +143,134 @@ function loadStats() {
 
 function saveStats() {
   localStorage.setItem(STATS_KEY, JSON.stringify(window.userStats));
+}
+
+// ============================================
+// 饮食偏好 & 过敏源
+// ============================================
+function loadDietPrefs() {
+  try {
+    const data = localStorage.getItem(DIET_PREFS_KEY);
+    dietPreferences = data ? JSON.parse(data) : [];
+  } catch {
+    dietPreferences = [];
+  }
+}
+
+function saveDietPrefs() {
+  localStorage.setItem(DIET_PREFS_KEY, JSON.stringify(dietPreferences));
+}
+
+function loadAllergens() {
+  try {
+    const data = localStorage.getItem(ALLERGENS_KEY);
+    allergens = data ? JSON.parse(data) : [];
+  } catch {
+    allergens = [];
+  }
+}
+
+function saveAllergens() {
+  localStorage.setItem(ALLERGENS_KEY, JSON.stringify(allergens));
+}
+
+// 收集菜谱所有食材
+function getRecipeAllIngredients(recipe) {
+  return [
+    ...(recipe.requiredIngredients || []),
+    ...(recipe.coreIngredients || []),
+    ...(recipe.seasonings || []),
+    ...(recipe.optionalIngredients || []),
+  ];
+}
+
+// 辣菜判断：含辣椒类食材
+const SPICY_KEYWORDS = ["辣椒", "辣椒粉", "辣椒油", "辣椒酱", "小米椒", "干辣椒", "青辣椒", "红辣椒", "朝天椒", "剁椒", "泡椒"];
+function isSpicyRecipe(recipe) {
+  const allText = getRecipeAllIngredients(recipe).join(",");
+  return SPICY_KEYWORDS.some((kw) => allText.includes(kw));
+}
+
+function isVegetarianRecipe(recipe) {
+  return (recipe.category || "").includes("vegetable");
+}
+
+// 清淡：不辣 + 非煎炸/红烧
+function isLightRecipe(recipe) {
+  if (isSpicyRecipe(recipe)) return false;
+  const method = recipe.method || "";
+  if (/(deep|frying|braising)/.test(method)) return false;
+  return true;
+}
+
+function isLowCalorieRecipe(recipe) {
+  return (recipe.calories || 0) > 0 && recipe.calories < 500;
+}
+
+function isLowOilRecipe(recipe) {
+  const method = recipe.method || "";
+  return !/(deep|frying)/.test(method);
+}
+
+function isQuickRecipe(recipe) {
+  return (recipe.tags || []).includes("快手");
+}
+
+function isBeginnerRecipe(recipe) {
+  return (recipe.tags || []).includes("新手友好");
+}
+
+// 菜谱是否含某过敏源
+function recipeContainsAllergen(recipe, allergenValue) {
+  const opt = ALLERGEN_OPTIONS.find((o) => o.value === allergenValue);
+  if (!opt) return false;
+  const allText = getRecipeAllIngredients(recipe).join(",");
+  return opt.keywords.some((kw) => allText.includes(kw));
+}
+
+// 菜谱是否含用户任一过敏源
+function recipeHasUserAllergen(recipe) {
+  if (allergens.length === 0) return false;
+  return allergens.some((a) => recipeContainsAllergen(recipe, a));
+}
+
+// 按饮食偏好过滤（硬过滤）
+function filterByDietPrefs(results) {
+  if (dietPreferences.length === 0) return results;
+  return results.filter((r) => {
+    for (const pref of dietPreferences) {
+      if (pref === "no_spicy" && isSpicyRecipe(r.recipe)) return false;
+      if (pref === "light" && !isLightRecipe(r.recipe)) return false;
+      if (pref === "low_calorie" && !isLowCalorieRecipe(r.recipe)) return false;
+      if (pref === "low_oil" && !isLowOilRecipe(r.recipe)) return false;
+      if (pref === "vegetarian" && !isVegetarianRecipe(r.recipe)) return false;
+      if (pref === "quick" && !isQuickRecipe(r.recipe)) return false;
+      if (pref === "beginner" && !isBeginnerRecipe(r.recipe)) return false;
+    }
+    return true;
+  });
+}
+
+// 标识含过敏源的菜谱，并降低排序权重（软处理：不删除，但排后面 + 红色标识）
+function applyAllergenMark(results) {
+  if (allergens.length === 0) return results;
+  return results.map((r) => {
+    const hasAllergen = recipeHasUserAllergen(r.recipe);
+    return {
+      ...r,
+      hasAllergen,
+      recipe: {
+        ...r.recipe,
+        sortScore: hasAllergen ? (r.recipe.sortScore || 10) + 50 : r.recipe.sortScore,
+      },
+    };
+  });
+}
+
+// 应用饮食偏好 + 过敏源到搜索结果
+function applyDietAndAllergens(results) {
+  const filtered = filterByDietPrefs(results);
+  return applyAllergenMark(filtered);
 }
 
 // ============================================
@@ -870,6 +1027,97 @@ function confirmAddAIIngredients() {
 // ============================================
 // 一键生成菜单 → 搜索 → Tinder 滑动
 // ============================================
+
+// 荤素分类
+function isMeatDish(recipe) {
+  return recipe.category === "aquatic" || recipe.category === "meat_dish";
+}
+function isVegDish(recipe) {
+  return recipe.category === "vegetable_dish";
+}
+
+// 组合类型标签
+function comboTypeLabel(type) {
+  switch (type) {
+    case "1m1v": return "一荤一素";
+    case "2m1v": return "两荤一素";
+    case "1m2v": return "一荤两素";
+    case "single": return "今日精选";
+    default: return "推荐组合";
+  }
+}
+
+// 构建单个组合对象
+function buildCombo(recs, type) {
+  const totalMissing = recs.reduce((s, r) => s + (r.missing || []).length, 0);
+  const totalSortScore = recs.reduce((s, r) => s + (r.recipe.sortScore || 10), 0);
+  const totalMatchPercent = Math.round(
+    recs.reduce((s, r) => s + r.matchPercent, 0) / recs.length
+  );
+  return { recipes: recs, type, totalMissing, totalSortScore, totalMatchPercent };
+}
+
+/**
+ * 根据搜索结果生成菜单组合
+ * 优先级：3菜组合（2荤1素 或 1荤2素）> 2菜组合（1荤1素）> 单菜兜底
+ * 排序：缺失食材总数（少→多）+ sortScore 总和（小→大）
+ * 兜底：荤或素不足时，只推 1 道菜（缺失最少 + sortScore 最小）
+ */
+function buildMenuCombinations(results) {
+  if (!results || results.length === 0) return [];
+
+  const meatList = results.filter((r) => isMeatDish(r.recipe));
+  const vegList = results.filter((r) => isVegDish(r.recipe));
+
+  const combos = [];
+
+  // 3 菜组合：2 荤 1 素
+  for (let i = 0; i < meatList.length; i++) {
+    for (let j = i + 1; j < meatList.length; j++) {
+      for (let k = 0; k < vegList.length; k++) {
+        combos.push(buildCombo([meatList[i], meatList[j], vegList[k]], "2m1v"));
+      }
+    }
+  }
+  // 3 菜组合：1 荤 2 素
+  for (let i = 0; i < meatList.length; i++) {
+    for (let j = 0; j < vegList.length; j++) {
+      for (let k = j + 1; k < vegList.length; k++) {
+        combos.push(buildCombo([meatList[i], vegList[j], vegList[k]], "1m2v"));
+      }
+    }
+  }
+  // 2 菜组合：1 荤 1 素
+  for (let i = 0; i < meatList.length; i++) {
+    for (let j = 0; j < vegList.length; j++) {
+      combos.push(buildCombo([meatList[i], vegList[j]], "1m1v"));
+    }
+  }
+
+  // 排序：缺失总数 + sortScore 总和
+  combos.sort((a, b) => {
+    if (a.totalMissing !== b.totalMissing) return a.totalMissing - b.totalMissing;
+    return a.totalSortScore - b.totalSortScore;
+  });
+
+  // 限制组合数量，避免过多
+  const maxCombos = 12;
+  const finalCombos = combos.slice(0, maxCombos);
+
+  // 兜底：没有荤素组合，只推荐单道菜（缺失最少 + sortScore 最小，最多用剩菜）
+  if (finalCombos.length === 0) {
+    const singles = results.slice().sort((a, b) => {
+      const aMissing = (a.missing || []).length;
+      const bMissing = (b.missing || []).length;
+      if (aMissing !== bMissing) return aMissing - bMissing;
+      return (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10);
+    });
+    return singles.slice(0, 5).map((r) => buildCombo([r], "single"));
+  }
+
+  return finalCombos;
+}
+
 async function generateMenu() {
   const ingredients = fridge.map((i) => i.name);
   if (ingredients.length === 0) return;
@@ -884,10 +1132,15 @@ async function generateMenu() {
 
   try {
     // 获取更多结果用于本地标签过滤
-    allSearchResults = await searchRecipes(ingredients, "scrappy", [], 30);
-    // 按 sortScore 升序排列（越简单的菜排在前面）
-    allSearchResults.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
-    searchResults = allSearchResults;
+    const rawResults = await searchRecipes(ingredients, "scrappy", [], 30);
+    // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
+    const processed = applyDietAndAllergens(rawResults);
+    // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
+    processed.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
+    // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
+    allSearchResults = processed;
+    // 生成菜单组合（2-3 道菜，或兜底单菜）
+    searchResults = buildMenuCombinations(processed);
     selectedTags = [];
     swipeIndex = 0;
     renderSwipePage();
@@ -927,8 +1180,8 @@ function renderSwipePage() {
 
       <div class="swipe-result-count">
         ${selectedTags.length > 0
-          ? `已选 ${selectedTags.length} 个标签 · 匹配 ${searchResults.length} 道菜`
-          : `共 ${searchResults.length} 道推荐菜谱`}
+          ? `已选 ${selectedTags.length} 个标签 · 匹配 ${searchResults.length} 个组合`
+          : `共 ${searchResults.length} 个推荐组合`}
       </div>
 
       <div class="card-stack-container" id="cardStackContainer">
@@ -936,10 +1189,14 @@ function renderSwipePage() {
       </div>
 
       <div class="swipe-indicators">
-        <button class="swipe-btn swipe-btn-pass" onclick="swipeLeft()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <button class="swipe-btn swipe-btn-prev" onclick="swipePrev()" aria-label="上一个">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <button class="swipe-btn swipe-btn-next" onclick="swipeNext()" aria-label="下一个">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
       </div>
+      <div class="swipe-indicator-hint">点击菜品开始做菜 · 点击卡片空白处切换</div>
     </div>
   `;
 
@@ -966,46 +1223,97 @@ function renderCardStack() {
 
   return `
     <div class="card-stack">
-      ${remaining.map((rec, idx) => renderSwipeCard(rec, idx)).join("")}
+      ${remaining.map((combo, idx) => renderSwipeCard(combo, idx)).join("")}
     </div>
   `;
 }
 
-function renderSwipeCard(rec, stackIdx) {
-  const recipe = rec.recipe;
-  const image = recipe.images && recipe.images.length > 0
-    ? recipe.images[0]
-    : null;
-  const emoji = getRecipeEmoji(recipe);
+function renderSwipeCard(combo, stackIdx) {
+  // 单菜兜底：直接走老的渲染逻辑，避免组合卡片样式显得空旷
+  if (combo.type === "single") {
+    const rec = combo.recipes[0];
+    const recipe = rec.recipe;
+    const image = recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+    const emoji = getRecipeEmoji(recipe);
+    const missingChips = (rec.missing || []).slice(0, 5).map((i) =>
+      `<span class="ingredient-chip missing">${i}</span>`
+    ).join("");
+    const haveChips = (rec.existing || []).slice(0, 5).map((i) =>
+      `<span class="ingredient-chip have">${i}</span>`
+    ).join("");
+    return `
+      <div class="swipe-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
+        ${image
+          ? `<img class="swipe-card-image" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+             <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
+          : `<div class="swipe-card-placeholder">${emoji}</div>`
+        }
+        <div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>
+        ${rec.hasAllergen ? `<div class="allergen-flag">含过敏源</div>` : ""}
+        <div class="swipe-card-body">
+          <div class="swipe-card-title">${recipe.title}</div>
+          <div class="swipe-card-meta">
+            ${recipe.timeMinutes ? `<span>⏱ ${recipe.timeMinutes}分钟</span>` : ""}
+            ${recipe.calories ? `<span>🔥 ${recipe.calories}卡</span>` : ""}
+            ${recipe.difficulty ? `<span>难度 ${"★".repeat(recipe.difficulty)}</span>` : ""}
+          </div>
+          <div class="swipe-card-reason">${rec.reason}</div>
+          <div class="swipe-card-ingredients">
+            ${haveChips}
+            ${missingChips}
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-  // 缺失食材（前5个）
-  const missingChips = (rec.missing || []).slice(0, 5).map((i) =>
-    `<span class="ingredient-chip missing">${i}</span>`
-  ).join("");
-  const haveChips = (rec.existing || []).slice(0, 5).map((i) =>
-    `<span class="ingredient-chip have">${i}</span>`
-  ).join("");
+  // 组合卡片：展示 2-3 道菜
+  const items = combo.recipes.map((rec, i) => {
+    const recipe = rec.recipe;
+    const image = recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+    const emoji = getRecipeEmoji(recipe);
+    const meatTag = isMeatDish(recipe)
+      ? `<span class="combo-item-kind meat">荤</span>`
+      : `<span class="combo-item-kind veg">素</span>`;
+    // 用 data-* 把做菜需要的参数编码进去，避免 onclick 拼接 JSON 的转义问题
+    return `
+      <div class="combo-item" data-recipe-id="${recipe.id}" data-idx="${i}">
+        <div class="combo-item-image">
+          ${image
+            ? `<img src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="combo-item-placeholder" style="display:none">${emoji}</div>`
+            : `<div class="combo-item-placeholder">${emoji}</div>`
+          }
+          ${meatTag}
+        </div>
+        <div class="combo-item-info">
+          <div class="combo-item-title">${recipe.title}</div>
+          <div class="combo-item-meta">
+            ${recipe.timeMinutes ? `<span>⏱${recipe.timeMinutes}'</span>` : ""}
+            ${recipe.difficulty ? `<span>${"★".repeat(recipe.difficulty)}</span>` : ""}
+            <span class="combo-item-match">匹配${rec.matchPercent}%</span>
+            ${rec.hasAllergen ? `<span class="combo-item-allergen">⚠含过敏源</span>` : ""}
+          </div>
+          <div class="combo-item-missing">
+            ${(rec.missing || []).length === 0
+              ? `<span class="combo-missing-ok">食材齐备</span>`
+              : `<span class="combo-missing-text">缺 ${(rec.missing || []).slice(0, 3).join("、")}${(rec.missing || []).length > 3 ? "…" : ""}</span>`
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
 
   return `
-    <div class="swipe-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
-      ${image
-        ? `<img class="swipe-card-image" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
-        : `<div class="swipe-card-placeholder">${emoji}</div>`
-      }
-      <div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>
-      <div class="swipe-card-body">
-        <div class="swipe-card-title">${recipe.title}</div>
-        <div class="swipe-card-meta">
-          ${recipe.timeMinutes ? `<span>⏱ ${recipe.timeMinutes}分钟</span>` : ""}
-          ${recipe.calories ? `<span>🔥 ${recipe.calories}卡</span>` : ""}
-          ${recipe.difficulty ? `<span>难度 ${"★".repeat(recipe.difficulty)}</span>` : ""}
-        </div>
-        <div class="swipe-card-reason">${rec.reason}</div>
-        <div class="swipe-card-ingredients">
-          ${haveChips}
-          ${missingChips}
-        </div>
+    <div class="swipe-card combo-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
+      <div class="combo-card-header">
+        <span class="combo-badge">${comboTypeLabel(combo.type)}</span>
+        <span class="combo-match">综合匹配 ${combo.totalMatchPercent}%</span>
+      </div>
+      <div class="combo-items">${items}</div>
+      <div class="combo-card-footer">
+        <span class="combo-footer-hint">点击菜品开始做菜 · 点击空白处切换</span>
       </div>
     </div>
   `;
@@ -1025,12 +1333,25 @@ function getRecipeEmoji(recipe) {
 // 卡片拖拽
 // ============================================
 let dragState = null;
+// 上次交互时间戳：用于阻止触摸后合成的鼠标事件重新触发 onStart
+let _lastSwipeAt = 0;
+// document 级监听器引用：避免每次 setupCardSwipe 累积新监听器
+let _docMoveRef = null;
+let _docUpRef = null;
+// 正在飞出的卡片锁：避免动画过程中重复触发滑动
+let _swipeAnimating = false;
 
 function setupCardSwipe() {
   const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
   if (!card) return;
 
   const onStart = (e) => {
+    // 阻止 touchend 后浏览器合成的 mousedown 重新创建 dragState
+    // （合成事件会在 touchend 后约 300ms 内触发，导致 click 误判）
+    if (e.type === "mousedown" && Date.now() - _lastSwipeAt < 600) return;
+    // 动画过程中禁止新一次拖拽
+    if (_swipeAnimating) return;
+
     const point = e.touches ? e.touches[0] : e;
     dragState = {
       card,
@@ -1038,6 +1359,7 @@ function setupCardSwipe() {
       startY: point.clientY,
       dx: 0,
       dy: 0,
+      pointerType: e.touches ? "touch" : "mouse",
     };
     card.classList.add("dragging");
   };
@@ -1052,19 +1374,53 @@ function setupCardSwipe() {
     dragState.card.style.transform = `translate(${dragState.dx}px, ${dragState.dy}px) rotate(${rotation}deg)`;
   };
 
-  const onEnd = () => {
+  const onEnd = (e) => {
     if (!dragState) return;
     const { card, dx, dy } = dragState;
     card.classList.remove("dragging");
+    _lastSwipeAt = Date.now();
 
     if (dx < -100) {
-      swipeLeft();
+      // 左滑：上一个
+      swipePrev();
     } else if (dx > 100) {
-      swipeRight();
+      // 右滑：下一个
+      swipeNext();
     } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
-      // 点击：直接进入做菜流程
-      const rec = searchResults[swipeIndex];
-      if (rec) startCooking(rec.recipe.id, rec.missing || []);
+      // 点击
+      const combo = searchResults[swipeIndex];
+      if (!combo) { dragState = null; return; }
+
+      const targetEl = (e && (e.target || e.srcElement)) || null;
+      // 单菜兜底：整张卡片就一道菜，点击直接做菜
+      if (combo.type === "single") {
+        const rec = combo.recipes[0];
+        startCooking(rec.recipe.id, rec.missing || []);
+        dragState = null;
+        return;
+      }
+
+      // 组合卡片：判断是否点中具体菜品
+      const comboItem = targetEl ? targetEl.closest(".combo-item") : null;
+      if (comboItem) {
+        const idx = parseInt(comboItem.dataset.idx, 10);
+        const rec = combo.recipes[idx];
+        if (rec) startCooking(rec.recipe.id, rec.missing || []);
+      } else {
+        // 点击卡片空白区域：根据点击位置左右切换上一个/下一个
+        let clickX = 0;
+        const cardRect = card.getBoundingClientRect();
+        if (e.changedTouches && e.changedTouches[0]) {
+          clickX = e.changedTouches[0].clientX - cardRect.left;
+        } else if (e.clientX != null) {
+          clickX = e.clientX - cardRect.left;
+        }
+        if (clickX < cardRect.width / 2) {
+          swipePrev();
+        } else {
+          swipeNext();
+        }
+      }
     } else {
       card.style.transform = "";
     }
@@ -1075,32 +1431,57 @@ function setupCardSwipe() {
   card.addEventListener("touchmove", onMove, { passive: false });
   card.addEventListener("touchend", onEnd);
   card.addEventListener("mousedown", onStart);
-  document.addEventListener("mousemove", onMove);
-  document.addEventListener("mouseup", onEnd);
+
+  // document 级监听器先移除旧的再添加新的，避免累积
+  if (_docMoveRef) {
+    document.removeEventListener("mousemove", _docMoveRef);
+    document.removeEventListener("mouseup", _docUpRef);
+  }
+  _docMoveRef = onMove;
+  _docUpRef = onEnd;
+  document.addEventListener("mousemove", _docMoveRef);
+  document.addEventListener("mouseup", _docUpRef);
 }
 
-function swipeLeft() {
+function swipePrev() {
+  if (_swipeAnimating) return;
+  // 已经是第一个，不再后退
+  if (swipeIndex <= 0) return;
   const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
-  if (card) {
-    card.classList.add("fly-left");
-    setTimeout(() => {
-      swipeIndex++;
-      renderSwipeCardsOnly();
-    }, 300);
-  }
+  if (!card) return;
+
+  _swipeAnimating = true;
+  dragState = null;
+  _lastSwipeAt = Date.now();
+
+  // CSS animation 从当前位置（含 inline transform）平滑飞出，无需清 transform
+  card.classList.add("fly-left");
+
+  setTimeout(() => {
+    swipeIndex = Math.max(0, swipeIndex - 1);
+    renderSwipeCardsOnly();
+    _swipeAnimating = false;
+  }, 450);
 }
 
-function swipeRight() {
+function swipeNext() {
+  if (_swipeAnimating) return;
+  // 已经是最后一个，不再前进
+  if (swipeIndex >= searchResults.length - 1) return;
   const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
-  if (card) {
-    card.classList.add("fly-right");
-    setTimeout(() => {
-      const rec = searchResults[swipeIndex];
-      swipeIndex++;
-      // 右滑直接进入做菜流程（跳过详情页）
-      startCooking(rec.recipe.id, rec.missing || []);
-    }, 300);
-  }
+  if (!card) return;
+
+  _swipeAnimating = true;
+  dragState = null;
+  _lastSwipeAt = Date.now();
+
+  card.classList.add("fly-right");
+
+  setTimeout(() => {
+    swipeIndex = Math.min(searchResults.length - 1, swipeIndex + 1);
+    renderSwipeCardsOnly();
+    _swipeAnimating = false;
+  }, 450);
 }
 
 function renderSwipeCardsOnly() {
@@ -1117,8 +1498,8 @@ function toggleTagFilter(tag) {
   else selectedTags.push(tag);
 
   if (selectedTags.length === 0) {
-    // 取消所有标签，恢复原始搜索结果
-    searchResults = allSearchResults;
+    // 取消所有标签，基于原始搜索结果重新生成组合
+    searchResults = buildMenuCombinations(allSearchResults);
     swipeIndex = 0;
     renderSwipePage();
   } else {
@@ -1133,24 +1514,18 @@ function toggleTagFilter(tag) {
       }
     }
 
-    searchRecipes(ingredients, "scrappy", selectedTags, 200, true).then((results) => {
-      // 综合排序：缺失数(少→多) + sortScore(小→大) + 匹配度(高→低)
-      searchResults = results.sort((a, b) => {
-        const aMissing = (a.missing || []).length;
-        const bMissing = (b.missing || []).length;
-        if (aMissing !== bMissing) return aMissing - bMissing;
-        // 同等缺失数下，按 sortScore 升序（简单优先）
-        const aScore = a.recipe.sortScore || 10;
-        const bScore = b.recipe.sortScore || 10;
-        if (aScore !== bScore) return aScore - bScore;
-        // 同等复杂度下，按匹配度降序
-        return b.matchPercent - a.matchPercent;
-      });
+    searchRecipes(ingredients, "scrappy", selectedTags, 200, true).then((rawResults) => {
+      // 标签筛选后同样应用饮食偏好 + 过敏源
+      const results = applyDietAndAllergens(rawResults);
+      // 按 sortScore 升序，便于组合生成时优先选用简单菜
+      results.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
+      // 在过滤后的菜谱基础上生成组合
+      searchResults = buildMenuCombinations(results);
       swipeIndex = 0;
       renderSwipePage();
     }).catch(() => {
       showToast("筛选失败，请重试");
-      searchResults = allSearchResults;
+      searchResults = buildMenuCombinations(allSearchResults);
       swipeIndex = 0;
       renderSwipePage();
     });
@@ -1888,12 +2263,14 @@ function renderMe() {
         <span>🤖 AI模型管理</span>
         <span class="me-menu-arrow">›</span>
       </div>
-      <div class="me-menu-item" onclick="showToast('偏好设置开发中')">
+      <div class="me-menu-item" onclick="showDietPreferences()">
         <span>🍽️ 饮食偏好</span>
+        <span class="me-menu-value">${dietPreferences.length > 0 ? `已选 ${dietPreferences.length}` : "未设置"}</span>
         <span class="me-menu-arrow">›</span>
       </div>
-      <div class="me-menu-item" onclick="showToast('过敏原设置开发中')">
+      <div class="me-menu-item" onclick="showAllergens()">
         <span>⚠️ 过敏原管理</span>
+        <span class="me-menu-value">${allergens.length > 0 ? `已选 ${allergens.length}` : "未设置"}</span>
         <span class="me-menu-arrow">›</span>
       </div>
       <div class="me-menu-item" onclick="clearAllData()">
@@ -1906,6 +2283,96 @@ function renderMe() {
       </div>
     </div>
   `;
+}
+
+// ============================================
+// 饮食偏好 / 过敏源 选择页
+// ============================================
+function renderPrefPage({ title, options, selected, onToggle, intro }) {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">${title}</div>
+        <button class="pref-clear-btn" onclick="${onToggle}('__CLEAR__')">清空</button>
+      </div>
+      <div class="pref-intro">${intro}</div>
+      <div class="pref-tags">
+        ${options.map((opt) => {
+          const active = selected.includes(opt.value);
+          return `
+            <div class="pref-tag ${active ? "active" : ""}" onclick="${onToggle}('${opt.value}')">
+              <span class="pref-tag-icon">${opt.icon}</span>
+              <span class="pref-tag-label">${opt.label}</span>
+              ${active ? '<svg class="pref-tag-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div class="pref-actions">
+        <button class="pref-btn-save" onclick="savePrefsAndBack('${onToggle}')">保存并返回</button>
+      </div>
+    </div>
+  `;
+}
+
+function showDietPreferences() {
+  renderPrefPage({
+    title: "饮食偏好",
+    options: DIET_PREFERENCE_OPTIONS,
+    selected: dietPreferences,
+    onToggle: "toggleDietPref",
+    intro: "选择你的饮食偏好，不符合的菜谱将不会出现在推荐中（可多选）",
+  });
+}
+
+function showAllergens() {
+  renderPrefPage({
+    title: "过敏原管理",
+    options: ALLERGEN_OPTIONS,
+    selected: allergens,
+    onToggle: "toggleAllergen",
+    intro: "选择你的过敏原，含过敏原的菜谱会被红色标识并排序靠后（可多选）",
+  });
+}
+
+function toggleDietPref(value) {
+  if (value === "__CLEAR__") {
+    dietPreferences = [];
+  } else {
+    const idx = dietPreferences.indexOf(value);
+    if (idx >= 0) dietPreferences.splice(idx, 1);
+    else dietPreferences.push(value);
+  }
+  showDietPreferences();
+}
+
+function toggleAllergen(value) {
+  if (value === "__CLEAR__") {
+    allergens = [];
+  } else {
+    const idx = allergens.indexOf(value);
+    if (idx >= 0) allergens.splice(idx, 1);
+    else allergens.push(value);
+  }
+  showAllergens();
+}
+
+function savePrefsAndBack(type) {
+  if (type === "toggleDietPref") {
+    saveDietPrefs();
+    showToast("饮食偏好已保存");
+  } else if (type === "toggleAllergen") {
+    saveAllergens();
+    showToast("过敏原已保存");
+  }
+  document.getElementById("bottomNav").style.display = "";
+  renderPage("me");
 }
 
 // ============================================
