@@ -1028,20 +1028,57 @@ function confirmAddAIIngredients() {
 // 一键生成菜单 → 搜索 → Tinder 滑动
 // ============================================
 
-// 荤素分类
-function isMeatDish(recipe) {
-  return recipe.category === "aquatic" || recipe.category === "meat_dish";
+// 主菜关键词（半成品/早餐里判断是否肉菜）
+const MEAT_KEYWORDS = [
+  "猪", "牛", "羊", "鸡", "鸭", "鹅", "鱼", "虾", "蟹", "贝", "蛤", "鱿", "墨",
+  "肉", "排骨", "五花", "里脊", "火腿", "香肠", "培根", "鸡翅", "鸡腿", "牛排",
+  "羊排", "猪肉", "牛肉", "羊肉", "鸡肉", "鱼肉", "虾仁", "虾肉", "肉馅",
+  "蛋饺", "烧卖", "馄饨", "水饺",
+];
+
+// 判断是否为主菜（原荤菜）
+// 主菜 = 鱼虾水产 + 肉菜 + 半成品中的肉菜
+function isMainDish(recipe) {
+  const cat = recipe.category || "";
+  // 明确的主菜分类
+  if (cat === "aquatic" || cat === "meat_dish") return true;
+  // 半成品：通过标题和食材关键词判断
+  if (cat === "semi-finished") {
+    const text = recipe.title + (recipe.coreIngredients || []).join(",");
+    return MEAT_KEYWORDS.some((kw) => text.includes(kw));
+  }
+  return false;
 }
-function isVegDish(recipe) {
-  return recipe.category === "vegetable_dish";
+
+// 判断是否为副菜/主食（原素菜）
+// 副菜/主食 = 素菜 + 汤粥 + 主食 + 早餐中的素菜
+function isSideDish(recipe) {
+  const cat = recipe.category || "";
+  // 明确的副菜分类
+  if (cat === "vegetable_dish" || cat === "soup" || cat === "staple") return true;
+  // 早餐中：不含肉关键词的视为副菜（素的早餐）
+  if (cat === "breakfast") {
+    const text = recipe.title + (recipe.coreIngredients || []).join(",");
+    return !MEAT_KEYWORDS.some((kw) => text.includes(kw));
+  }
+  // 半成品中：不含肉关键词的视为副菜
+  if (cat === "semi-finished") {
+    const text = recipe.title + (recipe.coreIngredients || []).join(",");
+    return !MEAT_KEYWORDS.some((kw) => text.includes(kw));
+  }
+  return false;
 }
+
+// 兼容旧函数名
+function isMeatDish(recipe) { return isMainDish(recipe); }
+function isVegDish(recipe) { return isSideDish(recipe); }
 
 // 组合类型标签
 function comboTypeLabel(type) {
   switch (type) {
-    case "1m1v": return "一荤一素";
-    case "2m1v": return "两荤一素";
-    case "1m2v": return "一荤两素";
+    case "1m1v": return "一主菜一副菜";
+    case "2m1v": return "两主菜一副菜";
+    case "1m2v": return "一主菜两副菜";
     case "single": return "今日精选";
     default: return "推荐组合";
   }
@@ -1100,9 +1137,25 @@ function buildMenuCombinations(results) {
     return a.totalSortScore - b.totalSortScore;
   });
 
-  // 限制组合数量，避免过多
   const maxCombos = 12;
-  const finalCombos = combos.slice(0, maxCombos);
+  // 组合级别去重：先移除完全相同的组合（菜品集合相同）
+  const comboSignatures = new Set();
+  const uniqueCombos = [];
+  for (const combo of combos) {
+    const sig = combo.recipes.map((r) => r.recipe.id).sort().join(",");
+    if (!comboSignatures.has(sig)) {
+      comboSignatures.add(sig);
+      uniqueCombos.push(combo);
+    }
+  }
+
+  // 第一轮：严格去重（每道菜只在一个组合中出现）
+  let finalCombos = _selectCombosDedup(uniqueCombos, 1, maxCombos);
+
+  // 若严格去重后组合太少，放宽限制：每道菜最多出现 2 次
+  if (finalCombos.length < 5) {
+    finalCombos = _selectCombosDedup(uniqueCombos, 2, maxCombos);
+  }
 
   // 兜底：没有荤素组合，只推荐单道菜（缺失最少 + sortScore 最小，最多用剩菜）
   if (finalCombos.length === 0) {
@@ -1115,6 +1168,28 @@ function buildMenuCombinations(results) {
     return singles.slice(0, 5).map((r) => buildCombo([r], "single"));
   }
 
+  return finalCombos;
+}
+
+// 贪心去重选择组合
+// maxUsePerRecipe: 每道菜最多在几个组合中出现（1=严格不重复，2=允许出现2次）
+function _selectCombosDedup(combos, maxUsePerRecipe, maxCombos) {
+  const useCount = new Map(); // recipeId -> 已使用次数
+  const finalCombos = [];
+  for (const combo of combos) {
+    // 检查该组合内所有菜品使用次数是否都未超限
+    const allUsable = combo.recipes.every((r) => {
+      const cnt = useCount.get(r.recipe.id) || 0;
+      return cnt < maxUsePerRecipe;
+    });
+    if (allUsable) {
+      finalCombos.push(combo);
+      combo.recipes.forEach((r) => {
+        useCount.set(r.recipe.id, (useCount.get(r.recipe.id) || 0) + 1);
+      });
+      if (finalCombos.length >= maxCombos) break;
+    }
+  }
   return finalCombos;
 }
 
@@ -1131,8 +1206,8 @@ async function generateMenu() {
   `;
 
   try {
-    // 获取更多结果用于本地标签过滤
-    const rawResults = await searchRecipes(ingredients, "scrappy", [], 30);
+    // 获取更多结果用于本地标签过滤 + 组合去重（去重需要较大菜谱池）
+    const rawResults = await searchRecipes(ingredients, "scrappy", [], 80);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
     const processed = applyDietAndAllergens(rawResults);
     // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
@@ -1204,9 +1279,9 @@ function renderSwipePage() {
 }
 
 function renderCardStack() {
-  const remaining = searchResults.slice(swipeIndex, swipeIndex + 3);
+  const hasItems = searchResults.length > 0;
 
-  if (remaining.length === 0) {
+  if (!hasItems) {
     const hasTagFilter = selectedTags.length > 0;
     return `
       <div class="swipe-empty">
@@ -1221,9 +1296,11 @@ function renderCardStack() {
     `;
   }
 
+  const current = searchResults[swipeIndex];
+
   return `
     <div class="card-stack">
-      ${remaining.map((combo, idx) => renderSwipeCard(combo, idx)).join("")}
+      ${renderSwipeCard(current, 0)}
     </div>
   `;
 }
@@ -1242,7 +1319,7 @@ function renderSwipeCard(combo, stackIdx) {
       `<span class="ingredient-chip have">${i}</span>`
     ).join("");
     return `
-      <div class="swipe-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
+      <div class="swipe-card" data-idx="${swipeIndex + stackIdx}">
         ${image
           ? `<img class="swipe-card-image" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
              <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
@@ -1272,9 +1349,9 @@ function renderSwipeCard(combo, stackIdx) {
     const recipe = rec.recipe;
     const image = recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
     const emoji = getRecipeEmoji(recipe);
-    const meatTag = isMeatDish(recipe)
-      ? `<span class="combo-item-kind meat">荤</span>`
-      : `<span class="combo-item-kind veg">素</span>`;
+    const dishKindTag = isMainDish(recipe)
+      ? `<span class="combo-item-kind meat">主</span>`
+      : `<span class="combo-item-kind veg">副</span>`;
     // 用 data-* 把做菜需要的参数编码进去，避免 onclick 拼接 JSON 的转义问题
     return `
       <div class="combo-item" data-recipe-id="${recipe.id}" data-idx="${i}">
@@ -1284,7 +1361,7 @@ function renderSwipeCard(combo, stackIdx) {
                <div class="combo-item-placeholder" style="display:none">${emoji}</div>`
             : `<div class="combo-item-placeholder">${emoji}</div>`
           }
-          ${meatTag}
+          ${dishKindTag}
         </div>
         <div class="combo-item-info">
           <div class="combo-item-title">${recipe.title}</div>
@@ -1306,7 +1383,7 @@ function renderSwipeCard(combo, stackIdx) {
   }).join("");
 
   return `
-    <div class="swipe-card combo-card" data-idx="${swipeIndex + stackIdx}" style="transform: scale(${1 - stackIdx * 0.05}) translateY(${stackIdx * 12}px); z-index: ${10 - stackIdx}; opacity: ${1 - stackIdx * 0.15}">
+    <div class="swipe-card combo-card" data-idx="${swipeIndex + stackIdx}">
       <div class="combo-card-header">
         <span class="combo-badge">${comboTypeLabel(combo.type)}</span>
         <span class="combo-match">综合匹配 ${combo.totalMatchPercent}%</span>
@@ -1364,14 +1441,20 @@ function setupCardSwipe() {
     card.classList.add("dragging");
   };
 
+  let rafId = null;
   const onMove = (e) => {
     if (!dragState) return;
-    e.preventDefault();
+    if (e.cancelable) e.preventDefault();
     const point = e.touches ? e.touches[0] : e;
     dragState.dx = point.clientX - dragState.startX;
     dragState.dy = point.clientY - dragState.startY;
-    const rotation = dragState.dx * 0.1;
-    dragState.card.style.transform = `translate(${dragState.dx}px, ${dragState.dy}px) rotate(${rotation}deg)`;
+    if (rafId) return;
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      if (!dragState) return;
+      const rotation = dragState.dx * 0.1;
+      dragState.card.style.transform = `translate3d(${dragState.dx}px, ${dragState.dy}px, 0) rotate(${rotation}deg)`;
+    });
   };
 
   const onEnd = (e) => {
@@ -1392,10 +1475,10 @@ function setupCardSwipe() {
       if (!combo) { dragState = null; return; }
 
       const targetEl = (e && (e.target || e.srcElement)) || null;
-      // 单菜兜底：整张卡片就一道菜，点击直接做菜
+      // 单菜兜底：点击进入菜谱详情页
       if (combo.type === "single") {
         const rec = combo.recipes[0];
-        startCooking(rec.recipe.id, rec.missing || []);
+        showRecipeDetailFromRecommend(rec);
         dragState = null;
         return;
       }
@@ -1405,7 +1488,7 @@ function setupCardSwipe() {
       if (comboItem) {
         const idx = parseInt(comboItem.dataset.idx, 10);
         const rec = combo.recipes[idx];
-        if (rec) startCooking(rec.recipe.id, rec.missing || []);
+        if (rec) showRecipeDetailFromRecommend(rec);
       } else {
         // 点击卡片空白区域：根据点击位置左右切换上一个/下一个
         let clickX = 0;
@@ -1443,45 +1526,101 @@ function setupCardSwipe() {
   document.addEventListener("mouseup", _docUpRef);
 }
 
+// 滑动切换：单卡片模式，新卡片从对应方向滑入
 function swipePrev() {
   if (_swipeAnimating) return;
-  // 已经是第一个，不再后退
   if (swipeIndex <= 0) return;
-  const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
-  if (!card) return;
+  const stack = document.querySelector(".card-stack");
+  if (!stack) return;
+
+  const currentCard = stack.querySelector(".swipe-card");
+  if (!currentCard) {
+    swipeIndex--;
+    renderSwipeCardsOnly();
+    return;
+  }
 
   _swipeAnimating = true;
   dragState = null;
   _lastSwipeAt = Date.now();
 
-  // CSS animation 从当前位置（含 inline transform）平滑飞出，无需清 transform
-  card.classList.add("fly-left");
+  // 创建新卡片（从左侧滑入）
+  const newCombo = searchResults[swipeIndex - 1];
+  const newCardHtml = renderSwipeCard(newCombo, 0);
+  const wrap = document.createElement("div");
+  wrap.innerHTML = newCardHtml;
+  const newCard = wrap.firstElementChild;
+  newCard.style.transform = "translate3d(-105%, 0, 0)";
+  newCard.style.opacity = "0.8";
+  newCard.style.transition = "none";
+  stack.appendChild(newCard);
+
+  // 当前卡片向右飞出
+  currentCard.classList.remove("dragging");
+  currentCard.style.transform = "";
+
+  requestAnimationFrame(() => {
+    currentCard.classList.add("fly-right");
+    newCard.style.transition = "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s";
+    newCard.style.transform = "translate3d(0, 0, 0)";
+    newCard.style.opacity = "1";
+  });
 
   setTimeout(() => {
-    swipeIndex = Math.max(0, swipeIndex - 1);
-    renderSwipeCardsOnly();
+    swipeIndex--;
+    // 清空后重新渲染单卡片，保证状态干净
+    stack.innerHTML = renderSwipeCard(searchResults[swipeIndex], 0);
+    setupCardSwipe();
     _swipeAnimating = false;
-  }, 450);
+  }, 400);
 }
 
 function swipeNext() {
   if (_swipeAnimating) return;
-  // 已经是最后一个，不再前进
   if (swipeIndex >= searchResults.length - 1) return;
-  const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
-  if (!card) return;
+  const stack = document.querySelector(".card-stack");
+  if (!stack) return;
+
+  const currentCard = stack.querySelector(".swipe-card");
+  if (!currentCard) {
+    swipeIndex++;
+    renderSwipeCardsOnly();
+    return;
+  }
 
   _swipeAnimating = true;
   dragState = null;
   _lastSwipeAt = Date.now();
 
-  card.classList.add("fly-right");
+  // 创建新卡片（从右侧滑入）
+  const newCombo = searchResults[swipeIndex + 1];
+  const newCardHtml = renderSwipeCard(newCombo, 0);
+  const wrap = document.createElement("div");
+  wrap.innerHTML = newCardHtml;
+  const newCard = wrap.firstElementChild;
+  newCard.style.transform = "translate3d(105%, 0, 0)";
+  newCard.style.opacity = "0.8";
+  newCard.style.transition = "none";
+  stack.appendChild(newCard);
+
+  // 当前卡片向左飞出
+  currentCard.classList.remove("dragging");
+  currentCard.style.transform = "";
+
+  requestAnimationFrame(() => {
+    currentCard.classList.add("fly-left");
+    newCard.style.transition = "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s";
+    newCard.style.transform = "translate3d(0, 0, 0)";
+    newCard.style.opacity = "1";
+  });
 
   setTimeout(() => {
-    swipeIndex = Math.min(searchResults.length - 1, swipeIndex + 1);
-    renderSwipeCardsOnly();
+    swipeIndex++;
+    // 清空后重新渲染单卡片，保证状态干净
+    stack.innerHTML = renderSwipeCard(searchResults[swipeIndex], 0);
+    setupCardSwipe();
     _swipeAnimating = false;
-  }, 450);
+  }, 400);
 }
 
 function renderSwipeCardsOnly() {
@@ -1608,6 +1747,16 @@ function showRecipeDetail(rec) {
       </div>
     </div>
   `;
+}
+
+// 从推荐页进入菜谱详情页：保留 rec 信息，返回时回到推荐页
+function showRecipeDetailFromRecommend(rec) {
+  // 设置返回函数：回到推荐页
+  recipeDetailBackFn = () => {
+    document.getElementById("bottomNav").style.display = "none";
+    renderSwipePage();
+  };
+  showRecipeDetail(rec);
 }
 
 function backToSwipe() {
