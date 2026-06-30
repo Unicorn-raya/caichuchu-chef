@@ -668,12 +668,14 @@ body {
   overflow: hidden;
   cursor: grab;
   user-select: none;
-  will-change: transform;
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .swipe-card.dragging {
-  transition: none;
   cursor: grabbing;
 }
 
@@ -969,9 +971,10 @@ body {
 @keyframes fly-left {
   from {
     opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(-150%) rotate(-20deg);
+    transform: translate3d(-120%, 0, 0) rotate(-15deg);
     opacity: 0;
   }
 }
@@ -979,9 +982,10 @@ body {
 @keyframes fly-right {
   from {
     opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
   to {
-    transform: translateX(150%) rotate(20deg);
+    transform: translate3d(120%, 0, 0) rotate(15deg);
     opacity: 0;
   }
 }
