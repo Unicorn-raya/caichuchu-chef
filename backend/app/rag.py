@@ -79,7 +79,11 @@ class RecipeRAG:
         print(f"索引已保存到 {INDEX_DIR}")
 
     def load_index(self) -> bool:
-        """加载已有索引，返回是否成功"""
+        """加载已有索引，返回是否成功
+
+        保留 embeddings.npy 向量缓存，但从最新的 recipes.json 重新加载
+        Recipe 对象，确保新增字段（如 description/quantities/tips）能生效。
+        """
         emb_path = INDEX_DIR / "embeddings.npy"
         recipes_path = INDEX_DIR / "recipes.pkl"
         if not emb_path.exists() or not recipes_path.exists():
@@ -88,7 +92,20 @@ class RecipeRAG:
         self.embeddings = np.load(emb_path)
         with open(recipes_path, "rb") as f:
             data = pickle.load(f)
-        self.recipes = [Recipe(**r) for r in data["recipes"]]
+
+        # 从最新的 recipes.json 重新加载菜谱（按 pkl 中的顺序）
+        # 这样既保留了向量缓存，又能拿到最新字段
+        from .data import load_recipes
+        latest_by_id = {r.id: r for r in load_recipes()}
+        cached_ids = [r["id"] for r in data["recipes"]]
+        if len(latest_by_id) != len(cached_ids) or any(
+            rid not in latest_by_id for rid in cached_ids
+        ):
+            # 菜谱集合发生变化，需要重新构建索引
+            print("检测到菜谱集合变化，需要重建索引")
+            return False
+
+        self.recipes = [latest_by_id[rid] for rid in cached_ids]
         self.recipe_texts = data["texts"]
         return True
 

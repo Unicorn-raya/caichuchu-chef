@@ -1695,6 +1695,13 @@ function showRecipeDetail(rec) {
     ...recipe.optionalIngredients.map((i) => ({ name: i, type: "optional" })),
   ];
 
+  // 食材用量映射
+  const quantities = recipe.quantities || {};
+  // 贴士
+  const tips = recipe.tips || [];
+  // 简介
+  const description = recipe.description || "";
+
   app.innerHTML = `
     <div class="page recipe-detail-page">
       <div class="recipe-detail-hero">
@@ -1717,13 +1724,16 @@ function showRecipeDetail(rec) {
           <div class="recipe-detail-meta-item">匹配 ${rec.matchPercent}%</div>
         </div>
 
+        ${description ? `<p class="recipe-detail-desc">${description}</p>` : ""}
+
         <div class="recipe-section-title">食材清单</div>
         <div class="ingredient-list">
           ${allIngredients.map((ing) => {
             const have = existingSet.has(ing.name);
+            const qty = quantities[ing.name];
             return `
               <div class="ingredient-row ${have ? "have" : "missing"}">
-                <span class="ingredient-row-name">${ing.name}${ing.type === "optional" ? "（可选）" : ""}</span>
+                <span class="ingredient-row-name">${ing.name}${ing.type === "optional" ? "（可选）" : ""}${qty ? `<span class="ingredient-row-qty">${qty}</span>` : ""}</span>
                 <span class="ingredient-row-status ${have ? "have" : "missing"}">${have ? "已有" : "需采买"}</span>
               </div>
             `;
@@ -1739,6 +1749,18 @@ function showRecipeDetail(rec) {
             </div>
           `).join("")}
         </div>
+
+        ${tips.length > 0 ? `
+          <div class="recipe-section-title">附加内容</div>
+          <div class="tips-list">
+            ${tips.map((tip) => `
+              <div class="tip-item">
+                <span class="tip-icon">💡</span>
+                <span class="tip-text">${tip}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
 
         <button class="btn-start-cooking" onclick="startCooking('${recipe.id}', ${JSON.stringify(rec.missing || []).replace(/"/g, '&quot;')})">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>

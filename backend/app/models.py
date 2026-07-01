@@ -1,6 +1,6 @@
 """Pydantic 数据模型"""
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Dict
 
 
 class Recipe(BaseModel):
@@ -19,6 +19,9 @@ class Recipe(BaseModel):
     steps: list[str] = []
     images: list[str] = []
     tags: list[str] = []
+    description: str = ""
+    quantities: Dict[str, str] = {}
+    tips: list[str] = []
 
 
 class RecipePayload(BaseModel):

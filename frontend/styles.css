@@ -1167,6 +1167,52 @@ body {
   color: var(--text-secondary);
 }
 
+/* 菜谱简介 */
+.recipe-detail-desc {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin: 12px 0 4px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  border-left: 3px solid var(--avocado);
+}
+
+/* 食材用量 */
+.ingredient-row-qty {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* 附加内容 */
+.tips-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip-item {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tip-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.tip-text {
+  color: var(--text-secondary);
+}
+
 /* 开始烹饪按钮 */
 .btn-start-cooking {
   display: flex;
