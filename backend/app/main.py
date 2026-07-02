@@ -28,6 +28,8 @@ app.add_middleware(
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 IMAGES_DIR = DATA_DIR / "images"
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
+# 图片目录：优先用 frontend/data/images/（已提交到 git），回退到 data/images/
+IMG_SOURCE_DIR = (FRONTEND_DIR / "data" / "images") if (FRONTEND_DIR / "data" / "images").exists() else IMAGES_DIR
 
 # 全局 RAG 引擎
 rag_engine: RecipeRAG | None = None
@@ -138,7 +140,7 @@ async def get_categories():
 @app.get("/data/images/{path:path}")
 async def serve_image(path: str):
     """提供菜谱图片"""
-    full_path = IMAGES_DIR / path
+    full_path = IMG_SOURCE_DIR / path
     if not full_path.exists() or not full_path.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(full_path)
