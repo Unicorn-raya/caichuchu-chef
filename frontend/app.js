@@ -440,13 +440,40 @@ async function fetchTags() {
 }
 
 async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false) {
-  const res = await fetch(`${API_BASE}/api/search`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll }),
-  });
-  if (!res.ok) throw new Error("搜索失败");
-  return res.json();
+  const body = JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll });
+  // 线上后端冷启动需要 30+ 秒（模型延迟加载），移动端网络不稳定，需要超时 + 重试
+  const MAX_RETRIES = 1;
+  const TIMEOUT_MS = 60000; // 单次请求最多等 60 秒（容忍模型冷启动）
+  let lastErr = null;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${API_BASE}/api/search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`后端错误 ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      // 超时/网络错误才重试；后端 4xx/5xx 不重试
+      if (e.name === "AbortError") {
+        lastErr = new Error("请求超时");
+      } else if (e.message.startsWith("后端错误")) {
+        break;
+      }
+      // 最后一次失败不再等待
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+  }
+  throw lastErr || new Error("搜索失败");
 }
 
 // ============================================
@@ -1202,6 +1229,7 @@ async function generateMenu() {
     <div class="page" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh">
       <div class="loading-spinner"></div>
       <div style="margin-top:12px;color:var(--text-muted)">正在匹配最佳菜谱…</div>
+      <div id="loadingHint" style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">首次请求可能需要 10-20 秒（服务器冷启动）</div>
     </div>
   `;
 
@@ -1220,7 +1248,9 @@ async function generateMenu() {
     swipeIndex = 0;
     renderSwipePage();
   } catch (e) {
-    showToast("搜索失败，请重试");
+    console.error("生成菜单失败:", e);
+    const reason = e.message || "未知错误";
+    showToast(`搜索失败：${reason}，请重试`);
     renderPage("home");
   }
 }
