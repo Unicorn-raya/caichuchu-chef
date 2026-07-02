@@ -1,0 +1,2 @@
+# 排除大体积图片目录，图片由后端提供
+frontend/data/images/

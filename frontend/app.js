@@ -9,10 +9,7 @@ const API_BASE = window.CCC_API_BASE || "";
 function assetUrl(path) {
   if (!path) return path;
   if (path.startsWith("http")) return path;
-  // 本地静态资源走相对路径（Vercel 同源部署 + CDN）
-  if (path.startsWith("/data/images/")) {
-    return path;  // /data/images/xxx -> 同源 frontend/data/images/xxx
-  }
+  // 所有静态资源（含图片）都走后端，避免 Vercel 部署体积超限
   return `${API_BASE}${path}`;
 }
 const STORAGE_KEY = "caichuchu_fridge";
