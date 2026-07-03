@@ -26,6 +26,8 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # 拷贝数据与后端代码
 COPY --chown=user data/ ./data/
 COPY --chown=user backend/ ./backend/
+# 用 frontend/data/images/ 覆盖 data/images/（图片已提交到 git）
+COPY --chown=user frontend/data/images/ ./data/images/
 
 # 构建向量索引（首次会下载 sentence-transformers 模型 ~470MB）
 # 注意：HF Spaces 构建服务器在国外，直接用 huggingface.co 即可
