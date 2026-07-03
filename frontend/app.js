@@ -274,6 +274,18 @@ function applyDietAndAllergens(results) {
 // AI 模型管理
 // 模型用途：recommend(推荐菜谱) / recognize(语音图像识别)
 // ============================================
+
+// 内置默认模型（敏感信息不在 UI 显示，仅用于 API 调用）
+const BUILTIN_DEFAULT_MODEL = {
+  id: "builtin_default",
+  name: "默认模型",
+  url: "https://ai.hybgzs.com/v1",
+  apiKey: "sk-mEyRxOyC3HqLAK0_9oRPz4c6aPAmMg1GaeULllKIO4vXnekRuF5heuKs354",
+  model: "qwen/qwen3.5-122b-a10b",
+  uses: ["recommend", "recognize"],
+  builtin: true,
+};
+
 function loadAIModels() {
   try {
     const data = localStorage.getItem(AI_MODELS_KEY);
@@ -286,9 +298,18 @@ function loadAIModels() {
         ? m.uses
         : (legacyDefault && m.id === legacyDefault ? ["recommend"] : []),
     }));
+    // 确保内置默认模型总是存在且排在首位
+    const builtinIdx = models.findIndex((m) => m.id === BUILTIN_DEFAULT_MODEL.id);
+    if (builtinIdx === -1) {
+      models.unshift({ ...BUILTIN_DEFAULT_MODEL });
+    } else {
+      // 同步内置模型的最新配置（但保留用户自定义的用途）
+      const userUses = models[builtinIdx].uses;
+      models[builtinIdx] = { ...BUILTIN_DEFAULT_MODEL, uses: userUses && userUses.length > 0 ? userUses : BUILTIN_DEFAULT_MODEL.uses };
+    }
     return { models };
   } catch {
-    return { models: [] };
+    return { models: [{ ...BUILTIN_DEFAULT_MODEL }] };
   }
 }
 
@@ -2784,16 +2805,20 @@ function showAIModels() {
               <div class="ai-model-item ${m.uses && m.uses.length > 0 ? 'is-default' : ''}" onclick="openAIUseEditor('${m.id}')">
                 <div class="ai-model-item-info">
                   <div class="ai-model-item-name">
-                    ${m.name}
+                    ${m.name}${m.builtin ? ' <span class="ai-builtin-badge">内置</span>' : ''}
                     ${m.uses && m.uses.length > 0 ? m.uses.map((u) => `<span class="ai-use-tag ${u}">${useLabel(u)}</span>`).join("") : ''}
                   </div>
-                  <div class="ai-model-item-model">${m.model}</div>
-                  <div class="ai-model-item-url">${m.url}</div>
+                  ${m.builtin ? `
+                    <div class="ai-model-item-hint">已预配置，无需填写</div>
+                  ` : `
+                    <div class="ai-model-item-model">${m.model}</div>
+                    <div class="ai-model-item-url">${m.url}</div>
+                  `}
                   <div class="ai-model-item-hint">点击设置用途</div>
                 </div>
                 <div class="ai-model-item-actions">
-                  <button class="ai-model-action-btn" onclick="event.stopPropagation();openAIModelEditor('${m.id}')">编辑</button>
-                  <button class="ai-model-action-btn danger" onclick="event.stopPropagation();deleteAIModel('${m.id}')">删除</button>
+                  ${m.builtin ? '' : `<button class="ai-model-action-btn" onclick="event.stopPropagation();openAIModelEditor('${m.id}')">编辑</button>`}
+                  ${m.builtin ? '' : `<button class="ai-model-action-btn danger" onclick="event.stopPropagation();deleteAIModel('${m.id}')">删除</button>`}
                 </div>
               </div>
             `).join("")}
@@ -2872,6 +2897,10 @@ function deleteAIModel(modelId) {
   const config = loadAIModels();
   const model = config.models.find((m) => m.id === modelId);
   if (!model) return;
+  if (model.builtin) {
+    showToast("内置模型不可删除");
+    return;
+  }
   if (!confirm(`确定删除模型「${model.name}」？`)) return;
   config.models = config.models.filter((m) => m.id !== modelId);
   saveAIModels(config);
