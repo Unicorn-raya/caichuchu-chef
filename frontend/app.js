@@ -15,6 +15,22 @@ function assetUrl(path) {
   }
   return `${API_BASE}${path}`;
 }
+
+// 从本地 allRecipes 查找菜谱的正确图片路径
+// 后端 API 返回的 images 可能是旧路径，本地 recipes.json 是最新的
+function getRecipeImage(recipe) {
+  if (!recipe) return null;
+  // 优先从本地 allRecipes 查找（路径准确）
+  const local = allRecipes.find((r) => r.id === recipe.id);
+  if (local && local.images && local.images.length > 0) {
+    return local.images[0];
+  }
+  // 回退到后端返回的路径
+  if (recipe.images && recipe.images.length > 0) {
+    return recipe.images[0];
+  }
+  return null;
+}
 const STORAGE_KEY = "caichuchu_fridge";
 const STATS_KEY = "caichuchu_stats";
 const AI_MODELS_KEY = "caichuchu_ai_models";
@@ -1361,7 +1377,7 @@ function renderSwipeCard(combo, stackIdx) {
   if (combo.type === "single") {
     const rec = combo.recipes[0];
     const recipe = rec.recipe;
-    const image = recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+    const image = getRecipeImage(recipe);
     const emoji = getRecipeEmoji(recipe);
     const missingChips = (rec.missing || []).slice(0, 5).map((i) =>
       `<span class="ingredient-chip missing">${i}</span>`
@@ -1398,7 +1414,7 @@ function renderSwipeCard(combo, stackIdx) {
   // 组合卡片：展示 2-3 道菜
   const items = combo.recipes.map((rec, i) => {
     const recipe = rec.recipe;
-    const image = recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+    const image = getRecipeImage(recipe);
     const emoji = getRecipeEmoji(recipe);
     const dishKindTag = isMainDish(recipe)
       ? `<span class="combo-item-kind meat">主</span>`
@@ -1734,9 +1750,7 @@ function showRecipeDetail(rec) {
   document.getElementById("bottomNav").style.display = "";
   const recipe = rec.recipe;
   const app = document.getElementById("app");
-  const image = recipe.images && recipe.images.length > 0
-    ? recipe.images[0]
-    : null;
+  const image = getRecipeImage(recipe);
   const emoji = getRecipeEmoji(recipe);
 
   const existingSet = new Set(rec.existing || []);
