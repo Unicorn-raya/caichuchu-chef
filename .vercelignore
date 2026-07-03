@@ -1,2 +1,4 @@
-# 排除大体积图片目录，图片由后端提供
-frontend/data/images/
+# 大体积目录排除（图片已压缩到49MB，可由 Vercel 部署）
+backend/
+scripts/
+chinese_home_recipes_downloads/
