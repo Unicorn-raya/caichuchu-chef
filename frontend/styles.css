@@ -2309,6 +2309,10 @@ body {
   font-size: 14px;
   line-height: 1.7;
   color: var(--text);
+  max-height: 400px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
 
 .ai-result-text p {

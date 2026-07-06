@@ -367,7 +367,7 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
   if (!model) {
     throw new Error("NO_AI_MODEL");
   }
-  const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。回答控制在 300 字以内。";
+  const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。详细展开，内容不限字数。";
   const res = await fetch(`${model.url}/chat/completions`, {
     method: "POST",
     headers: {
@@ -733,7 +733,7 @@ async function openIngredientDetail(index) {
   }
 
   try {
-    const prompt = `我冰箱里有食材「${name}」。请推荐 4-5 道以这个食材为主角的常见家常菜，每道菜用一句话说明做法亮点和搭配食材。用列表形式输出，开头用一句话概括这个食材的特点。`;
+    const prompt = `我冰箱里有食材「${name}」。请推荐以这个食材为主角的常见家常菜，每道菜说明做法亮点和搭配食材，并给出一些烹饪小贴士。详细展开，不要限制内容长度。`;
     const aiText = await callAI(prompt);
     contentEl.innerHTML = `
       <div class="ai-result">
@@ -1753,19 +1753,18 @@ function showRecipeDetail(rec) {
   const image = getRecipeImage(recipe);
   const emoji = getRecipeEmoji(recipe);
 
+  // 从本地 allRecipes 补全后端缺失的字段（description/quantities/tips）
+  const localRecipe = allRecipes.find((r) => r.id === recipe.id);
+  const quantities = (localRecipe && localRecipe.quantities) || recipe.quantities || {};
+  const tips = (localRecipe && localRecipe.tips) || recipe.tips || [];
+  const description = (localRecipe && localRecipe.description) || recipe.description || "";
+
   const existingSet = new Set(rec.existing || []);
   const allIngredients = [
     ...recipe.coreIngredients.map((i) => ({ name: i, type: "core" })),
     ...recipe.seasonings.map((i) => ({ name: i, type: "seasoning" })),
     ...recipe.optionalIngredients.map((i) => ({ name: i, type: "optional" })),
   ];
-
-  // 食材用量映射
-  const quantities = recipe.quantities || {};
-  // 贴士
-  const tips = recipe.tips || [];
-  // 简介
-  const description = recipe.description || "";
 
   app.innerHTML = `
     <div class="page recipe-detail-page">
