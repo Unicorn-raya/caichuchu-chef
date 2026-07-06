@@ -146,6 +146,18 @@ async def serve_image(path: str):
     return FileResponse(full_path)
 
 
+@app.get("/")
+async def root():
+    """根路径状态"""
+    return {"status": "ok", "service": "caichuchu-backend", "docs": "/docs"}
+
+
+@app.get("/health")
+async def health():
+    """健康检查"""
+    return {"status": "healthy"}
+
+
 # 前端静态文件
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
