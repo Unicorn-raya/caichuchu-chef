@@ -3347,18 +3347,16 @@ function handleChefAgentClick() {
     return;
   }
 
-  // 显示载入中
+  // 显示载入中：厨师emoji换成🤔
   fab.classList.add("loading");
-  fab.querySelector(".chef-agent-fab-icon").classList.add("hidden");
-  fab.querySelector(".chef-agent-fab-loading").classList.remove("hidden");
+  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
 
   // 模拟读取页面（给用户视觉反馈）
   setTimeout(() => {
     const result = ChefAgent.generateAdvice();
     // 恢复图标
     fab.classList.remove("loading");
-    fab.querySelector(".chef-agent-fab-icon").classList.remove("hidden");
-    fab.querySelector(".chef-agent-fab-loading").classList.add("hidden");
+    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
 
     // 显示建议面板
     const panel = document.getElementById("chefAgentPanel");
