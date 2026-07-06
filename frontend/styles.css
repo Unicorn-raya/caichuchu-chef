@@ -2312,7 +2312,19 @@ body {
   max-height: 400px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-right: 4px;
+  padding-right: 6px;
+}
+
+.ai-result-text::-webkit-scrollbar {
+  width: 6px;
+}
+.ai-result-text::-webkit-scrollbar-track {
+  background: var(--bg-soft);
+  border-radius: 3px;
+}
+.ai-result-text::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
 }
 
 .ai-result-text p {
