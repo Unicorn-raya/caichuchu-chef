@@ -153,6 +153,25 @@
     </div>
   </div>
 
+  <!-- 厨师 Agent 浮动图标 -->
+  <div id="chefAgentFab" class="chef-agent-fab">
+    <span class="chef-agent-fab-icon">👨‍🍳</span>
+    <span class="chef-agent-fab-loading hidden">···</span>
+  </div>
+
+  <!-- 厨师 Agent 建议面板 -->
+  <div id="chefAgentPanel" class="chef-agent-panel hidden">
+    <div class="chef-agent-panel-backdrop" onclick="closeChefAgentPanel()"></div>
+    <div class="chef-agent-panel-body">
+      <div class="chef-agent-panel-handle"></div>
+      <div id="chefAgentPanelContent"></div>
+    </div>
+  </div>
+
+  <!-- Agent 模块 -->
+  <script src="agent/skills/chef-cn.skill.js"></script>
+  <script src="agent/memory.js"></script>
+  <script src="agent/chef-agent.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

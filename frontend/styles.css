@@ -3328,3 +3328,208 @@ body {
   text-align: center;
   padding: 60px 20px;
 }
+
+/* ============================================
+   厨师 Agent 浮动图标
+   ============================================ */
+.chef-agent-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 100px;
+  z-index: 150;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--carrot);
+  box-shadow: 0 4px 16px rgba(232,133,58,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.chef-agent-fab:active {
+  transform: scale(0.92);
+}
+
+.chef-agent-fab.loading {
+  background: var(--text-muted);
+  box-shadow: 0 4px 16px rgba(154,143,128,0.4);
+  pointer-events: none;
+}
+
+.chef-agent-fab-icon {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.chef-agent-fab-loading {
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: 2px;
+  animation: chefAgentDots 1.2s infinite;
+}
+
+@keyframes chefAgentDots {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Agent 建议面板 */
+.chef-agent-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+}
+
+.chef-agent-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(45,38,32,0.4);
+  animation: fadeIn 0.2s ease;
+}
+
+.chef-agent-panel-body {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--bg-warm);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: 12px 20px 32px;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  max-height: 75vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chef-agent-panel-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+
+.chef-agent-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.chef-agent-emoji {
+  font-size: 32px;
+}
+
+.chef-agent-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.chef-agent-recipe {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.chef-agent-advices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chef-agent-advice {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.chef-agent-advice.deodorize {
+  border-left: 3px solid var(--avocado);
+}
+
+.chef-agent-advice.marinate {
+  border-left: 3px solid var(--carrot);
+}
+
+.chef-agent-advice.memory {
+  border-left: 3px solid #6b8aad;
+}
+
+.chef-agent-advice.general {
+  border-left: 3px solid var(--text-muted);
+}
+
+.chef-agent-advice-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chef-agent-advice-icon {
+  font-size: 18px;
+}
+
+.chef-agent-advice-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.chef-agent-advice-detail {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.chef-agent-advice-tips {
+  margin-top: 8px;
+  padding-left: 20px;
+}
+
+.chef-agent-advice-tips li {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.chef-agent-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+.chef-agent-toast {
+  position: fixed;
+  bottom: 170px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(45,38,32,0.9);
+  color: white;
+  font-size: 14px;
+  padding: 10px 20px;
+  border-radius: 100px;
+  z-index: 300;
+  white-space: nowrap;
+  animation: chefAgentToast 2s ease forwards;
+}
+
+@keyframes chefAgentToast {
+  0% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  15%, 85% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+}

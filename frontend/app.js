@@ -118,6 +118,7 @@ async function init() {
   await Promise.all([fetchShelfLife(), fetchRecipes(), fetchTags()]);
   setupNavigation();
   renderPage("home");
+  initChefAgentFab();
 }
 
 // ============================================
@@ -1995,6 +1996,10 @@ function exitCookingMode() {
   // 不强制跳页：底层页面（推荐页或详情页）仍在，用户可继续操作
   if (cookingStepIndex >= cookingSteps.length) {
     showToast("烹饪完成，冰箱已更新");
+    // 记录到 Agent memory
+    if (window.ChefMemory && cookingRecipeId) {
+      ChefMemory.recordCooked(cookingRecipeId, cookingRecipeTitle);
+    }
   }
 }
 
@@ -3242,6 +3247,142 @@ function handleMouseLeave(event) {
   }
   longPressTarget = null;
   mouseDownTime = 0;
+}
+
+// ============================================
+// 厨师 Agent 浮动图标
+// ============================================
+function initChefAgentFab() {
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+
+  let isDragging = false;
+  let startX = 0, startY = 0;
+  let fabX = 0, fabY = 0;
+  let hasMoved = false;
+
+  // 触摸事件
+  fab.addEventListener("touchstart", (e) => {
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    const rect = fab.getBoundingClientRect();
+    fabX = rect.left;
+    fabY = rect.top;
+    isDragging = true;
+    hasMoved = false;
+  }, { passive: true });
+
+  fab.addEventListener("touchmove", (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+
+    let newX = fabX + dx;
+    let newY = fabY + dy;
+    // 边界检测
+    const fabSize = 56;
+    newX = Math.max(0, Math.min(window.innerWidth - fabSize, newX));
+    newY = Math.max(0, Math.min(window.innerHeight - fabSize, newY));
+    fab.style.left = newX + "px";
+    fab.style.top = newY + "px";
+    fab.style.right = "auto";
+    fab.style.bottom = "auto";
+  }, { passive: false });
+
+  fab.addEventListener("touchend", (e) => {
+    isDragging = false;
+    if (!hasMoved) {
+      handleChefAgentClick();
+    }
+  });
+
+  // 鼠标事件
+  fab.addEventListener("mousedown", (e) => {
+    startX = e.clientX;
+    startY = e.clientY;
+    const rect = fab.getBoundingClientRect();
+    fabX = rect.left;
+    fabY = rect.top;
+    isDragging = true;
+    hasMoved = false;
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
+
+    let newX = fabX + dx;
+    let newY = fabY + dy;
+    const fabSize = 56;
+    newX = Math.max(0, Math.min(window.innerWidth - fabSize, newX));
+    newY = Math.max(0, Math.min(window.innerHeight - fabSize, newY));
+    fab.style.left = newX + "px";
+    fab.style.top = newY + "px";
+    fab.style.right = "auto";
+    fab.style.bottom = "auto";
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (isDragging && !hasMoved) {
+      handleChefAgentClick();
+    }
+    isDragging = false;
+  });
+}
+
+function handleChefAgentClick() {
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+
+  // 检查是否在菜谱详情页
+  if (!ChefAgent.isOnRecipePage()) {
+    showChefAgentToast("仅菜谱页面可以使用");
+    return;
+  }
+
+  // 显示载入中
+  fab.classList.add("loading");
+  fab.querySelector(".chef-agent-fab-icon").classList.add("hidden");
+  fab.querySelector(".chef-agent-fab-loading").classList.remove("hidden");
+
+  // 模拟读取页面（给用户视觉反馈）
+  setTimeout(() => {
+    const result = ChefAgent.generateAdvice();
+    // 恢复图标
+    fab.classList.remove("loading");
+    fab.querySelector(".chef-agent-fab-icon").classList.remove("hidden");
+    fab.querySelector(".chef-agent-fab-loading").classList.add("hidden");
+
+    // 显示建议面板
+    const panel = document.getElementById("chefAgentPanel");
+    const content = document.getElementById("chefAgentPanelContent");
+    content.innerHTML = ChefAgent.renderAdvicePanel(result);
+    panel.classList.remove("hidden");
+  }, 800);
+}
+
+function closeChefAgentPanel() {
+  document.getElementById("chefAgentPanel").classList.add("hidden");
+}
+
+function showChefAgentToast(msg) {
+  // 移除已有的 toast
+  const existing = document.querySelector(".chef-agent-toast");
+  if (existing) existing.remove();
+
+  const toast = document.createElement("div");
+  toast.className = "chef-agent-toast";
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+
+  setTimeout(() => toast.remove(), 2000);
 }
 
 // ============================================
