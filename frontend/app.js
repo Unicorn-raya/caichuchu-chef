@@ -295,13 +295,9 @@ function applyDietAndAllergens(results) {
 // 模型用途：recommend(推荐菜谱) / recognize(语音图像识别)
 // ============================================
 
-// 内置默认模型（敏感信息不在 UI 显示，仅用于 API 调用）
 const BUILTIN_DEFAULT_MODEL = {
   id: "builtin_default",
   name: "默认模型",
-  url: "https://ai.hybgzs.com/v1",
-  apiKey: "sk-mEyRxOyC3HqLAK0_9oRPz4c6aPAmMg1GaeULllKIO4vXnekRuF5heuKs354",
-  model: "qwen/qwen3.5-122b-a10b",
   uses: ["recommend", "recognize"],
   builtin: true,
 };
@@ -357,26 +353,20 @@ function getDefaultAIModel() {
 }
 
 /**
- * 调用 AI 模型生成内容（OpenAI 兼容协议）
+ * 调用 AI 模型生成内容（通过后端代理，隐藏密钥）
  * @param {string} prompt 用户提示
  * @param {string} useCase 用途：recommend(默认) / recognize
  * @param {string} systemPrompt 自定义 system 提示
  * @returns {Promise<string>} AI 返回的文本
  */
 async function callAI(prompt, useCase = "recommend", systemPrompt) {
-  const model = useCase === "recognize" ? getRecognizeModel() : getRecommendModel();
-  if (!model) {
-    throw new Error("NO_AI_MODEL");
-  }
   const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。详细展开，内容不限字数。";
-  const res = await fetch(`${model.url}/chat/completions`, {
+  const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${model.apiKey}`,
     },
     body: JSON.stringify({
-      model: model.model,
       messages: [
         { role: "system", content: sys },
         { role: "user", content: prompt },
@@ -390,28 +380,22 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
     throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "（AI 未返回内容）";
+  return data.content || "（AI 未返回内容）";
 }
 
 /**
- * 调用 AI 视觉模型识别图片中的食材（OpenAI 兼容协议 vision）
+ * 调用 AI 视觉模型识别图片中的食材（通过后端代理，隐藏密钥）
  * @param {string} imageBase64 带 data:前缀的 base64 图片
  * @param {string} prompt 提示文本
  * @returns {Promise<string>} AI 返回的文本
  */
 async function callAIVision(imageBase64, prompt) {
-  const model = getRecognizeModel();
-  if (!model) {
-    throw new Error("NO_AI_MODEL");
-  }
-  const res = await fetch(`${model.url}/chat/completions`, {
+  const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${model.apiKey}`,
     },
     body: JSON.stringify({
-      model: model.model,
       messages: [
         {
           role: "user",
@@ -429,7 +413,7 @@ async function callAIVision(imageBase64, prompt) {
     throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
   }
   const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "";
+  return data.content || "";
 }
 
 // ============================================

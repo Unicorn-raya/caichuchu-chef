@@ -3,15 +3,18 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from .data import load_recipes, get_recipe_by_id
 from .models import SearchRequest, Recommendation
 from .rag import RecipeRAG
+from .ai_proxy import call_ai_proxy, DEFAULT_AI_MODEL
 
 app = FastAPI(title="菜厨厨 Chef API", version="1.0.0")
 
@@ -132,6 +135,28 @@ async def get_categories():
             }
         categories[recipe.category]["count"] += 1
     return list(categories.values())
+
+
+# ---------- AI 代理服务 ----------
+
+
+class AIChatRequest(BaseModel):
+    messages: list[dict]
+    model: Optional[str] = DEFAULT_AI_MODEL
+    temperature: float = 0.7
+    max_tokens: int = 8192
+
+
+@app.post("/api/ai/chat")
+async def ai_chat(request: AIChatRequest):
+    """AI 对话代理接口（前端通过此接口调用第三方 AI，隐藏密钥）"""
+    content = await call_ai_proxy(
+        messages=request.messages,
+        model=request.model,
+        temperature=request.temperature,
+        max_tokens=request.max_tokens,
+    )
+    return {"content": content}
 
 
 # ---------- 静态文件服务 ----------
