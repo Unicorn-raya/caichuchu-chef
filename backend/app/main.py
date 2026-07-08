@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .data import load_recipes, get_recipe_by_id
 from .models import SearchRequest, Recommendation
 from .rag import RecipeRAG
-from .ai_proxy import call_ai_proxy, DEFAULT_AI_MODEL
+from .ai_proxy import call_ai_proxy, DEFAULT_AI_MODEL, get_ai_config_status
 
 app = FastAPI(title="菜厨厨 Chef API", version="1.0.0")
 
@@ -152,11 +152,17 @@ async def ai_chat(request: AIChatRequest):
     """AI 对话代理接口（前端通过此接口调用第三方 AI，隐藏密钥）"""
     content = await call_ai_proxy(
         messages=request.messages,
-        model=request.model,
+        model=request.model or DEFAULT_AI_MODEL,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
     )
     return {"content": content}
+
+
+@app.get("/api/ai/config")
+async def ai_config_status():
+    """AI 配置状态诊断接口（不暴露敏感值）"""
+    return get_ai_config_status()
 
 
 # ---------- 静态文件服务 ----------
