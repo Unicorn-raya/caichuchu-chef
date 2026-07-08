@@ -1,4 +1,4 @@
-"""AI 代理模块：前端通过后端调用第三方 AI API，隐藏密钥"""
+"""AI 代理模块：前端通过后端调用第三方 AI API，隐藏密钥（使用 OpenAI SDK）"""
 from __future__ import annotations
 
 import os
@@ -6,13 +6,33 @@ from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import HTTPException
-import httpx
+from openai import OpenAI, APIError, APIConnectionError, APITimeoutError, AuthenticationError
 
 load_dotenv()
 
 DEFAULT_AI_URL = os.getenv("AI_API_URL", "")
 DEFAULT_AI_KEY = os.getenv("AI_API_KEY", "")
 DEFAULT_AI_MODEL = os.getenv("AI_MODEL_ID", "")
+
+# 全局 OpenAI 客户端（延迟初始化）
+_client: OpenAI | None = None
+
+
+def get_client() -> OpenAI:
+    """获取 OpenAI 客户端单例"""
+    global _client
+    if _client is None:
+        if not DEFAULT_AI_URL or not DEFAULT_AI_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="AI 服务未配置：请设置环境变量 AI_API_URL 和 AI_API_KEY"
+            )
+        _client = OpenAI(
+            base_url=DEFAULT_AI_URL,
+            api_key=DEFAULT_AI_KEY,
+            timeout=120.0,
+        )
+    return _client
 
 
 def get_ai_config_status() -> dict:
@@ -26,52 +46,45 @@ def get_ai_config_status() -> dict:
     }
 
 
-async def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs) -> str:
+def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs) -> str:
+    """通过 OpenAI SDK 调用 AI 接口（同步）"""
     if not DEFAULT_AI_URL or not DEFAULT_AI_KEY:
         raise HTTPException(
             status_code=500,
             detail="AI 服务未配置：请设置环境变量 AI_API_URL 和 AI_API_KEY"
         )
 
-    payload = {
-        "model": model or DEFAULT_AI_MODEL,
-        "messages": messages,
-        "temperature": kwargs.get("temperature", 0.7),
-        "max_tokens": kwargs.get("max_tokens", 8192),
-    }
+    client = get_client()
+    target_model = model or DEFAULT_AI_MODEL
 
-    print(f"[AI Proxy] 调用 {DEFAULT_AI_URL}/chat/completions, model={payload['model']}")
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{DEFAULT_AI_URL}/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {DEFAULT_AI_KEY}",
-                },
-                json=payload,
-                timeout=120.0,
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(status_code=504, detail="AI 请求超时")
-        except httpx.RequestError as e:
-            raise HTTPException(status_code=503, detail=f"AI 服务不可用: {str(e)}")
-
-    if not response.is_success:
-        # httpx 的 response.text 是属性（同步），不是协程
-        err_text = response.text
-        print(f"[AI Proxy] 第三方 API 返回错误 {response.status_code}: {err_text[:500]}")
-        try:
-            err_data = response.json()
-            err_msg = err_data.get("error", {}).get("message") or err_data.get("message") or str(response.status_code)
-        except Exception:
-            err_msg = err_text[:300]
-        raise HTTPException(status_code=response.status_code, detail=f"AI 服务错误: {err_msg}")
+    print(f"[AI Proxy] 调用 OpenAI SDK, base_url={DEFAULT_AI_URL}, model={target_model}")
 
     try:
-        data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError) as e:
-        print(f"[AI Proxy] 解析响应失败: {response.text[:500]}")
-        raise HTTPException(status_code=502, detail=f"AI 响应格式错误: {str(e)}")
+        response = client.chat.completions.create(
+            model=target_model,
+            messages=messages,
+            temperature=kwargs.get("temperature", 0.7),
+            max_tokens=kwargs.get("max_tokens", 8192),
+        )
+    except AuthenticationError as e:
+        print(f"[AI Proxy] 认证失败: {e}")
+        raise HTTPException(status_code=401, detail=f"AI 认证失败（Key 无效）: {str(e)}")
+    except APITimeoutError:
+        raise HTTPException(status_code=504, detail="AI 请求超时")
+    except APIConnectionError as e:
+        print(f"[AI Proxy] 连接失败: {e}")
+        raise HTTPException(status_code=503, detail=f"AI 服务不可达: {str(e)}")
+    except APIError as e:
+        print(f"[AI Proxy] API 错误 {e.status_code}: {e.message}")
+        raise HTTPException(
+            status_code=e.status_code or 502,
+            detail=f"AI 服务错误: {e.message}"
+        )
+    except Exception as e:
+        print(f"[AI Proxy] 未知错误: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail=f"AI 调用异常: {str(e)}")
+
+    content = response.choices[0].message.content
+    if not content:
+        raise HTTPException(status_code=502, detail="AI 返回空内容")
+    return content.strip()

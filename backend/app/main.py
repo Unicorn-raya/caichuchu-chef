@@ -150,7 +150,7 @@ class AIChatRequest(BaseModel):
 @app.post("/api/ai/chat")
 async def ai_chat(request: AIChatRequest):
     """AI 对话代理接口（前端通过此接口调用第三方 AI，隐藏密钥）"""
-    content = await call_ai_proxy(
+    content = call_ai_proxy(
         messages=request.messages,
         model=request.model or DEFAULT_AI_MODEL,
         temperature=request.temperature,
