@@ -12,7 +12,7 @@ load_dotenv()
 
 DEFAULT_AI_URL = os.getenv("AI_API_URL", "")
 DEFAULT_AI_KEY = os.getenv("AI_API_KEY", "")
-DEFAULT_AI_MODEL = os.getenv("AI_MODEL_ID", "qwen/qwen3.5-122b-a10b")
+DEFAULT_AI_MODEL = os.getenv("AI_MODEL_ID", "")
 
 
 async def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs) -> str:
@@ -48,6 +48,7 @@ async def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **k
     if not response.is_success:
         try:
             err_data = response.json()
+            # print(err_data)
             err_msg = err_data.get("error", {}).get("message", str(response.status_code))
         except:
             err_msg = await response.text()

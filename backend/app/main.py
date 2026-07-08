@@ -190,13 +190,9 @@ if FRONTEND_DIR.exists():
 
 @app.on_event("startup")
 async def startup_event():
-    """启动时预加载菜谱数据 + RAG 模型，避免首次请求时 30 秒冷启动"""
+    """启动时预加载菜谱数据"""
     get_recipes()
-    # 预加载 RAG 引擎和嵌入模型（避免首次搜索请求等待模型加载）
-    import asyncio
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, lambda: get_rag_engine()._load_model())
-    print("RAG 模型预加载完成")
+    print("菜谱数据预加载完成")
 
 
 if __name__ == "__main__":
