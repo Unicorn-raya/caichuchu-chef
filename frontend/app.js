@@ -5,14 +5,10 @@
 // 后端 API 地址：本地同源为空；线上部署时通过 config.js 设置 window.CCC_API_BASE
 const API_BASE = window.CCC_API_BASE || "";
 
-// 资源（图片等）URL：若设置后端地址，则资源也走后端
+// 资源（图片等）URL：统一走后端 API
 function assetUrl(path) {
   if (!path) return path;
   if (path.startsWith("http")) return path;
-  // 图片走同源（Vercel 部署 frontend/data/images/），其他资源走后端
-  if (path.startsWith("/data/images/")) {
-    return path;
-  }
   return `${API_BASE}${path}`;
 }
 
