@@ -16,8 +16,7 @@ __pycache__/
 *.swo
 *~
 
-# 数据索引（可重新构建）
-backend/index/
+# 数据索引（已预构建并通过 Git LFS 推送）
 
 # 日志
 *.log
