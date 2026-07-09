@@ -57,7 +57,12 @@ def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs)
 
     if custom_url and custom_key:
         # 自定义模型：per-request 客户端
-        client = OpenAI(base_url=custom_url, api_key=custom_key, timeout=120.0)
+        client = OpenAI(
+            base_url=custom_url, 
+            api_key=custom_key, 
+            timeout=120.0, 
+            default_headers={"User-Agent": "Zed/0.211.6 (macos; x86_64)"}
+        )
         target_model = model or ""
         print(f"[AI Proxy] 自定义模型调用, base_url={custom_url}, model={target_model}")
     else:
