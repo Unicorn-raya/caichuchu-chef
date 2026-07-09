@@ -28,9 +28,8 @@ def get_client() -> OpenAI:
                 detail="AI 服务未配置：请设置环境变量 AI_API_URL 和 AI_API_KEY"
             )
         _client = OpenAI(
-            base_url=DEFAULT_AI_URL,
             api_key=DEFAULT_AI_KEY,
-            timeout=120.0,
+            base_url=DEFAULT_AI_URL,
         )
     return _client
 
@@ -58,10 +57,8 @@ def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs)
     if custom_url and custom_key:
         # 自定义模型：per-request 客户端
         client = OpenAI(
-            base_url=custom_url, 
-            api_key=custom_key, 
-            timeout=120.0, 
-            default_headers={"User-Agent": "Zed/0.211.6 (macos; x86_64)"}
+            api_key=custom_key,
+            base_url=custom_url,
         )
         target_model = model or ""
         print(f"[AI Proxy] 自定义模型调用, base_url={custom_url}, model={target_model}")
@@ -83,8 +80,7 @@ def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs)
         response = client.chat.completions.create(
             model=target_model,
             messages=messages,
-            temperature=kwargs.get("temperature", 0.7),
-            max_tokens=kwargs.get("max_tokens", 8192),
+            stream=False,
         )
     except AuthenticationError as e:
         print(f"[AI Proxy] 认证失败: {e}")
