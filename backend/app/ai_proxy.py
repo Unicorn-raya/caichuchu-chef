@@ -47,17 +47,32 @@ def get_ai_config_status() -> dict:
 
 
 def call_ai_proxy(messages: list[dict], model: str = DEFAULT_AI_MODEL, **kwargs) -> str:
-    """通过 OpenAI SDK 调用 AI 接口（同步）"""
-    if not DEFAULT_AI_URL or not DEFAULT_AI_KEY:
-        raise HTTPException(
-            status_code=500,
-            detail="AI 服务未配置：请设置环境变量 AI_API_URL 和 AI_API_KEY"
-        )
+    """通过 OpenAI SDK 调用 AI 接口（同步）
 
-    client = get_client()
-    target_model = model or DEFAULT_AI_MODEL
+    当传入 url 和 api_key 时，创建 per-request 客户端（用于自定义模型）；
+    否则使用后端环境变量配置的单例客户端（用于内置模型）。
+    """
+    custom_url = kwargs.get("url")
+    custom_key = kwargs.get("api_key")
 
-    print(f"[AI Proxy] 调用 OpenAI SDK, base_url={DEFAULT_AI_URL}, model={target_model}")
+    if custom_url and custom_key:
+        # 自定义模型：per-request 客户端
+        client = OpenAI(base_url=custom_url, api_key=custom_key, timeout=120.0)
+        target_model = model or ""
+        print(f"[AI Proxy] 自定义模型调用, base_url={custom_url}, model={target_model}")
+    else:
+        # 内置模型：使用环境变量配置的单例客户端
+        if not DEFAULT_AI_URL or not DEFAULT_AI_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="AI 服务未配置：请设置环境变量 AI_API_URL 和 AI_API_KEY"
+            )
+        client = get_client()
+        target_model = model or DEFAULT_AI_MODEL
+        print(f"[AI Proxy] 内置模型调用, base_url={DEFAULT_AI_URL}, model={target_model}")
+
+    if not target_model:
+        raise HTTPException(status_code=400, detail="未指定模型名称")
 
     try:
         response = client.chat.completions.create(

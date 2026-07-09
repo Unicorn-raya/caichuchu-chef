@@ -319,9 +319,9 @@ function loadAIModels() {
     if (builtinIdx === -1) {
       models.unshift({ ...BUILTIN_DEFAULT_MODEL });
     } else {
-      // 同步内置模型的最新配置（但保留用户自定义的用途）
+      // 同步内置模型的最新配置（保留用户设置的用途，允许为空）
       const userUses = models[builtinIdx].uses;
-      models[builtinIdx] = { ...BUILTIN_DEFAULT_MODEL, uses: userUses && userUses.length > 0 ? userUses : BUILTIN_DEFAULT_MODEL.uses };
+      models[builtinIdx] = { ...BUILTIN_DEFAULT_MODEL, uses: Array.isArray(userUses) ? userUses : [] };
     }
     return { models };
   } catch {
@@ -361,6 +361,7 @@ function getDefaultAIModel() {
  */
 async function callAI(prompt, useCase = "recommend", systemPrompt) {
   const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。详细展开，内容不限字数。";
+  const model = getAIModelByUse(useCase);
   const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
@@ -373,6 +374,8 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
       ],
       temperature: 0.7,
       max_tokens: 8192,
+      // 内置模型不传 url/apiKey（用后端环境变量），自定义模型传完整配置
+      ...(model && !model.builtin ? { model: model.model, url: model.url, apiKey: model.apiKey } : {}),
     }),
   });
   if (!res.ok) {
@@ -390,6 +393,7 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
  * @returns {Promise<string>} AI 返回的文本
  */
 async function callAIVision(imageBase64, prompt) {
+  const model = getAIModelByUse("recognize");
   const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
@@ -406,6 +410,8 @@ async function callAIVision(imageBase64, prompt) {
         },
       ],
       temperature: 0.2,
+      // 内置模型不传 url/apiKey（用后端环境变量），自定义模型传完整配置
+      ...(model && !model.builtin ? { model: model.model, url: model.url, apiKey: model.apiKey } : {}),
     }),
   });
   if (!res.ok) {

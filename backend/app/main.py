@@ -145,6 +145,9 @@ class AIChatRequest(BaseModel):
     model: Optional[str] = DEFAULT_AI_MODEL
     temperature: float = 0.7
     max_tokens: int = 8192
+    # 自定义模型配置（内置模型不传，使用后端环境变量）
+    url: Optional[str] = None
+    apiKey: Optional[str] = None
 
 
 @app.post("/api/ai/chat")
@@ -155,6 +158,8 @@ async def ai_chat(request: AIChatRequest):
         model=request.model or DEFAULT_AI_MODEL,
         temperature=request.temperature,
         max_tokens=request.max_tokens,
+        url=request.url,
+        api_key=request.apiKey,
     )
     return {"content": content}
 
