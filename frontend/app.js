@@ -288,13 +288,13 @@ function applyDietAndAllergens(results) {
 
 // ============================================
 // AI 模型管理
-// 模型用途：recommend(推荐菜谱) / recognize(语音图像识别)
+// 模型用途：recommend(推荐菜谱) / recognize(语音图像识别) / calendar(日历分析)
 // ============================================
 
 const BUILTIN_DEFAULT_MODEL = {
   id: "builtin_default",
   name: "默认模型",
-  uses: ["recommend", "recognize"],
+  uses: ["recommend", "recognize", "calendar"],
   builtin: true,
 };
 
@@ -2454,6 +2454,10 @@ function renderTimelineMode() {
       </div>
       <div class="fishbone-tail-label">最早记录</div>
     </div>
+    <div class="calendar-chef-btn" onclick="analyzeCalendarWithAI()">
+      <span class="calendar-chef-avatar">👨‍🍳</span>
+      <span class="calendar-chef-text">大厨点评</span>
+    </div>
   `;
 }
 
@@ -2747,8 +2751,9 @@ function showAIModels() {
   const inUseModels = config.models.filter((m) => m.uses && m.uses.length > 0);
   const recommendModel = config.models.find((m) => m.uses && m.uses.includes("recommend"));
   const recognizeModel = config.models.find((m) => m.uses && m.uses.includes("recognize"));
+  const calendarModel = config.models.find((m) => m.uses && m.uses.includes("calendar"));
 
-  const useLabel = (use) => use === "recommend" ? "推荐菜谱" : "语音/图像识别";
+  const useLabel = (use) => use === "recommend" ? "推荐菜谱" : use === "recognize" ? "语音/图像识别" : "日历分析";
 
   app.innerHTML = `
     <div class="page ai-models-page">
@@ -2764,7 +2769,7 @@ function showAIModels() {
       <div class="ai-models-intro">
         <div class="ai-models-intro-icon">🤖</div>
         <div class="ai-models-intro-text">
-          配置 OpenAI 兼容的模型后，可为「推荐菜谱」和「语音/图像识别」分别指定模型。点击下方模型卡片设置用途。
+          配置 OpenAI 兼容的模型后，可为「推荐菜谱」、「语音/图像识别」和「日历分析」分别指定模型。点击下方模型卡片设置用途。
         </div>
       </div>
 
@@ -2788,10 +2793,11 @@ function showAIModels() {
             <div class="ai-default-empty-sub">点击下方模型卡片设置用途</div>
           </div>
         `}
-        ${(!recommendModel || !recognizeModel) && config.models.length > 0 ? `
+        ${(!recommendModel || !recognizeModel || !calendarModel) && config.models.length > 0 ? `
           <div class="ai-use-hint">
             ${!recommendModel ? '⚠️ 未指定「推荐菜谱」模型，食材灵感推荐不可用<br>' : ''}
-            ${!recognizeModel ? '⚠️ 未指定「语音/图像识别」模型，语音和拍照功能不可用' : ''}
+            ${!recognizeModel ? '⚠️ 未指定「语音/图像识别」模型，语音和拍照功能不可用<br>' : ''}
+            ${!calendarModel ? '⚠️ 未指定「日历分析」模型，做菜日历的大厨建议不可用' : ''}
           </div>
         ` : ''}
       </div>
@@ -2847,6 +2853,7 @@ function openAIUseEditor(modelId) {
   // 如果该用途已被其他模型占用，提示将切换
   const recommendOwner = config.models.find((m) => m.id !== modelId && m.uses && m.uses.includes("recommend"));
   const recognizeOwner = config.models.find((m) => m.id !== modelId && m.uses && m.uses.includes("recognize"));
+  const calendarOwner = config.models.find((m) => m.id !== modelId && m.uses && m.uses.includes("calendar"));
 
   const modal = document.getElementById("aiUseModal");
   document.getElementById("aiUseModalModelName").textContent = model.name;
@@ -2854,14 +2861,17 @@ function openAIUseEditor(modelId) {
 
   const tagRecommend = document.getElementById("aiUseTagRecommend");
   const tagRecognize = document.getElementById("aiUseTagRecognize");
+  const tagCalendar = document.getElementById("aiUseTagCalendar");
   tagRecommend.classList.toggle("selected", currentUses.includes("recommend"));
   tagRecognize.classList.toggle("selected", currentUses.includes("recognize"));
+  tagCalendar.classList.toggle("selected", currentUses.includes("calendar"));
 
   // 提示
   const hintEl = document.getElementById("aiUseModalHint");
   const hints = [];
   if (!currentUses.includes("recommend") && recommendOwner) hints.push(`「推荐菜谱」当前由 ${recommendOwner.name} 使用，选中后将切换`);
   if (!currentUses.includes("recognize") && recognizeOwner) hints.push(`「语音/图像识别」当前由 ${recognizeOwner.name} 使用，选中后将切换`);
+  if (!currentUses.includes("calendar") && calendarOwner) hints.push(`「日历分析」当前由 ${calendarOwner.name} 使用，选中后将切换`);
   hintEl.innerHTML = hints.length > 0 ? hints.join("<br>") : "";
 
   modal.classList.remove("hidden");
@@ -2880,6 +2890,7 @@ function confirmAIUses() {
   const uses = [];
   if (document.getElementById("aiUseTagRecommend").classList.contains("selected")) uses.push("recommend");
   if (document.getElementById("aiUseTagRecognize").classList.contains("selected")) uses.push("recognize");
+  if (document.getElementById("aiUseTagCalendar").classList.contains("selected")) uses.push("calendar");
 
   // 同一用途只允许一个模型使用：清除其他模型的相同用途
   uses.forEach((u) => {
@@ -3329,6 +3340,11 @@ function handleChefAgentClick() {
 
   // 检查是否在菜谱详情页
   if (!ChefAgent.isOnRecipePage()) {
+    // 在日历时间线页面，跳转到大厨点评
+    if (calendarMode === "timeline") {
+      analyzeCalendarWithAI();
+      return;
+    }
     showChefAgentToast("仅菜谱页面可以使用");
     return;
   }
@@ -3354,6 +3370,106 @@ function handleChefAgentClick() {
 
 function closeChefAgentPanel() {
   document.getElementById("chefAgentPanel").classList.add("hidden");
+}
+
+// ============================================
+// 日历 AI 分析：大厨点评做菜记录
+// ============================================
+async function analyzeCalendarWithAI() {
+  const model = getAIModelByUse("calendar");
+  if (!model) {
+    showToast("请先在AI模型管理中设置「日历分析」模型");
+    return;
+  }
+
+  const records = getCookedHistory();
+  if (records.length === 0) {
+    showToast("还没有做菜记录");
+    return;
+  }
+
+  // 收集菜谱信息
+  const recipeSummaries = records.map((r) => {
+    const recipe = allRecipes.find((x) => x.id === r.recipeId);
+    const category = recipe ? (recipe.categoryLabel || recipe.category || "未知") : "未知";
+    const date = new Date(r.timestamp);
+    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
+    return `- ${dateStr}：${r.title}（${category}）${r.count > 1 ? `，做过${r.count}次` : ""}`;
+  }).join("\n");
+
+  const prompt = `以下是我最近的做菜记录，请作为一位资深美食顾问进行分析并给出建议：
+
+${recipeSummaries}
+
+请从以下方面给出建议（用中文回答）：
+1. **饮食均衡分析**：最近的菜品在荤素搭配、营养均衡方面做得如何？
+2. **食材多样性**：食材种类是否丰富？有没有过于单一的食材？
+3. **做菜建议**：根据最近的饮食趋势，推荐接下来适合做什么菜（给出3-5道具体菜名和理由）。比如如果肉类太多就推荐清淡的蔬菜类，如果偏清淡可以适当推荐一些肉类。
+4. **烹饪技巧建议**：针对已做的菜品，有什么可以改进的烹饪技巧？
+
+请简洁明了地回答，用 markdown 格式。`;
+
+  // 显示加载状态
+  const panel = document.getElementById("chefAgentPanel");
+  const content = document.getElementById("chefAgentPanelContent");
+  content.innerHTML = `
+    <div class="chef-agent-header">
+      <span class="chef-agent-emoji">👨‍🍳</span>
+      <div>
+        <div class="chef-agent-title">大厨点评</div>
+        <div class="chef-agent-recipe">正在分析做菜记录...</div>
+      </div>
+    </div>
+    <div class="chef-agent-loading">
+      <div class="chef-agent-loading-spinner"></div>
+      <div>AI 正在分析您的饮食记录</div>
+    </div>
+  `;
+  panel.classList.remove("hidden");
+
+  try {
+    const result = await callAI(prompt, "calendar", "你是一位资深美食顾问和营养师，擅长分析饮食记录并给出均衡饮食建议。请用简洁专业的中文回答。");
+    content.innerHTML = `
+      <div class="chef-agent-header">
+        <span class="chef-agent-emoji">👨‍🍳</span>
+        <div>
+          <div class="chef-agent-title">大厨点评</div>
+          <div class="chef-agent-recipe">基于 ${records.length} 道做菜记录的分析</div>
+        </div>
+      </div>
+      <div class="chef-agent-ai-result">${formatAIResult(result)}</div>
+    `;
+  } catch (e) {
+    content.innerHTML = `
+      <div class="chef-agent-header">
+        <span class="chef-agent-emoji">👨‍🍳</span>
+        <div>
+          <div class="chef-agent-title">大厨点评</div>
+          <div class="chef-agent-recipe">分析失败</div>
+        </div>
+      </div>
+      <div class="chef-agent-ai-error">AI 分析失败：${e.message || "请重试"}</div>
+    `;
+  }
+}
+
+// 简单 markdown 格式化
+function formatAIResult(text) {
+  if (!text) return "";
+  let html = text;
+  // 代码块
+  html = html.replace(/```[\s\S]*?```/g, (m) => `<pre>${m.replace(/```/g, "")}</pre>`);
+  // 标题
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  // 粗体
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // 列表
+  html = html.replace(/^(\d+)\. (.+)$/gm, '<div class="ai-result-item">$2</div>');
+  html = html.replace(/^- (.+)$/gm, '<div class="ai-result-item">• $1</div>');
+  // 换行
+  html = html.replace(/\n/g, '<br>');
+  return html;
 }
 
 function showChefAgentToast(msg) {
