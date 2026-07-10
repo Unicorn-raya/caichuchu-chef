@@ -535,6 +535,9 @@ function setupNavigation() {
 
 function renderPage(page) {
   currentPage = page;
+  // 切换页面时关闭大厨点评面板
+  const chefPanel = document.getElementById("chefAgentPanel");
+  if (chefPanel) chefPanel.classList.add("hidden");
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.page === page);
   });
@@ -3340,12 +3343,12 @@ function handleChefAgentClick() {
 
   // 检查是否在菜谱详情页
   if (!ChefAgent.isOnRecipePage()) {
-    // 在日历时间线页面，跳转到大厨点评
-    if (calendarMode === "timeline") {
+    // 仅在日历时间线页面，跳转到大厨点评
+    if (currentPage === "calendar" && calendarMode === "timeline") {
       analyzeCalendarWithAI();
       return;
     }
-    showChefAgentToast("仅菜谱页面可以使用");
+    showChefAgentToast("仅菜谱页面和日历时间线页面可以使用");
     return;
   }
 

@@ -2673,6 +2673,10 @@ body {
   background: #6366f1;
   color: #fff;
 }
+.ai-use-tag.calendar {
+  background: #e85d8a;
+  color: #fff;
+}
 .ai-builtin-badge {
   display: inline-flex;
   align-items: center;
