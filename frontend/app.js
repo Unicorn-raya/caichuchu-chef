@@ -440,6 +440,7 @@ async function callAIDirect(model, messages) {
       model: model.model,
       messages: messages,
       stream: false,
+      max_tokens: 16384,
     }),
   });
   if (!res.ok) {
