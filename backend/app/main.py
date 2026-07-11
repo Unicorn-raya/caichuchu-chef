@@ -142,25 +142,12 @@ async def get_categories():
 
 class AIChatRequest(BaseModel):
     messages: list[dict]
-    model: Optional[str] = DEFAULT_AI_MODEL
-    temperature: float = 0.7
-    max_tokens: int = 8192
-    # 自定义模型配置（内置模型不传，使用后端环境变量）
-    url: Optional[str] = None
-    apiKey: Optional[str] = None
 
 
 @app.post("/api/ai/chat")
 async def ai_chat(request: AIChatRequest):
-    """AI 对话代理接口（前端通过此接口调用第三方 AI，隐藏密钥）"""
-    content = call_ai_proxy(
-        messages=request.messages,
-        model=request.model or DEFAULT_AI_MODEL,
-        temperature=request.temperature,
-        max_tokens=request.max_tokens,
-        url=request.url,
-        api_key=request.apiKey,
-    )
+    """AI 对话代理接口（仅代理内置默认模型，自定义模型由前端直连）"""
+    content = call_ai_proxy(messages=request.messages)
     return {"content": content}
 
 

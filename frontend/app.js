@@ -358,21 +358,23 @@ function getDefaultAIModel() {
 async function callAI(prompt, useCase = "recommend", systemPrompt) {
   const sys = systemPrompt || "你是一位资深美食顾问，用简洁生动的中文回答用户关于食材搭配和菜谱的问题。详细展开，内容不限字数。";
   const model = getAIModelByUse(useCase);
+  const messages = [
+    { role: "system", content: sys },
+    { role: "user", content: prompt },
+  ];
+
+  if (model && !model.builtin) {
+    // 自定义模型：前端直接调用，不经过后端
+    return await callAIDirect(model, messages);
+  }
+
+  // 内置模型：通过后端代理（隐藏密钥）
   const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: sys },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 8192,
-      // 内置模型不传 url/apiKey（用后端环境变量），自定义模型传完整配置
-      ...(model && !model.builtin ? { model: model.model, url: model.url, apiKey: model.apiKey } : {}),
-    }),
+    body: JSON.stringify({ messages }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
@@ -383,32 +385,35 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
 }
 
 /**
- * 调用 AI 视觉模型识别图片中的食材（通过后端代理，隐藏密钥）
+ * 调用 AI 视觉模型识别图片中的食材
  * @param {string} imageBase64 带 data:前缀的 base64 图片
  * @param {string} prompt 提示文本
  * @returns {Promise<string>} AI 返回的文本
  */
 async function callAIVision(imageBase64, prompt) {
   const model = getAIModelByUse("recognize");
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: imageBase64 } },
+      ],
+    },
+  ];
+
+  if (model && !model.builtin) {
+    // 自定义模型：前端直接调用
+    return await callAIDirect(model, messages);
+  }
+
+  // 内置模型：通过后端代理
   const res = await fetch(`${API_BASE}/api/ai/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: imageBase64 } },
-          ],
-        },
-      ],
-      temperature: 0.2,
-      // 内置模型不传 url/apiKey（用后端环境变量），自定义模型传完整配置
-      ...(model && !model.builtin ? { model: model.model, url: model.url, apiKey: model.apiKey } : {}),
-    }),
+    body: JSON.stringify({ messages }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
@@ -416,6 +421,33 @@ async function callAIVision(imageBase64, prompt) {
   }
   const data = await res.json();
   return data.content || "";
+}
+
+/**
+ * 前端直接调用自定义 AI 模型（不经过后端）
+ * @param {object} model 模型配置 { url, apiKey, model }
+ * @param {array} messages 消息列表
+ * @returns {Promise<string>} AI 返回的文本
+ */
+async function callAIDirect(model, messages) {
+  const res = await fetch(`${model.url}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${model.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model.model,
+      messages: messages,
+      stream: false,
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "（AI 未返回内容）";
 }
 
 // ============================================
