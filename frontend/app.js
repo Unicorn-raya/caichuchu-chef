@@ -799,6 +799,14 @@ function formatAIText(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+  // ### 等标题转为加粗（加粗到第一个标点符号，如冒号）
+  html = html.replace(/^#{1,6}\s+(.+)$/gm, (match, content) => {
+    const punctIdx = content.search(/[：:，,.。！？、]/);
+    if (punctIdx > 0) {
+      return `<strong>${content.slice(0, punctIdx)}</strong>${content.slice(punctIdx)}`;
+    }
+    return `<strong>${content}</strong>`;
+  });
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/^\s*[-•]\s+(.+)$/gm, "<li>$1</li>");
   html = html.replace(/(<li>[\s\S]+?<\/li>)/g, "<ul>$1</ul>");
