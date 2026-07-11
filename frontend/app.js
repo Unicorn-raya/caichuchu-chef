@@ -3294,7 +3294,7 @@ function initChefAgentFab() {
   let fabX = 0, fabY = 0;
   let hasMoved = false;
 
-  // 触摸事件
+  // 触摸事件 — 仅用于拖拽
   fab.addEventListener("touchstart", (e) => {
     const touch = e.touches[0];
     startX = touch.clientX;
@@ -3308,32 +3308,32 @@ function initChefAgentFab() {
 
   fab.addEventListener("touchmove", (e) => {
     if (!isDragging) return;
-    e.preventDefault();
     const touch = e.touches[0];
     const dx = touch.clientX - startX;
     const dy = touch.clientY - startY;
-    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) hasMoved = true;
-
-    let newX = fabX + dx;
-    let newY = fabY + dy;
-    // 边界检测
-    const fabSize = 56;
-    newX = Math.max(0, Math.min(window.innerWidth - fabSize, newX));
-    newY = Math.max(0, Math.min(window.innerHeight - fabSize, newY));
-    fab.style.left = newX + "px";
-    fab.style.top = newY + "px";
-    fab.style.right = "auto";
-    fab.style.bottom = "auto";
+    // 仅在确认是拖拽（移动超过阈值）时才 preventDefault 和更新位置
+    // 这样点击（微小移动）不会阻止后续 click 事件的触发
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      hasMoved = true;
+      e.preventDefault();
+      let newX = fabX + dx;
+      let newY = fabY + dy;
+      const fabSize = 56;
+      newX = Math.max(0, Math.min(window.innerWidth - fabSize, newX));
+      newY = Math.max(0, Math.min(window.innerHeight - fabSize, newY));
+      fab.style.left = newX + "px";
+      fab.style.top = newY + "px";
+      fab.style.right = "auto";
+      fab.style.bottom = "auto";
+    }
   }, { passive: false });
 
-  fab.addEventListener("touchend", (e) => {
+  fab.addEventListener("touchend", () => {
     isDragging = false;
-    if (!hasMoved) {
-      handleChefAgentClick();
-    }
+    // 点击处理统一交给 click 事件
   });
 
-  // 鼠标事件
+  // 鼠标事件 — 仅用于拖拽
   fab.addEventListener("mousedown", (e) => {
     startX = e.clientX;
     startY = e.clientY;
@@ -3363,10 +3363,16 @@ function initChefAgentFab() {
   });
 
   document.addEventListener("mouseup", () => {
-    if (isDragging && !hasMoved) {
-      handleChefAgentClick();
-    }
     isDragging = false;
+  });
+
+  // 统一 click 事件处理（桌面和手机端都会触发）
+  fab.addEventListener("click", () => {
+    if (hasMoved) {
+      hasMoved = false; // 拖拽后重置，不触发点击
+      return;
+    }
+    handleChefAgentClick();
   });
 }
 
