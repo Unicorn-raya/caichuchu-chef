@@ -3652,6 +3652,15 @@ body {
   transition: opacity 0.8s ease;
 }
 
+/* 白天模式：使用页面背景色 + 深色文字 */
+.boot-overlay.daytime {
+  background: var(--bg);
+}
+.boot-overlay.daytime .boot-text,
+.boot-overlay.daytime .boot-cursor {
+  color: var(--text);
+}
+
 .boot-overlay.fade-out {
   opacity: 0;
   pointer-events: none;

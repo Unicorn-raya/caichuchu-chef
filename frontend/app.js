@@ -136,6 +136,12 @@ async function showBootAnimation() {
   }
   sessionStorage.setItem("caichuchu_boot_shown", "1");
 
+  // 白天（6-18点）用页面背景色，夜晚用黑色
+  const h = new Date().getHours();
+  if (h >= 6 && h < 18) {
+    overlay.classList.add("daytime");
+  }
+
   const textEl = document.getElementById("bootText");
   const greeting = getGreeting();
 
