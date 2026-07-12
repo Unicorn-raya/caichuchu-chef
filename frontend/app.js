@@ -107,14 +107,51 @@ const LONG_PRESS_DURATION = 1000; // 1秒
 let editingIngredientIndex = -1;
 let editingIngredientName = "";
 async function init() {
+  // 开机动画（与数据加载并行）
+  const bootPromise = showBootAnimation();
+
   loadFridge();
   loadStats();
   loadDietPrefs();
   loadAllergens();
   await Promise.all([fetchShelfLife(), fetchRecipes(), fetchTags()]);
+
+  // 等待开机动画结束
+  await bootPromise;
+
   setupNavigation();
   renderPage("home");
   initChefAgentFab();
+}
+
+// 开机动画：逐字显示问候语，类似苹果开机
+async function showBootAnimation() {
+  const overlay = document.getElementById("bootOverlay");
+  if (!overlay) return;
+
+  // 仅每个会话首次打开时显示
+  if (sessionStorage.getItem("caichuchu_boot_shown")) {
+    overlay.remove();
+    return;
+  }
+  sessionStorage.setItem("caichuchu_boot_shown", "1");
+
+  const textEl = document.getElementById("bootText");
+  const greeting = getGreeting();
+
+  // 逐字写出
+  for (let i = 0; i < greeting.length; i++) {
+    textEl.textContent += greeting[i];
+    await new Promise((r) => setTimeout(r, 130));
+  }
+
+  // 停留片刻
+  await new Promise((r) => setTimeout(r, 700));
+
+  // 淡出
+  overlay.classList.add("fade-out");
+  await new Promise((r) => setTimeout(r, 800));
+  overlay.remove();
 }
 
 // ============================================
