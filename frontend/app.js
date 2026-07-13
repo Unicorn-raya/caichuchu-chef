@@ -2157,6 +2157,24 @@ function filterDiscoverRecipes(query) {
   `;
 }
 
+// 随机抽一道菜（大厨按钮在发现页的行为）
+function pickRandomRecipe() {
+  if (allRecipes.length === 0) return;
+  const randomRecipe = allRecipes[Math.floor(Math.random() * allRecipes.length)];
+  const content = document.getElementById("discoverContent");
+  if (!content) return;
+  content.innerHTML = `
+    <div class="discover-search-result">
+      <div class="discover-search-count">🎲 大厨为你随机推荐</div>
+      <div class="recipe-list">
+        ${renderRecipeListCard(randomRecipe)}
+      </div>
+    </div>
+  `;
+  // 滚动到结果
+  content.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function renderRecipeListCard(recipe) {
   const image = recipe.images && recipe.images.length > 0
     ? recipe.images[0]
@@ -2364,8 +2382,8 @@ function renderCalendarPage() {
       </div>
 
       <div class="calendar-tabs">
-        <button class="calendar-tab ${calendarMode === 'calendar' ? 'active' : ''}" onclick="switchCalendarMode('calendar')">📅 日历模式</button>
         <button class="calendar-tab ${calendarMode === 'timeline' ? 'active' : ''}" onclick="switchCalendarMode('timeline')">🐟 时间线</button>
+        <button class="calendar-tab ${calendarMode === 'calendar' ? 'active' : ''}" onclick="switchCalendarMode('calendar')">📅 日历模式</button>
       </div>
 
       <div id="calendarContent">
@@ -3431,34 +3449,43 @@ function handleChefAgentClick() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
 
-  // 检查是否在菜谱详情页
-  if (!ChefAgent.isOnRecipePage()) {
-    // 仅在日历时间线页面，跳转到大厨点评
-    if (currentPage === "calendar" && calendarMode === "timeline") {
-      analyzeCalendarWithAI();
-      return;
-    }
-    showChefAgentToast("仅菜谱页面和日历时间线页面可以使用");
+  // 菜谱详情页 → 大厨点评
+  if (ChefAgent.isOnRecipePage()) {
+    // 显示载入中：厨师emoji换成🤔
+    fab.classList.add("loading");
+    fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+    setTimeout(() => {
+      const result = ChefAgent.generateAdvice();
+      fab.classList.remove("loading");
+      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      ChefAgent.renderAdvicePanel(result);
+    }, 500);
     return;
   }
 
-  // 显示载入中：厨师emoji换成🤔
-  fab.classList.add("loading");
-  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+  // 冰箱首页 → 一键生成今晚菜单
+  if (currentPage === "home") {
+    if (fridge.length === 0) {
+      showChefAgentToast("冰箱还是空的，先添加食材吧");
+      return;
+    }
+    generateMenu();
+    return;
+  }
 
-  // 模拟读取页面（给用户视觉反馈）
-  setTimeout(() => {
-    const result = ChefAgent.generateAdvice();
-    // 恢复图标
-    fab.classList.remove("loading");
-    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+  // 发现页面 → 随机抽一道菜
+  if (currentPage === "discover") {
+    pickRandomRecipe();
+    return;
+  }
 
-    // 显示建议面板
-    const panel = document.getElementById("chefAgentPanel");
-    const content = document.getElementById("chefAgentPanelContent");
-    content.innerHTML = ChefAgent.renderAdvicePanel(result);
-    panel.classList.remove("hidden");
-  }, 800);
+  // 日历时间线 → 大厨点评
+  if (currentPage === "calendar" && calendarMode === "timeline") {
+    analyzeCalendarWithAI();
+    return;
+  }
+
+  showChefAgentToast("此页面暂不支持大厨功能");
 }
 
 function closeChefAgentPanel() {
