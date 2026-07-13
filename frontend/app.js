@@ -1334,7 +1334,10 @@ function _selectCombosDedup(combos, maxUsePerRecipe, maxCombos) {
 
 async function generateMenu() {
   const ingredients = fridge.map((i) => i.name);
-  if (ingredients.length === 0) return;
+  if (ingredients.length === 0) {
+    showToast("冰箱还是空的，先添加食材吧");
+    return;
+  }
 
   const app = document.getElementById("app");
   app.innerHTML = `
@@ -3466,13 +3469,9 @@ function handleChefAgentClick() {
     return;
   }
 
-  // 冰箱首页 → 一键生成今晚菜单
+  // 冰箱首页 → 弹出大厨菜单（生成菜谱 / 清空冰箱）
   if (currentPage === "home") {
-    if (fridge.length === 0) {
-      showChefAgentToast("冰箱还是空的，先添加食材吧");
-      return;
-    }
-    generateMenu();
+    showChefHomeMenu();
     return;
   }
 
@@ -3489,6 +3488,53 @@ function handleChefAgentClick() {
   }
 
   showChefAgentToast("此页面暂不支持大厨功能");
+}
+
+// 冰箱首页大厨弹窗：生成菜谱 / 清空冰箱
+function showChefHomeMenu() {
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+  // 大厨emoji变成思考
+  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+
+  const popup = document.createElement("div");
+  popup.id = "chefHomeMenu";
+  popup.className = "chef-home-menu";
+  popup.innerHTML = `
+    <div class="chef-home-menu-backdrop" onclick="closeChefHomeMenu()"></div>
+    <div class="chef-home-menu-card">
+      <button class="chef-home-menu-item" onclick="closeChefHomeMenu(); generateMenu();">
+        <span class="chef-home-menu-icon">🍳</span>
+        <span>生成菜谱</span>
+      </button>
+      <div class="chef-home-menu-chef">🤔</div>
+      <button class="chef-home-menu-item chef-home-menu-danger" onclick="closeChefHomeMenu(); confirmClearFridge();">
+        <span class="chef-home-menu-icon">🗑️</span>
+        <span>清空冰箱</span>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(popup);
+}
+
+function closeChefHomeMenu() {
+  const popup = document.getElementById("chefHomeMenu");
+  if (popup) popup.remove();
+  const fab = document.getElementById("chefAgentFab");
+  if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+}
+
+function confirmClearFridge() {
+  if (fridge.length === 0) {
+    showChefAgentToast("冰箱已经是空的");
+    return;
+  }
+  if (confirm("确定清空冰箱所有食材？")) {
+    fridge = [];
+    saveFridge();
+    renderPage("home");
+    showToast("冰箱已清空");
+  }
 }
 
 function closeChefAgentPanel() {
