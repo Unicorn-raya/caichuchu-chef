@@ -2163,18 +2163,27 @@ function filterDiscoverRecipes(query) {
 // 随机抽一道菜（大厨按钮在发现页的行为）
 function pickRandomRecipe() {
   if (allRecipes.length === 0) return;
-  const randomRecipe = allRecipes[Math.floor(Math.random() * allRecipes.length)];
+  // 三组类别各选一道：肉/水产/早餐 + 甜品/饮品/半成品/汤粥 + 主食/素菜蛋奶
+  const group1 = ["aquatic", "breakfast", "meat_dish"];
+  const group2 = ["dessert", "drink", "semi-finished", "soup"];
+  const group3 = ["staple", "vegetable_dish"];
+  const pickFromGroup = (cats) => {
+    const pool = allRecipes.filter((r) => cats.includes(r.category));
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  };
+  const picked = [pickFromGroup(group1), pickFromGroup(group2), pickFromGroup(group3)].filter(Boolean);
+  if (picked.length === 0) return;
   const content = document.getElementById("discoverContent");
   if (!content) return;
   content.innerHTML = `
     <div class="discover-search-result">
-      <div class="discover-search-count">🎲 大厨为你随机推荐</div>
+      <div class="discover-search-count">🎲 大厨为你随机推荐 ${picked.length} 道菜</div>
       <div class="recipe-list">
-        ${renderRecipeListCard(randomRecipe)}
+        ${picked.map((r) => renderRecipeListCard(r)).join("")}
       </div>
     </div>
   `;
-  // 滚动到结果
   content.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -2286,7 +2295,7 @@ function goBackFromRecipeDetail() {
 // ============================================
 // 做菜日历（日历模式 + 鱼骨图时间线模式）
 // ============================================
-let calendarMode = "calendar"; // 'calendar' | 'timeline'
+let calendarMode = "timeline"; // 'calendar' | 'timeline'
 let calendarMonth = new Date();
 let timelineHighlightKey = null; // 时间线模式下高亮的日期 key
 
@@ -3538,9 +3547,8 @@ function updateChefHomeMenuPosition() {
 
 function closeChefHomeMenuOutside(e) {
   const popup = document.getElementById("chefHomeMenu");
-  const fab = document.getElementById("chefAgentFab");
   if (!popup) return;
-  if (popup.contains(e.target) || (fab && fab.contains(e.target))) return;
+  if (popup.contains(e.target)) return;
   closeChefHomeMenu();
 }
 
