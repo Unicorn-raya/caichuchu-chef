@@ -3506,37 +3506,46 @@ function showChefHomeMenu() {
   popup.style.left = fabCenterX + "px";
   popup.style.bottom = (window.innerHeight - fabRect.top) + "px";
   popup.innerHTML = `
-    <button class="chef-home-menu-circle" style="--delay: 0.1s" onclick="closeChefHomeMenu(); generateMenu();" title="生成菜谱">
+    <button class="chef-home-menu-circle" style="--delay: 0.1s" onclick="closeChefHomeMenu(); setTimeout(generateMenu, 250);" title="生成菜谱">
       <span>🍳</span>
     </button>
-    <button class="chef-home-menu-circle chef-home-menu-danger" style="--delay: 0.2s" onclick="closeChefHomeMenu(); confirmClearFridge();" title="清空冰箱">
+    <button class="chef-home-menu-circle chef-home-menu-danger" style="--delay: 0.2s" onclick="closeChefHomeMenu(); setTimeout(confirmClearFridge, 250);" title="清空冰箱">
       <span>🗑️</span>
     </button>
   `;
   document.body.appendChild(popup);
 
-  // 点击页面其他地方关闭
-  setTimeout(() => {
-    document.addEventListener("click", closeChefHomeMenuOutside, { once: true });
-  }, 0);
+  // 点击页面其他地方关闭（捕获阶段，避免FAB点击立即触发
+  requestAnimationFrame(() => {
+    document.addEventListener("click", closeChefHomeMenuOutside, true);
+  });
 }
 
 function closeChefHomeMenuOutside(e) {
   const popup = document.getElementById("chefHomeMenu");
   const fab = document.getElementById("chefAgentFab");
   if (!popup) return;
-  if (popup.contains(e.target) || (fab && fab.contains(e.target))) {
-    document.addEventListener("click", closeChefHomeMenuOutside, { once: true });
-    return;
-  }
+  if (popup.contains(e.target) || (fab && fab.contains(e.target))) return;
   closeChefHomeMenu();
 }
 
 function closeChefHomeMenu() {
+  document.removeEventListener("click", closeChefHomeMenuOutside, true);
   const popup = document.getElementById("chefHomeMenu");
-  if (popup) popup.remove();
   const fab = document.getElementById("chefAgentFab");
-  if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+  if (!popup) return;
+  // 退出动画：逆向气泡下降
+  popup.classList.add("closing");
+  const circles = popup.querySelectorAll(".chef-home-menu-circle");
+  circles.forEach((c, i) => {
+    c.style.animation = "chefBubbleDown 0.25s ease-in forwards";
+    c.style.animationDelay = `${0.15 - i * 0.07}s`;
+  });
+  // 动画结束后移除
+  setTimeout(() => {
+    popup.remove();
+    if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+  }, 300);
 }
 
 function confirmClearFridge() {
