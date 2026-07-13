@@ -3490,31 +3490,46 @@ function handleChefAgentClick() {
   showChefAgentToast("此页面暂不支持大厨功能");
 }
 
-// 冰箱首页大厨弹窗：生成菜谱 / 清空冰箱
+// 冰箱首页大厨弹窗：生成菜谱 / 清空冰箱（从FAB向上展开圆形按钮）
 function showChefHomeMenu() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
   // 大厨emoji变成思考
   fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
 
+  const fabRect = fab.getBoundingClientRect();
+  const fabCenterX = fabRect.left + fabRect.width / 2;
+
   const popup = document.createElement("div");
   popup.id = "chefHomeMenu";
   popup.className = "chef-home-menu";
+  popup.style.left = fabCenterX + "px";
+  popup.style.bottom = (window.innerHeight - fabRect.top) + "px";
   popup.innerHTML = `
-    <div class="chef-home-menu-backdrop" onclick="closeChefHomeMenu()"></div>
-    <div class="chef-home-menu-card">
-      <button class="chef-home-menu-item" onclick="closeChefHomeMenu(); generateMenu();">
-        <span class="chef-home-menu-icon">🍳</span>
-        <span>生成菜谱</span>
-      </button>
-      <div class="chef-home-menu-chef">🤔</div>
-      <button class="chef-home-menu-item chef-home-menu-danger" onclick="closeChefHomeMenu(); confirmClearFridge();">
-        <span class="chef-home-menu-icon">🗑️</span>
-        <span>清空冰箱</span>
-      </button>
-    </div>
+    <button class="chef-home-menu-circle" style="--delay: 0.1s" onclick="closeChefHomeMenu(); generateMenu();" title="生成菜谱">
+      <span>🍳</span>
+    </button>
+    <button class="chef-home-menu-circle chef-home-menu-danger" style="--delay: 0.2s" onclick="closeChefHomeMenu(); confirmClearFridge();" title="清空冰箱">
+      <span>🗑️</span>
+    </button>
   `;
   document.body.appendChild(popup);
+
+  // 点击页面其他地方关闭
+  setTimeout(() => {
+    document.addEventListener("click", closeChefHomeMenuOutside, { once: true });
+  }, 0);
+}
+
+function closeChefHomeMenuOutside(e) {
+  const popup = document.getElementById("chefHomeMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup) return;
+  if (popup.contains(e.target) || (fab && fab.contains(e.target))) {
+    document.addEventListener("click", closeChefHomeMenuOutside, { once: true });
+    return;
+  }
+  closeChefHomeMenu();
 }
 
 function closeChefHomeMenu() {

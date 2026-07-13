@@ -3703,70 +3703,55 @@ body {
 }
 
 /* ============================================
-   冰箱首页大厨弹窗
+   冰箱首页大厨弹窗（圆形按钮）
    ============================================ */
 .chef-home-menu {
   position: fixed;
-  inset: 0;
   z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.chef-home-menu-backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(45, 38, 32, 0.35);
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.2s ease;
-}
-
-.chef-home-menu-card {
-  position: relative;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  animation: chefHomeMenuIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 12px;
+  padding-bottom: 12px;
+  pointer-events: none;
 }
 
-@keyframes chefHomeMenuIn {
-  from { opacity: 0; transform: scale(0.85); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.chef-home-menu-item {
+.chef-home-menu-circle {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px 32px;
-  min-width: 180px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  font-family: var(--font-body);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text);
+  justify-content: center;
+  font-size: 24px;
   cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s;
+  pointer-events: auto;
+  transition: transform 0.15s;
+  opacity: 0;
+  animation: chefBubbleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0s);
+  transform: translateY(20px) scale(0.6);
 }
 
-.chef-home-menu-item:active {
-  transform: scale(0.95);
+@keyframes chefBubbleUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
-.chef-home-menu-danger {
-  color: var(--expired);
+.chef-home-menu-circle:active {
+  transform: scale(0.9);
 }
 
-.chef-home-menu-icon {
-  font-size: 22px;
-}
-
-.chef-home-menu-chef {
-  font-size: 48px;
-  line-height: 1;
+.chef-home-menu-circle.chef-home-menu-danger span {
+  filter: none;
 }
