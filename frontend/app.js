@@ -3397,6 +3397,7 @@ function initChefAgentFab() {
       fab.style.top = newY + "px";
       fab.style.right = "auto";
       fab.style.bottom = "auto";
+      updateChefHomeMenuPosition();
     }
   }, { passive: false });
 
@@ -3432,6 +3433,7 @@ function initChefAgentFab() {
     fab.style.top = newY + "px";
     fab.style.right = "auto";
     fab.style.bottom = "auto";
+    updateChefHomeMenuPosition();
   });
 
   document.addEventListener("mouseup", () => {
@@ -3470,7 +3472,8 @@ function handleChefAgentClick() {
   }
 
   // 冰箱首页 → 弹出大厨菜单（生成菜谱 / 清空冰箱）
-  if (currentPage === "home") {
+  // 注意：食材灵感滑动页 currentPage 仍为 home，需通过 DOM 排除
+  if (currentPage === "home" && !document.querySelector(".swipe-page")) {
     showChefHomeMenu();
     return;
   }
@@ -3492,19 +3495,16 @@ function handleChefAgentClick() {
 
 // 冰箱首页大厨弹窗：生成菜谱 / 清空冰箱（从FAB向上展开圆形按钮）
 function showChefHomeMenu() {
+  // 已存在则不重复创建
+  if (document.getElementById("chefHomeMenu")) return;
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
   // 大厨emoji变成思考
   fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
 
-  const fabRect = fab.getBoundingClientRect();
-  const fabCenterX = fabRect.left + fabRect.width / 2;
-
   const popup = document.createElement("div");
   popup.id = "chefHomeMenu";
   popup.className = "chef-home-menu";
-  popup.style.left = fabCenterX + "px";
-  popup.style.bottom = (window.innerHeight - fabRect.top) + "px";
   popup.innerHTML = `
     <button class="chef-home-menu-circle" style="--delay: 0.1s" onclick="closeChefHomeMenu(); setTimeout(generateMenu, 250);" title="生成菜谱">
       <span>🍳</span>
@@ -3514,11 +3514,26 @@ function showChefHomeMenu() {
     </button>
   `;
   document.body.appendChild(popup);
+  updateChefHomeMenuPosition();
 
-  // 点击页面其他地方关闭（捕获阶段，避免FAB点击立即触发
+  // 点击页面其他地方关闭（下一帧添加，避免当前click事件触发）
   requestAnimationFrame(() => {
-    document.addEventListener("click", closeChefHomeMenuOutside, true);
+    requestAnimationFrame(() => {
+      document.addEventListener("click", closeChefHomeMenuOutside, true);
+      document.addEventListener("touchstart", closeChefHomeMenuOutside, true);
+    });
   });
+}
+
+// 根据FAB位置更新弹窗位置（拖拽FAB时同步调用）
+function updateChefHomeMenuPosition() {
+  const popup = document.getElementById("chefHomeMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup || !fab) return;
+  const fabRect = fab.getBoundingClientRect();
+  const fabCenterX = fabRect.left + fabRect.width / 2;
+  popup.style.left = fabCenterX + "px";
+  popup.style.bottom = (window.innerHeight - fabRect.top) + "px";
 }
 
 function closeChefHomeMenuOutside(e) {
@@ -3531,11 +3546,11 @@ function closeChefHomeMenuOutside(e) {
 
 function closeChefHomeMenu() {
   document.removeEventListener("click", closeChefHomeMenuOutside, true);
+  document.removeEventListener("touchstart", closeChefHomeMenuOutside, true);
   const popup = document.getElementById("chefHomeMenu");
   const fab = document.getElementById("chefAgentFab");
   if (!popup) return;
   // 退出动画：逆向气泡下降
-  popup.classList.add("closing");
   const circles = popup.querySelectorAll(".chef-home-menu-circle");
   circles.forEach((c, i) => {
     c.style.animation = "chefBubbleDown 0.25s ease-in forwards";
