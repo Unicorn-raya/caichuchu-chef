@@ -3458,7 +3458,10 @@ function handleChefAgentClick() {
       const result = ChefAgent.generateAdvice();
       fab.classList.remove("loading");
       fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
-      ChefAgent.renderAdvicePanel(result);
+      const panel = document.getElementById("chefAgentPanel");
+      const content = document.getElementById("chefAgentPanelContent");
+      content.innerHTML = ChefAgent.renderAdvicePanel(result);
+      panel.classList.remove("hidden");
     }, 500);
     return;
   }
