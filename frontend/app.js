@@ -3487,6 +3487,14 @@ function handleChefAgentClick() {
     return;
   }
 
+  // 食材灵感推荐页面 → 随机推荐3道菜（跳转到发现页展示）
+  if (currentPage === "home" && document.querySelector(".swipe-page")) {
+    document.getElementById("bottomNav").style.display = "";
+    renderPage("discover");
+    pickRandomRecipe();
+    return;
+  }
+
   // 发现页面 → 随机抽一道菜
   if (currentPage === "discover") {
     pickRandomRecipe();
