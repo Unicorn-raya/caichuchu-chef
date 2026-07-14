@@ -107,6 +107,7 @@ const LONG_PRESS_DURATION = 1000; // 1秒
 let editingIngredientIndex = -1;
 let editingIngredientName = "";
 async function init() {
+  FrontendLogger.info("app", "应用初始化");
   // 开机动画（与数据加载并行）
   const bootPromise = showBootAnimation();
 
@@ -114,6 +115,7 @@ async function init() {
   loadStats();
   loadDietPrefs();
   loadAllergens();
+  FrontendLogger.info("app", "本地数据加载", { fridge: fridge.length, dietPrefs: dietPreferences.length, allergens: allergens.length });
   await Promise.all([fetchShelfLife(), fetchRecipes(), fetchTags()]);
 
   // 等待开机动画结束
@@ -406,25 +408,41 @@ async function callAI(prompt, useCase = "recommend", systemPrompt) {
     { role: "user", content: prompt },
   ];
 
+  FrontendLogger.info("ai", `AI调用 useCase=${useCase}`, { promptPreview: prompt.slice(0, 100), model: model ? model.id : "builtin" });
+
   if (model && !model.builtin) {
     // 自定义模型：前端直接调用，不经过后端
-    return await callAIDirect(model, messages);
+    try {
+      const result = await callAIDirect(model, messages);
+      FrontendLogger.info("ai", "AI返回(自定义)", { length: result.length });
+      return result;
+    } catch (e) {
+      FrontendLogger.error("ai", "AI调用失败(自定义)", { error: e.message, model: model.id });
+      throw e;
+    }
   }
 
   // 内置模型：通过后端代理（隐藏密钥）
-  const res = await fetch(`${API_BASE}/api/ai/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ messages }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
+  try {
+    const res = await fetch(`${API_BASE}/api/ai/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ messages }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`AI请求失败: ${res.status} ${errText.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const content = data.content || "（AI 未返回内容）";
+    FrontendLogger.info("ai", "AI返回(内置)", { length: content.length });
+    return content;
+  } catch (e) {
+    FrontendLogger.error("ai", "AI调用失败(内置)", { error: e.message });
+    throw e;
   }
-  const data = await res.json();
-  return data.content || "（AI 未返回内容）";
 }
 
 /**
@@ -502,7 +520,9 @@ async function fetchShelfLife() {
     const res = await fetch(`${API_BASE}/api/shelf-life`);
     const data = await res.json();
     shelfLifeData = data.shelfLife || {};
+    FrontendLogger.info("api", "保质期数据加载", { count: Object.keys(shelfLifeData).length });
   } catch (e) {
+    FrontendLogger.error("api", "保质期数据加载失败", { error: e.message });
     console.error("保质期数据加载失败", e);
   }
 }
@@ -515,10 +535,12 @@ async function fetchRecipes() {
       const data = await res.json();
       if (data.recipes && data.recipes.length > 0) {
         allRecipes = data.recipes;
+        FrontendLogger.info("api", "菜谱加载(本地)", { count: allRecipes.length });
         return;
       }
     }
   } catch (e) {
+    FrontendLogger.warning("api", "本地 recipes.json 加载失败，回退到后端 API", { error: e.message });
     console.warn("本地 recipes.json 加载失败，回退到后端 API", e);
   }
   // 回退：后端 API
@@ -526,7 +548,9 @@ async function fetchRecipes() {
     const res = await fetch(`${API_BASE}/api/recipes`);
     const data = await res.json();
     allRecipes = data.recipes || [];
+    FrontendLogger.info("api", "菜谱加载(后端)", { count: allRecipes.length });
   } catch (e) {
+    FrontendLogger.error("api", "菜谱加载失败", { error: e.message });
     console.error("菜谱加载失败", e);
   }
 }
@@ -535,12 +559,15 @@ async function fetchTags() {
   try {
     const res = await fetch(`${API_BASE}/api/tags`);
     allTags = await res.json();
+    FrontendLogger.info("api", "标签加载", { count: allTags.length });
   } catch (e) {
+    FrontendLogger.error("api", "标签加载失败", { error: e.message });
     console.error("标签加载失败", e);
   }
 }
 
 async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false) {
+  FrontendLogger.info("api", "搜索菜谱", { ingredients, mode, tags, topK, showAll });
   const body = JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll });
   // 线上后端冷启动需要 30+ 秒（模型延迟加载），移动端网络不稳定，需要超时 + 重试
   const MAX_RETRIES = 1;
@@ -558,7 +585,9 @@ async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false
       });
       clearTimeout(timer);
       if (!res.ok) throw new Error(`后端错误 ${res.status}`);
-      return await res.json();
+      const results = await res.json();
+      FrontendLogger.info("api", "搜索结果", { count: results.length });
+      return results;
     } catch (e) {
       clearTimeout(timer);
       lastErr = e;
@@ -574,6 +603,7 @@ async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false
       }
     }
   }
+  FrontendLogger.error("api", "搜索失败", { error: lastErr?.message, ingredients });
   throw lastErr || new Error("搜索失败");
 }
 
@@ -610,6 +640,7 @@ function setupNavigation() {
 }
 
 function renderPage(page) {
+  FrontendLogger.info("page", `切换到页面: ${page}`);
   currentPage = page;
   // 切换页面时关闭大厨点评面板
   const chefPanel = document.getElementById("chefAgentPanel");
@@ -1335,9 +1366,11 @@ function _selectCombosDedup(combos, maxUsePerRecipe, maxCombos) {
 async function generateMenu() {
   const ingredients = fridge.map((i) => i.name);
   if (ingredients.length === 0) {
+    FrontendLogger.warning("menu", "生成菜单失败：冰箱为空");
     showToast("冰箱还是空的，先添加食材吧");
     return;
   }
+  FrontendLogger.info("menu", "生成菜单", { ingredients });
 
   const app = document.getElementById("app");
   app.innerHTML = `
@@ -1361,8 +1394,10 @@ async function generateMenu() {
     searchResults = buildMenuCombinations(processed);
     selectedTags = [];
     swipeIndex = 0;
+    FrontendLogger.info("menu", "菜单生成完成", { rawResults: rawResults.length, combos: searchResults.length });
     renderSwipePage();
   } catch (e) {
+    FrontendLogger.error("menu", "生成菜单失败", { error: e.message });
     console.error("生成菜单失败:", e);
     const reason = e.message || "未知错误";
     showToast(`搜索失败：${reason}，请重试`);
@@ -2163,6 +2198,7 @@ function filterDiscoverRecipes(query) {
 // 随机抽一道菜（大厨按钮在发现页的行为）
 function pickRandomRecipe() {
   if (allRecipes.length === 0) return;
+  FrontendLogger.info("discover", "随机推荐3道菜");
   // 三组类别各选一道：肉/水产/早餐 + 甜品/饮品/半成品/汤粥 + 主食/素菜蛋奶
   const group1 = ["aquatic", "breakfast", "meat_dish"];
   const group2 = ["dessert", "drink", "semi-finished", "soup"];
@@ -3462,6 +3498,7 @@ function initChefAgentFab() {
 function handleChefAgentClick() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
+  FrontendLogger.info("chef", "大厨按钮点击", { page: currentPage, isRecipePage: ChefAgent.isOnRecipePage() });
 
   // 菜谱详情页 → 大厨点评
   if (ChefAgent.isOnRecipePage()) {
@@ -3600,6 +3637,7 @@ function closeChefAgentPanel() {
 // 日历 AI 分析：大厨点评做菜记录
 // ============================================
 async function analyzeCalendarWithAI() {
+  FrontendLogger.info("calendar", "日历AI分析");
   const model = getAIModelByUse("calendar");
   if (!model) {
     showToast("请先在AI模型管理中设置「日历分析」模型");

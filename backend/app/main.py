@@ -179,6 +179,32 @@ async def ai_config_status():
     return get_ai_config_status()
 
 
+# ---------- 前端日志收集 ----------
+
+
+class FrontendLogEntry(BaseModel):
+    level: str = "info"
+    module: str = "unknown"
+    message: str = ""
+    data: dict | None = None
+
+
+@app.post("/api/log")
+async def frontend_log(entries: list[FrontendLogEntry]):
+    """接收前端日志并输出到 stdout（HF container logs 可见）"""
+    fe_logger = logging.getLogger("app.frontend")
+    for entry in entries:
+        data_str = f" | data={entry.data}" if entry.data else ""
+        msg = f"[FE][{entry.module}] {entry.message}{data_str}"
+        if entry.level == "error":
+            fe_logger.error(msg)
+        elif entry.level == "warning":
+            fe_logger.warning(msg)
+        else:
+            fe_logger.info(msg)
+    return {"ok": True}
+
+
 # ---------- 静态文件服务 ----------
 
 
