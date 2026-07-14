@@ -4,9 +4,12 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Iterable
 
 from .models import Recipe
+
+logger = logging.getLogger(__name__)
 
 # 食材别名映射（同义词归一化）
 ALIAS_MAP: dict[str, str] = {
@@ -487,11 +490,14 @@ def recommend_recipes(
     show_all: bool = False,
 ) -> list[dict]:
     """完整的规则推荐流程：标签过滤 → 评分 → 过滤 → 排序"""
+    logger.info("评分 | 输入: 菜谱=%d, 食材=%s, 模式=%s, top_k=%d, 标签=%s, show_all=%s",
+                len(recipes), inventory_items, mode, top_k, tags, show_all)
     # 标签筛选
     filtered = recipes
     if tags:
         tag_set = set(tags)
         filtered = [r for r in recipes if tag_set & set(r.tags)]
+        logger.info("标签筛选后: %d 个菜谱", len(filtered))
 
     inventory = {normalize_item(item) for item in inventory_items if item}
     recommendations = []
@@ -499,4 +505,8 @@ def recommend_recipes(
         result = score_recipe(recipe, inventory, mode)
         if result is not None:
             recommendations.append(result)
-    return filter_and_sort(recommendations, mode, top_k, show_all=show_all)
+    results = filter_and_sort(recommendations, mode, top_k, show_all=show_all)
+    logger.info("评分 → 输出: %d 条推荐 (评分前3: %s)",
+                len(results),
+                [(r["recipe"].title, round(r["score"], 1)) for r in results[:3]])
+    return results

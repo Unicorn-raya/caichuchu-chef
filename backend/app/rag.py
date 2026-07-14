@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import pickle
 from pathlib import Path
@@ -15,6 +16,8 @@ import numpy as np
 
 from .models import Recipe
 from .scoring import recommend_recipes, normalize_item
+
+logger = logging.getLogger(__name__)
 
 # 默认嵌入模型（多语言，支持中文）
 DEFAULT_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
@@ -61,6 +64,7 @@ class RecipeRAG:
         self.recipe_texts = [self._build_recipe_text(r) for r in recipes]
 
         print(f"正在为 {len(recipes)} 个菜谱生成嵌入向量...")
+        logger.info("构建索引 | 菜谱数=%d, 模型=%s", len(recipes), self.model_name)
         self.embeddings = self.model.encode(
             self.recipe_texts,
             show_progress_bar=True,
@@ -76,7 +80,7 @@ class RecipeRAG:
                 {"recipes": [r.model_dump() for r in recipes], "texts": self.recipe_texts},
                 f,
             )
-        print(f"索引已保存到 {INDEX_DIR}")
+        logger.info("索引已保存到 %s", INDEX_DIR)
 
     def load_index(self) -> bool:
         """加载已有索引，返回是否成功
@@ -102,7 +106,7 @@ class RecipeRAG:
             rid not in latest_by_id for rid in cached_ids
         ):
             # 菜谱集合发生变化，需要重新构建索引
-            print("检测到菜谱集合变化，需要重建索引")
+            logger.warning("检测到菜谱集合变化，需要重建索引")
             return False
 
         self.recipes = [latest_by_id[rid] for rid in cached_ids]
@@ -133,10 +137,12 @@ class RecipeRAG:
 
         if show_all and tags:
             # 标签筛选模式：直接对所有匹配标签的菜谱评分
+            logger.info("RAG 标签筛选模式 | 标签=%s, 菜谱池=%d", tags, len(self.recipes))
             results = recommend_recipes(
                 self.recipes, ingredients, mode, top_k,
                 tags=tags, show_all=True,
             )
+            logger.info("RAG 标签筛选 → %d 条结果", len(results))
             return results
 
         self._load_model()
@@ -157,6 +163,7 @@ class RecipeRAG:
 
         # 3. 对候选菜谱应用规则评分
         candidates = [self.recipes[i] for i in top_indices]
+        logger.info("RAG 检索 | 查询=%s, 候选=%d, top_k=%d", query_text, len(candidates), top_k)
         results = recommend_recipes(candidates, ingredients, mode, top_k, tags=tags)
 
         # 附加 RAG 相似度分数
@@ -169,4 +176,7 @@ class RecipeRAG:
             if idx is not None:
                 result["ragScore"] = float(similarities[idx])
 
+        logger.info("RAG 检索 → %d 条结果, 前3: %s",
+                    len(results),
+                    [r["recipe"].title for r in results[:3]])
         return results

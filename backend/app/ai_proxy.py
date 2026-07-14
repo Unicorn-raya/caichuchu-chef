@@ -1,12 +1,15 @@
 """AI 代理模块：前端通过后端调用第三方 AI API，隐藏密钥（使用 OpenAI SDK）"""
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import HTTPException
 from openai import OpenAI, APIError, APIConnectionError, APITimeoutError, AuthenticationError
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -58,7 +61,7 @@ def call_ai_proxy(messages: list[dict]) -> str:
         )
     client = get_client()
     target_model = DEFAULT_AI_MODEL
-    print(f"[AI Proxy] 内置模型调用, base_url={DEFAULT_AI_URL}, model={target_model}")
+    logger.info("AI 调用 | model=%s, base_url=%s, 消息数=%d", target_model, DEFAULT_AI_URL[:30], len(messages))
 
     if not target_model:
         raise HTTPException(status_code=400, detail="未指定模型名称")
@@ -70,24 +73,27 @@ def call_ai_proxy(messages: list[dict]) -> str:
             stream=False,
         )
     except AuthenticationError as e:
-        print(f"[AI Proxy] 认证失败: {e}")
+        logger.error("AI 认证失败: %s", e)
         raise HTTPException(status_code=401, detail=f"AI 认证失败（Key 无效）: {str(e)}")
     except APITimeoutError:
+        logger.error("AI 请求超时")
         raise HTTPException(status_code=504, detail="AI 请求超时")
     except APIConnectionError as e:
-        print(f"[AI Proxy] 连接失败: {e}")
+        logger.error("AI 连接失败: %s", e)
         raise HTTPException(status_code=503, detail=f"AI 服务不可达: {str(e)}")
     except APIError as e:
-        print(f"[AI Proxy] API 错误 {e.status_code}: {e.message}")
+        logger.error("AI API 错误 %s: %s", e.status_code, e.message)
         raise HTTPException(
             status_code=e.status_code or 502,
             detail=f"AI 服务错误: {e.message}"
         )
     except Exception as e:
-        print(f"[AI Proxy] 未知错误: {type(e).__name__}: {e}")
+        logger.error("AI 未知错误 %s: %s", type(e).__name__, e)
         raise HTTPException(status_code=500, detail=f"AI 调用异常: {str(e)}")
 
     content = response.choices[0].message.content
     if not content:
+        logger.warning("AI 返回空内容")
         raise HTTPException(status_code=502, detail="AI 返回空内容")
+    logger.info("AI 返回成功 | %d 字", len(content))
     return content.strip()

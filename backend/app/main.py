@@ -1,11 +1,13 @@
 """FastAPI 主应用"""
 from __future__ import annotations
 
+import logging
 import os
+import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +17,8 @@ from .data import load_recipes, get_recipe_by_id
 from .models import SearchRequest, Recommendation
 from .rag import RecipeRAG
 from .ai_proxy import call_ai_proxy, DEFAULT_AI_MODEL, get_ai_config_status
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="菜厨厨 Chef API", version="1.0.0")
 
@@ -44,10 +48,10 @@ def get_rag_engine() -> RecipeRAG:
     if rag_engine is None:
         rag_engine = RecipeRAG()
         if not rag_engine.load_index():
-            print("索引不存在，正在构建...")
+            logger.warning("索引不存在，正在构建...")
             recipes = load_recipes()
             rag_engine.build_index(recipes)
-        print(f"RAG 引擎就绪，共 {len(rag_engine.recipes)} 个菜谱")
+        logger.info("RAG 引擎就绪，共 %d 个菜谱", len(rag_engine.recipes))
     return rag_engine
 
 
@@ -64,15 +68,20 @@ def get_recipes():
 @app.get("/api/recipes")
 async def get_all_recipes():
     """获取所有菜谱列表"""
-    return {"recipes": [r.model_dump() for r in get_recipes()]}
+    recipes = get_recipes()
+    logger.info("GET /api/recipes → 返回 %d 个菜谱", len(recipes))
+    return {"recipes": [r.model_dump() for r in recipes]}
 
 
 @app.get("/api/recipe/{recipe_id}")
 async def get_recipe(recipe_id: str):
     """获取单个菜谱详情"""
+    logger.info("GET /api/recipe/%s", recipe_id)
     recipe = get_recipe_by_id(get_recipes(), recipe_id)
     if recipe is None:
+        logger.warning("菜谱未找到: %s", recipe_id)
         raise HTTPException(status_code=404, detail="Recipe not found")
+    logger.info("→ 返回菜谱: %s", recipe.title)
     return recipe.model_dump()
 
 
@@ -85,6 +94,9 @@ async def search_recipes(request: SearchRequest):
     2. 规则评分：对候选菜谱应用食材覆盖率计算 + 加权评分公式
     3. 过滤排序：按模式过滤，按家常主菜排名和评分排序
     """
+    logger.info("POST /api/search | 食材=%s, 模式=%s, top_k=%d, 标签=%s, show_all=%s",
+                request.ingredients, request.mode, request.top_k, request.tags, request.show_all)
+    t0 = time.time()
     engine = get_rag_engine()
     results = engine.search(
         ingredients=request.ingredients,
@@ -93,6 +105,8 @@ async def search_recipes(request: SearchRequest):
         tags=request.tags if request.tags else None,
         show_all=request.show_all,
     )
+    elapsed = (time.time() - t0) * 1000
+    logger.info("→ 返回 %d 条推荐, 耗时 %.0fms", len(results), elapsed)
     return results
 
 
@@ -104,10 +118,12 @@ async def get_tags():
     for recipe in recipes:
         for tag in recipe.tags:
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
-    return [
+    tags_list = [
         {"value": tag, "label": tag, "count": count}
         for tag, count in sorted(tag_counts.items(), key=lambda x: -x[1])
     ]
+    logger.info("GET /api/tags → %d 个标签", len(tags_list))
+    return tags_list
 
 
 @app.get("/api/shelf-life")
@@ -147,7 +163,13 @@ class AIChatRequest(BaseModel):
 @app.post("/api/ai/chat")
 async def ai_chat(request: AIChatRequest):
     """AI 对话代理接口（仅代理内置默认模型，自定义模型由前端直连）"""
+    msg_count = len(request.messages)
+    last_msg_preview = (request.messages[-1].get("content", "")[:100] if request.messages else "")
+    logger.info("POST /api/ai/chat | 消息数=%d, 末条预览=%s...", msg_count, last_msg_preview)
+    t0 = time.time()
     content = call_ai_proxy(messages=request.messages)
+    elapsed = (time.time() - t0) * 1000
+    logger.info("→ AI 返回 %d 字, 耗时 %.0fms", len(content), elapsed)
     return {"content": content}
 
 
@@ -189,8 +211,9 @@ if FRONTEND_DIR.exists():
 @app.on_event("startup")
 async def startup_event():
     """启动时预加载菜谱数据"""
+    logger.info("=== 服务启动 ===")
     get_recipes()
-    print("菜谱数据预加载完成")
+    logger.info("菜谱数据预加载完成")
 
 
 if __name__ == "__main__":
