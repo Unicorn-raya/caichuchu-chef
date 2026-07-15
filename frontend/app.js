@@ -2475,6 +2475,18 @@ function getCookedDatesSet() {
   return set;
 }
 
+// 获取 calendarMonth 当月的做菜天数
+function getCookedDaysThisMonth() {
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
+  let count = 0;
+  getCookedDatesSet().forEach((key) => {
+    if (key.startsWith(prefix)) count++;
+  });
+  return count;
+}
+
 function showCalendar() {
   // 兼容旧入口：直接跳到 calendar 标签页
   renderPage("calendar");
@@ -2629,7 +2641,6 @@ function renderCalendarMode() {
         <div class="cal-nav-label">${monthLabel}</div>
         <button class="cal-nav-btn" onclick="nextCalMonth()">›</button>
       </div>
-      <div class="cal-summary">本月做菜 <strong>${cookedCount}</strong> 天</div>
       <div class="cal-grid">
         ${cells}
       </div>
@@ -3736,6 +3747,13 @@ function handleChefAgentClick() {
   // 日历时间线 → 大厨点评
   if (currentPage === "calendar" && calendarMode === "timeline") {
     analyzeCalendarWithAI();
+    return;
+  }
+
+  // 日历模式 → 提示本月做菜天数
+  if (currentPage === "calendar" && calendarMode === "calendar") {
+    const cookedCount = getCookedDaysThisMonth();
+    showChefAgentToast(`本月做菜 ${cookedCount} 天`);
     return;
   }
 
