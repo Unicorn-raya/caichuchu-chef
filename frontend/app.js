@@ -32,6 +32,11 @@ const STATS_KEY = "caichuchu_stats";
 const AI_MODELS_KEY = "caichuchu_ai_models";
 const DIET_PREFS_KEY = "caichuchu_diet_prefs";
 const ALLERGENS_KEY = "caichuchu_allergens";
+const SEASONINGS_KEY = "caichuchu_seasonings";
+const UTENSILS_KEY = "caichuchu_utensils";
+
+const DEFAULT_SEASONINGS = ["酱油", "食用油", "生抽", "老抽", "蚝油", "盐", "糖"];
+const DEFAULT_UTENSILS = ["铁锅", "烤箱"];
 
 // 饮食偏好选项（硬过滤：不符合的菜谱不进入推荐队列）
 const DIET_PREFERENCE_OPTIONS = [
@@ -97,6 +102,8 @@ let cookingRecipeId = "";
 let cookingMissingIngredients = [];
 let dietPreferences = []; // 用户饮食偏好（硬过滤）
 let allergens = []; // 用户过敏源（软处理：标识 + 排序权重降低）
+let seasonings = []; // 厨房调料（算入库存食材参与推荐）
+let utensils = []; // 厨房厨具
 
 // 长按计时器
 let longPressTimer = null;
@@ -115,6 +122,8 @@ async function init() {
   loadStats();
   loadDietPrefs();
   loadAllergens();
+  loadSeasonings();
+  loadUtensils();
   FrontendLogger.info("app", "本地数据加载", { fridge: fridge.length, dietPrefs: dietPreferences.length, allergens: allergens.length });
   await Promise.all([fetchShelfLife(), fetchRecipes(), fetchTags()]);
 
@@ -230,6 +239,35 @@ function loadAllergens() {
 
 function saveAllergens() {
   localStorage.setItem(ALLERGENS_KEY, JSON.stringify(allergens));
+}
+
+// ============================================
+// 厨房：调料 & 厨具
+// ============================================
+function loadSeasonings() {
+  try {
+    const data = localStorage.getItem(SEASONINGS_KEY);
+    seasonings = data ? JSON.parse(data) : [...DEFAULT_SEASONINGS];
+  } catch {
+    seasonings = [...DEFAULT_SEASONINGS];
+  }
+}
+
+function saveSeasonings() {
+  localStorage.setItem(SEASONINGS_KEY, JSON.stringify(seasonings));
+}
+
+function loadUtensils() {
+  try {
+    const data = localStorage.getItem(UTENSILS_KEY);
+    utensils = data ? JSON.parse(data) : [...DEFAULT_UTENSILS];
+  } catch {
+    utensils = [...DEFAULT_UTENSILS];
+  }
+}
+
+function saveUtensils() {
+  localStorage.setItem(UTENSILS_KEY, JSON.stringify(utensils));
 }
 
 // 收集菜谱所有食材
@@ -1400,6 +1438,8 @@ function _selectCombosDedup(combos, maxUsePerRecipe, maxCombos) {
 
 async function generateMenu() {
   const ingredients = fridge.map((i) => i.name);
+  // 调料算入库存食材参与推荐
+  const allIngredients = [...ingredients, ...seasonings];
   if (ingredients.length === 0) {
     FrontendLogger.warning("menu", "生成菜单失败：冰箱为空");
     showToast("冰箱还是空的，先添加食材吧");
@@ -1418,7 +1458,7 @@ async function generateMenu() {
 
   try {
     // 获取更多结果用于本地标签过滤 + 组合去重（去重需要较大菜谱池）
-    const rawResults = await searchRecipes(ingredients, "scrappy", [], 80);
+    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 80);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
     const processed = applyDietAndAllergens(rawResults);
     // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
@@ -2714,6 +2754,18 @@ function renderMe() {
         </div>
       </div>
 
+      <div class="me-section-title">厨房</div>
+      <div class="me-menu-item" onclick="showKitchenSection('seasonings')">
+        <span>🧂 调料</span>
+        <span class="me-menu-value">${seasonings.length} 样</span>
+        <span class="me-menu-arrow">›</span>
+      </div>
+      <div class="me-menu-item" onclick="showKitchenSection('utensils')">
+        <span>🍳 厨具</span>
+        <span class="me-menu-value">${utensils.length} 样</span>
+        <span class="me-menu-arrow">›</span>
+      </div>
+
       <div class="me-section-title">设置</div>
       <div class="me-menu-item" onclick="showAIModels()">
         <span>🤖 AI模型管理</span>
@@ -2962,6 +3014,77 @@ function clearAllData() {
     renderPage("me");
     showToast("已清空");
   }
+}
+
+// ============================================
+// 厨房：调料 / 厨具 管理页面
+// ============================================
+function showKitchenSection(type) {
+  const isSeasonings = type === "seasonings";
+  const title = isSeasonings ? "调料管理" : "厨具管理";
+  const items = isSeasonings ? seasonings : utensils;
+  const emoji = isSeasonings ? "🧂" : "🍳";
+  const hint = isSeasonings ? "调料会自动算入库存食材参与菜谱推荐" : "厨具记录你厨房里已有的烹饪工具";
+  const placeholder = isSeasonings ? "输入调料名称…" : "输入厨具名称…";
+
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">${title}</div>
+        <div style="width:50px"></div>
+      </div>
+
+      <div class="kitchen-hint">${emoji} ${hint}</div>
+
+      <div class="kitchen-items">
+        ${items.map((item, idx) => `
+          <div class="kitchen-item">
+            <span class="kitchen-item-name">${emoji} ${item}</span>
+            <button class="kitchen-item-delete" onclick="removeKitchenItem('${type}', ${idx})">×</button>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="kitchen-add-row">
+        <input type="text" id="kitchenAddInput" placeholder="${placeholder}"
+          onkeydown="if(event.key==='Enter')addKitchenItem('${type}')"
+          class="kitchen-add-input" />
+        <button class="kitchen-add-btn" onclick="addKitchenItem('${type}')">添加</button>
+      </div>
+    </div>
+  `;
+}
+
+function addKitchenItem(type) {
+  const input = document.getElementById("kitchenAddInput");
+  if (!input) return;
+  const name = input.value.trim();
+  if (!name) return;
+  const items = type === "seasonings" ? seasonings : utensils;
+  if (items.includes(name)) {
+    showToast("已存在");
+    return;
+  }
+  items.push(name);
+  if (type === "seasonings") saveSeasonings();
+  else saveUtensils();
+  showKitchenSection(type);
+}
+
+function removeKitchenItem(type, index) {
+  const items = type === "seasonings" ? seasonings : utensils;
+  const name = items[index];
+  items.splice(index, 1);
+  if (type === "seasonings") saveSeasonings();
+  else saveUtensils();
+  showKitchenSection(type);
+  showToast(`已移除 ${name}`);
 }
 
 // ============================================
