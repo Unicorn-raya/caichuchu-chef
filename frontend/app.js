@@ -147,10 +147,15 @@ async function showBootAnimation() {
   }
   sessionStorage.setItem("caichuchu_boot_shown", "1");
 
-  // 白天（6-18点）用页面背景色，夜晚用黑色
+  // 白天（6-18点）用页面背景色 + 黑色logo，夜晚用黑色背景 + 白色logo
   const h = new Date().getHours();
-  if (h >= 6 && h < 18) {
+  const isDaytime = h >= 6 && h < 18;
+  if (isDaytime) {
     overlay.classList.add("daytime");
+  }
+  const logoEl = overlay.querySelector(".boot-logo");
+  if (logoEl) {
+    logoEl.src = isDaytime ? "assets/logo-day.svg" : "assets/logo-night.svg";
   }
 
   const textEl = document.getElementById("bootText");

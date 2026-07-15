@@ -116,6 +116,12 @@ body {
   height: 22px;
 }
 
+.nav-logo-icon {
+  object-fit: contain;
+  width: 26px;
+  height: 26px;
+}
+
 /* ============================================
    通用布局
    ============================================ */
@@ -3811,8 +3817,10 @@ body {
 }
 
 .boot-logo {
-  font-size: 56px;
+  width: 120px;
+  height: 120px;
   animation: bootLogoIn 0.8s ease;
+  object-fit: contain;
 }
 
 @keyframes bootLogoIn {
