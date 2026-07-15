@@ -355,18 +355,20 @@ function applyAllergenMark(results) {
     return {
       ...r,
       hasAllergen,
-      recipe: {
-        ...r.recipe,
-        sortScore: hasAllergen ? (r.recipe.sortScore || 10) + 50 : r.recipe.sortScore,
-      },
     };
   });
 }
 
-// 应用饮食偏好 + 过敏源到搜索结果
+// 过敏源硬过滤：推荐结果中移除含过敏源的菜谱
+function filterByAllergens(results) {
+  if (allergens.length === 0) return results;
+  return results.filter((r) => !recipeHasUserAllergen(r.recipe));
+}
+
+// 应用饮食偏好 + 过敏源到搜索结果（推荐时：都硬过滤）
 function applyDietAndAllergens(results) {
   const filtered = filterByDietPrefs(results);
-  return applyAllergenMark(filtered);
+  return filterByAllergens(filtered);
 }
 
 // ============================================
@@ -1957,7 +1959,17 @@ function toggleTagFilter(tag) {
   } else {
     // 自定义标签：本地过滤 allSearchResults
     const filtered = filterByCustomTag(allSearchResults, selectedTags);
-    searchResults = buildMenuCombinations(filtered);
+    // "只差一样" 标签：只显示单菜，不生成组合
+    if (selectedTags.includes("missing_one")) {
+      searchResults = filtered.slice(0, 20).map((r) => ({
+        type: "single",
+        recipes: [r],
+        totalMissing: (r.missing || []).length,
+        totalMatchPercent: r.matchPercent || 0,
+      }));
+    } else {
+      searchResults = buildMenuCombinations(filtered);
+    }
   }
   swipeIndex = 0;
   renderSwipePage();
@@ -2335,11 +2347,38 @@ function pickRandomRecipe() {
   content.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// 获取菜谱与用户饮食偏好/过敏源的冲突标签（用于发现页标记）
+function getRecipeConflictLabels(recipe) {
+  const labels = [];
+  // 过敏源标记
+  if (allergens.length > 0 && recipeHasUserAllergen(recipe)) {
+    labels.push({ text: "含过敏源", cls: "conflict-allergen" });
+  }
+  // 饮食偏好标记
+  if (dietPreferences.length > 0) {
+    for (const pref of dietPreferences) {
+      if (pref === "no_spicy" && isSpicyRecipe(recipe)) {
+        labels.push({ text: "不吃辣", cls: "conflict-diet" });
+      } else if (pref === "light" && !isLightRecipe(recipe)) {
+        labels.push({ text: "非清淡", cls: "conflict-diet" });
+      } else if (pref === "low_calorie" && !isLowCalorieRecipe(recipe)) {
+        labels.push({ text: "非低卡", cls: "conflict-diet" });
+      } else if (pref === "low_oil" && !isLowOilRecipe(recipe)) {
+        labels.push({ text: "非少油", cls: "conflict-diet" });
+      } else if (pref === "vegetarian" && !isVegetarianRecipe(recipe)) {
+        labels.push({ text: "非素食", cls: "conflict-diet" });
+      }
+    }
+  }
+  return labels;
+}
+
 function renderRecipeListCard(recipe) {
   const image = recipe.images && recipe.images.length > 0
     ? recipe.images[0]
     : null;
   const emoji = getRecipeEmoji(recipe);
+  const conflictLabels = getRecipeConflictLabels(recipe);
 
   return `
     <div class="recipe-list-card" onclick="showRecipeDetailDirect('${recipe.id}')">
@@ -2348,6 +2387,7 @@ function renderRecipeListCard(recipe) {
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
+      ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
         <div class="recipe-list-title">${recipe.title}</div>
         <div class="recipe-list-meta">
