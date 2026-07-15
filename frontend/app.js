@@ -691,13 +691,13 @@ function renderHome() {
         </button>
       </div>
 
-      <div class="fridge-section">
+      <div class="fridge-section" onclick="clearShakeIfActive()">
         <div class="section-header">
           <div>
             <span class="section-title">库存食材</span>
             <span class="section-count">${fridge.length} 样</span>
           </div>
-          <button class="btn-add-ingredient" onclick="openInputSheet()">+</button>
+          <button class="btn-add-ingredient" onclick="event.stopPropagation();openInputSheet()">+</button>
         </div>
 
         ${expiringItems.length > 0 ? `
@@ -737,14 +737,14 @@ function renderIngredientGrid() {
         const emoji = INGREDIENT_EMOJI[item.name] || "🥘";
         const idx = fridge.indexOf(item);
         return `
-          <div class="ingredient-card status-${s.status}"
+          <div class="ingredient-card status-${s.status}" id="ingredient-card-${idx}"
                onmousedown="handleMouseDown(${idx}, event)"
                onmouseup="handleMouseUp(event)"
                onmouseleave="handleMouseLeave(event)"
                ontouchstart="handleTouchStart(${idx}, event)"
                ontouchend="handleTouchEnd(event)"
                ontouchmove="handleTouchMove(event)">
-            <button class="ingredient-delete" onclick="event.stopPropagation();removeIngredient(${idx})">×</button>
+            <button class="ingredient-delete" onclick="event.stopPropagation();toggleShakeDelete(${idx})">×</button>
             <span class="ingredient-emoji">${emoji}</span>
             <div class="ingredient-name">${item.name}</div>
             <div class="ingredient-expiry ${s.status}">${getExpiryText(s.status, s.daysLeft)}</div>
@@ -765,9 +765,44 @@ function renderEmptyFridge() {
   `;
 }
 
+// iOS 风格抖动删除：第一次点 × → 抖动；第二次点 × → 删除
+let shakingIngredientIdx = -1;
+
+function toggleShakeDelete(index) {
+  if (shakingIngredientIdx === index) {
+    // 第二次点击：删除
+    const name = fridge[index]?.name || "";
+    fridge.splice(index, 1);
+    saveFridge();
+    shakingIngredientIdx = -1;
+    renderPage("home");
+    showToast(`已移除 ${name}`);
+    return;
+  }
+  // 取消之前的抖动
+  if (shakingIngredientIdx >= 0) {
+    const prev = document.getElementById(`ingredient-card-${shakingIngredientIdx}`);
+    if (prev) prev.classList.remove("shaking");
+  }
+  // 开启当前卡片抖动
+  shakingIngredientIdx = index;
+  const card = document.getElementById(`ingredient-card-${index}`);
+  if (card) card.classList.add("shaking");
+}
+
+// 点击空白处取消抖动
+function clearShakeIfActive() {
+  if (shakingIngredientIdx >= 0) {
+    const card = document.getElementById(`ingredient-card-${shakingIngredientIdx}`);
+    if (card) card.classList.remove("shaking");
+    shakingIngredientIdx = -1;
+  }
+}
+
 function removeIngredient(index) {
   fridge.splice(index, 1);
   saveFridge();
+  shakingIngredientIdx = -1;
   renderPage("home");
   showToast("已移除");
 }
@@ -1405,6 +1440,45 @@ async function generateMenu() {
   }
 }
 
+// 推荐页自定义标签：基于 allSearchResults 本地过滤
+function getExpiringIngredients() {
+  return fridge.filter((item) => {
+    const s = getExpiryStatus(item.name, item.addedAt);
+    return s.status !== "fresh"; // expiring (≤3天) 或 expired
+  }).map((i) => i.name);
+}
+
+function getCustomSwipeTags() {
+  const cookNow = allSearchResults.filter((r) => (r.missing || []).length === 0).length;
+  const missingOne = allSearchResults.filter((r) => (r.missing || []).length === 1).length;
+  const expiringNames = getExpiringIngredients();
+  const clearExpiring = allSearchResults.filter((r) => {
+    const existing = r.existing || [];
+    return existing.some((ing) => expiringNames.includes(ing));
+  }).length;
+  return [
+    { value: "cook_now", label: "现在就能做", count: cookNow },
+    { value: "missing_one", label: "只差一样", count: missingOne },
+    { value: "clear_expiring", label: "优先清理临期食材", count: clearExpiring },
+  ];
+}
+
+function filterByCustomTag(results, tags) {
+  if (!tags || tags.length === 0) return results;
+  const expiringNames = getExpiringIngredients();
+  return results.filter((r) => {
+    for (const tag of tags) {
+      if (tag === "cook_now" && (r.missing || []).length === 0) return true;
+      if (tag === "missing_one" && (r.missing || []).length === 1) return true;
+      if (tag === "clear_expiring") {
+        const existing = r.existing || [];
+        if (existing.some((ing) => expiringNames.includes(ing))) return true;
+      }
+    }
+    return false;
+  });
+}
+
 function renderSwipePage() {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
@@ -1421,13 +1495,13 @@ function renderSwipePage() {
       </div>
 
       <div class="tag-filter-bar">
-        ${allTags.map((tag) => {
+        ${getCustomSwipeTags().map((tag) => {
           const isActive = selectedTags.includes(tag.value);
           return `
             <div class="tag-filter ${isActive ? "active" : ""}" onclick="toggleTagFilter('${tag.value}')">
               ${isActive ? '<svg class="tag-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ""}
               ${tag.label}
-              ${tag.count ? `<span class="tag-count">${tag.count}</span>` : ""}
+              <span class="tag-count">${tag.count}</span>
             </div>
           `;
         }).join("")}
@@ -1485,6 +1559,26 @@ function renderCardStack() {
   `;
 }
 
+// 生成推荐原因：临期食材提示 / 食材齐全 / 只差一样
+function getRecommendReason(rec) {
+  const expiringNames = getExpiringIngredients();
+  const existing = rec.existing || [];
+  const missing = rec.missing || [];
+  // 找出这道菜用到的临期食材
+  const usedExpiring = existing.filter((ing) => expiringNames.includes(ing));
+  if (usedExpiring.length > 0) {
+    return `${usedExpiring.slice(0, 2).join("、")}快过期了哦，赶紧用掉`;
+  }
+  if (missing.length === 0) {
+    return "食材齐全，立刻就能做";
+  }
+  if (missing.length === 1) {
+    return `只差一样：${missing[0]}就能做`;
+  }
+  // 兜底用后端生成的 reason
+  return rec.reason || `缺${missing.length}样食材`;
+}
+
 function renderSwipeCard(combo, stackIdx) {
   // 单菜兜底：直接走老的渲染逻辑，避免组合卡片样式显得空旷
   if (combo.type === "single") {
@@ -1514,7 +1608,7 @@ function renderSwipeCard(combo, stackIdx) {
             ${recipe.calories ? `<span>🔥 ${recipe.calories}卡</span>` : ""}
             ${recipe.difficulty ? `<span>难度 ${"★".repeat(recipe.difficulty)}</span>` : ""}
           </div>
-          <div class="swipe-card-reason">${rec.reason}</div>
+          <div class="swipe-card-reason">${getRecommendReason(rec)}</div>
           <div class="swipe-card-ingredients">
             ${haveChips}
             ${missingChips}
@@ -1557,6 +1651,7 @@ function renderSwipeCard(combo, stackIdx) {
               : `<span class="combo-missing-text">缺 ${(rec.missing || []).slice(0, 3).join("、")}${(rec.missing || []).length > 3 ? "…" : ""}</span>`
             }
           </div>
+          <div class="combo-item-reason">${getRecommendReason(rec)}</div>
         </div>
       </div>
     `;
@@ -1819,36 +1914,13 @@ function toggleTagFilter(tag) {
   if (selectedTags.length === 0) {
     // 取消所有标签，基于原始搜索结果重新生成组合
     searchResults = buildMenuCombinations(allSearchResults);
-    swipeIndex = 0;
-    renderSwipePage();
   } else {
-    // 有标签选中：重新搜索，获取该标签下所有匹配菜谱
-    const ingredients = fridge.map((i) => i.name);
-    const tagBar = document.querySelector(".tag-filter-bar");
-    if (tagBar) {
-      // 显示加载状态
-      const cards = document.querySelector(".card-stack-container");
-      if (cards) {
-        cards.innerHTML = `<div style="display:flex;justify-content:center;padding:60px 0"><div class="loading-spinner"></div></div>`;
-      }
-    }
-
-    searchRecipes(ingredients, "scrappy", selectedTags, 200, true).then((rawResults) => {
-      // 标签筛选后同样应用饮食偏好 + 过敏源
-      const results = applyDietAndAllergens(rawResults);
-      // 按 sortScore 升序，便于组合生成时优先选用简单菜
-      results.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
-      // 在过滤后的菜谱基础上生成组合
-      searchResults = buildMenuCombinations(results);
-      swipeIndex = 0;
-      renderSwipePage();
-    }).catch(() => {
-      showToast("筛选失败，请重试");
-      searchResults = buildMenuCombinations(allSearchResults);
-      swipeIndex = 0;
-      renderSwipePage();
-    });
+    // 自定义标签：本地过滤 allSearchResults
+    const filtered = filterByCustomTag(allSearchResults, selectedTags);
+    searchResults = buildMenuCombinations(filtered);
   }
+  swipeIndex = 0;
+  renderSwipePage();
 }
 
 function backToHome() {

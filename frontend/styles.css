@@ -362,6 +362,26 @@ body {
   opacity: 1;
 }
 
+/* iOS 风格抖动删除动画 */
+.ingredient-card.shaking {
+  animation: shake 0.4s ease-in-out infinite;
+  border-color: var(--expired) !important;
+}
+
+.ingredient-card.shaking .ingredient-delete {
+  opacity: 1;
+  background: var(--expired);
+  color: white;
+}
+
+@keyframes shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-3deg); }
+  40% { transform: rotate(3deg); }
+  60% { transform: rotate(-2deg); }
+  80% { transform: rotate(2deg); }
+}
+
 /* 空冰箱状态 */
 .empty-fridge {
   text-align: center;
@@ -902,6 +922,13 @@ body {
 }
 .combo-missing-text {
   color: #b5602a;
+}
+
+.combo-item-reason {
+  font-size: 11px;
+  color: var(--carrot);
+  margin-top: 2px;
+  font-weight: 500;
 }
 
 .combo-card-footer {
