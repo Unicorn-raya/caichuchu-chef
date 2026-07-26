@@ -704,8 +704,6 @@ const ChefGuides = {
         const customStepNotes = this._matchCustomNotesToSteps(steps, note.content);
         const totalMatches = customStepNotes.reduce((s, n) => s + n.length, 0);
         console.log("[ChefGuides] 匹配结果:", totalMatches, "条笔记");
-        // 判断是否有润色前内容
-        const hasRaw = note.rawContent && note.rawContent.trim() && note.rawContent.trim() !== note.content.trim();
         stepItems.forEach((item, si) => {
           const textEl = item.querySelector(".step-text");
           if (!textEl) return;
@@ -719,15 +717,6 @@ const ChefGuides = {
             }
             // 构建批注容器（厨师自有颜色）
             const wrapper = this._buildNotesWrapper(notes, chef.color, chef.name);
-            // 如果有原始内容，在批注底部添加原始内容区块
-            if (hasRaw) {
-              const rawSection = document.createElement("div");
-              rawSection.className = "cg-raw-content-block";
-              rawSection.innerHTML =
-                '<div class="cg-raw-content-label">原始输入</div>' +
-                '<div class="cg-raw-content-text">' + this.renderMarkdown(this._fillEmptySections(note.rawContent)) + '</div>';
-              wrapper.appendChild(rawSection);
-            }
             const notesContainer = document.createElement("div");
             notesContainer.className = "cg-page-notes-container";
             notesContainer.appendChild(wrapper);
@@ -736,6 +725,33 @@ const ChefGuides = {
             if (entry) entry.afterEls.push(notesContainer);
           }
         });
+
+        // 原始内容只显示一次，放在最后一个步骤后面
+        const hasRaw = note.rawContent && note.rawContent.trim() && note.rawContent.trim() !== note.content.trim();
+        if (hasRaw && stepItems.length > 0) {
+          const lastItem = stepItems[stepItems.length - 1];
+          const rawBlock = document.createElement("div");
+          rawBlock.className = "cg-page-notes-container chef-notes-custom";
+          rawBlock.style.setProperty("--cg-color", chef.color);
+          const rawInner = document.createElement("div");
+          rawInner.className = "cg-page-notes-wrapper";
+          rawInner.style.setProperty("--cg-color", chef.color);
+          rawInner.innerHTML =
+            '<div class="cg-page-annotation-bubble" style="color:' + chef.color + '">' +
+            '<span class="cg-step-note-tag">' + chef.name + ' · 原始输入</span>' +
+            '<div class="cg-raw-content-text">' + this.renderMarkdown(this._fillEmptySections(note.rawContent)) + '</div>' +
+            '</div>';
+          rawBlock.appendChild(rawInner);
+          // 找到最后一个步骤的下一个兄弟元素，插入到它后面
+          const afterLast = lastItem.nextElementSibling;
+          if (afterLast) {
+            lastItem.parentNode.insertBefore(rawBlock, afterLast);
+          } else {
+            lastItem.parentNode.appendChild(rawBlock);
+          }
+          const entry = this._originalStepHtml.find(e => e.item === lastItem);
+          if (entry) entry.afterEls.push(rawBlock);
+        }
       }
     }
 
@@ -789,6 +805,15 @@ const ChefGuides = {
   },
 
   // 匹配自定义厨师笔记到步骤（从用户输入的markdown文本）
+  // 分类步骤类型：prep=备料, cook=烹饪, other=其他
+  _classifyStepType(stepText) {
+    const prepKw = /切|丝|片|丁|块|条|末|腌|渍|泡|洗|净|剥|削|剁|碎|抹|涂|裹|沾|蘸|拌|绞|撕|择|理|浸泡|焯水|去皮|去骨|去腥/;
+    const cookKw = /炒|煎|炸|蒸|煮|炖|焖|烧|烤|扒|焗|爆|煸|熘|烩|焖|熬|汆|烫|焯|煸|锅|油|火|大火|小火|中火|热锅|温油|爆香|翻炒|收汁|勾芡|淋油|出锅|装盘/;
+    if (prepKw.test(stepText) && !cookKw.test(stepText)) return "prep";
+    if (cookKw.test(stepText)) return "cook";
+    return "other";
+  },
+
   _matchCustomNotesToSteps(steps, noteContent) {
     const parsed = this._parseRecipeMarkdown(noteContent);
     let pool = [
@@ -810,41 +835,75 @@ const ChefGuides = {
     // 最终仍为空则返回空
     if (pool.length === 0) return steps.map(() => []);
 
-    const allPairs = [];
-    for (let si = 0; si < steps.length; si++) {
-      const stepKw = new Set(this._extractKeywords(steps[si]));
-      if (stepKw.size === 0) continue;
-      for (let pi = 0; pi < pool.length; pi++) {
-        const noteKw = this._extractKeywords(pool[pi].text);
-        const overlap = noteKw.filter((k) => stepKw.has(k));
-        if (overlap.length > 0)
-          allPairs.push({ si, pi, score: overlap.length });
-      }
-    }
+    // 分类每个步骤的类型
+    const stepTypes = steps.map((s) => this._classifyStepType(s));
+    const firstPrepIdx = stepTypes.indexOf("prep");
+    const firstCookIdx = stepTypes.indexOf("cook");
+    const lastStepIdx = steps.length - 1;
 
-    // 回退：如果没有找到任何关键词重叠，尝试单字匹配
-    if (allPairs.length === 0) {
-      for (let si = 0; si < steps.length; si++) {
-        const stepChars = new Set(steps[si].replace(/[^\u4e00-\u9fa5]/g, "").split(""));
-        for (let pi = 0; pi < pool.length; pi++) {
-          const noteChars = new Set(pool[pi].text.replace(/[^\u4e00-\u9fa5]/g, "").split(""));
-          let overlap = 0;
-          for (const ch of noteChars) if (stepChars.has(ch)) overlap++;
-          if (overlap >= 3) allPairs.push({ si, pi, score: overlap });
+    // 分区匹配：不同section的笔记只匹配对应类型的步骤
+    const stepNotes = steps.map(() => []);
+    const usedIndices = new Set();
+    const maxPerStep = 3;
+
+    // 按section分组
+    const sections = ["食材准备", "详细做法", "关键技巧", "常见问题", "笔记"];
+    for (const section of sections) {
+      const sectionNotes = pool
+        .map((n, idx) => ({ ...n, idx }))
+        .filter((n) => n.section === section && !usedIndices.has(n.idx));
+      if (sectionNotes.length === 0) continue;
+
+      // 确定该section可匹配的步骤范围
+      let candidateSteps;
+      if (section === "食材准备") {
+        candidateSteps = firstPrepIdx >= 0 ? [firstPrepIdx] : [0];
+      } else if (section === "详细做法") {
+        candidateSteps = firstCookIdx >= 0 ? stepTypes.map((t, i) => t === "cook" ? i : -1).filter(i => i >= 0) : [lastStepIdx];
+      } else {
+        // 关键技巧/常见问题/笔记 → 匹配所有步骤
+        candidateSteps = steps.map((_, i) => i);
+      }
+
+      // 先尝试关键词匹配
+      const pairs = [];
+      for (const si of candidateSteps) {
+        const stepKw = new Set(this._extractKeywords(steps[si]));
+        if (stepKw.size === 0) continue;
+        for (const n of sectionNotes) {
+          const noteKw = this._extractKeywords(n.text);
+          const overlap = noteKw.filter((k) => stepKw.has(k));
+          if (overlap.length > 0)
+            pairs.push({ si, note: n, score: overlap.length });
+        }
+      }
+
+      pairs.sort((a, b) => b.score - a.score);
+      for (const pair of pairs) {
+        if (usedIndices.has(pair.note.idx)) continue;
+        if (stepNotes[pair.si].length >= maxPerStep) continue;
+        stepNotes[pair.si].push(pair.note);
+        usedIndices.add(pair.note.idx);
+      }
+
+      // 未匹配的笔记：分配到该section的默认步骤
+      for (const n of sectionNotes) {
+        if (usedIndices.has(n.idx)) continue;
+        let targetIdx;
+        if (section === "食材准备") {
+          targetIdx = firstPrepIdx >= 0 ? firstPrepIdx : 0;
+        } else if (section === "详细做法") {
+          targetIdx = firstCookIdx >= 0 ? firstCookIdx : lastStepIdx;
+        } else {
+          targetIdx = lastStepIdx;
+        }
+        if (stepNotes[targetIdx].length < maxPerStep) {
+          stepNotes[targetIdx].push(n);
+          usedIndices.add(n.idx);
         }
       }
     }
 
-    allPairs.sort((a, b) => b.score - a.score);
-    const stepNotes = steps.map(() => []);
-    const usedIndices = new Set();
-    const maxPerStep = 3;
-    for (const pair of allPairs) {
-      if (usedIndices.has(pair.pi)) continue;
-      if (stepNotes[pair.si].length >= maxPerStep) continue;
-      stepNotes[pair.si].push(pool[pair.pi]);
-      usedIndices.add(pair.pi);
-    }
     return stepNotes;
   },
 
