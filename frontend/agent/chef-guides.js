@@ -619,7 +619,7 @@ const ChefGuides = {
             : "🧑‍🍳";
           html += `<div class="cg-custom-summary-block" style="border-left:3px solid ${chef.color};padding-left:12px;margin-top:16px;">`;
           html += `<div style="font-size:13px;font-weight:600;color:${chef.color};margin-bottom:8px;">${avatarHtml} ${chef.name}的总结</div>`;
-          html += `<div class="cg-custom-note-content">${this.renderMarkdown(summary)}</div>`;
+          html += `<div class="cg-custom-note-content">${this.renderMarkdown(this._fillEmptySections(summary))}</div>`;
           html += `</div>`;
         }
       }
@@ -744,6 +744,28 @@ const ChefGuides = {
       wrapper.appendChild(bubble);
     }
     return wrapper;
+  },
+
+  // 填充空标题部分为"暂无"（用于自定义大厨内容渲染）
+  _fillEmptySections(md) {
+    const lines = md.split("\n");
+    const result = [];
+    for (let i = 0; i < lines.length; i++) {
+      result.push(lines[i]);
+      // 如果是 ## 标题行，检查后面是否有内容
+      if (/^##\s+/.test(lines[i].trim())) {
+        let j = i + 1;
+        let hasContent = false;
+        while (j < lines.length && !/^##\s+/.test(lines[j].trim())) {
+          if (lines[j].trim()) { hasContent = true; break; }
+          j++;
+        }
+        if (!hasContent) {
+          result.push("暂无");
+        }
+      }
+    }
+    return result.join("\n");
   },
 
   // 匹配自定义厨师笔记到步骤（从用户输入的markdown文本）

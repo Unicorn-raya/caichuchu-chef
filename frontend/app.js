@@ -3427,38 +3427,8 @@ function submitNewChef() {
   showChefs();
 }
 
-// 验证厨师内容是否为有效菜谱做法
+// 验证厨师内容（当前不限制内容，所有内容都提交给AI处理）
 function validateChefContent(content) {
-  const trimmed = content.trim();
-
-  // 检查长度
-  if (trimmed.length < 20) {
-    return { valid: false, reason: "内容过短，请提供更详细的做法" };
-  }
-
-  // 去除模板标题行后检查是否有实际内容
-  const bodyOnly = trimmed
-    .replace(/^#{1,6}\s+.*$/gm, "")
-    .replace(/^\s*$/gm, "")
-    .trim();
-  if (bodyOnly.length < 10) {
-    return { valid: false, reason: "请在模板标题下填写具体内容" };
-  }
-
-  // 检查是否包含烹饪相关关键词
-  const cookingKeywords = ["切", "炒", "煮", "蒸", "炸", "煎", "烤", "烧", "炖", "焖", "拌", "腌", "焯", "油", "锅", "火", "盐", "糖", "酱", "料", "食材", "步骤", "做法", "分钟", "克", "勺", "适量"];
-  const hasCookingKeyword = cookingKeywords.some((k) => trimmed.includes(k));
-
-  if (!hasCookingKeyword) {
-    return { valid: false, reason: "未检测到烹饪相关内容" };
-  }
-
-  // 检查是否包含步骤结构
-  const hasSteps = /步骤|做法|1[.、]|2[.、]|3[.、]|首先|然后|接着|最后|##|###/.test(trimmed);
-  if (!hasSteps) {
-    return { valid: false, reason: "建议按步骤格式书写（如：1. 切菜 2. 炒制...）" };
-  }
-
   return { valid: true };
 }
 
