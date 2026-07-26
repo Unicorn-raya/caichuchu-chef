@@ -688,9 +688,15 @@ function setupNavigation() {
 function renderPage(page) {
   FrontendLogger.info("page", `切换到页面: ${page}`);
   currentPage = page;
-  // 切换页面时关闭大厨点评面板
+  // 切换页面时关闭大厨点评面板和菜单，清理笔记状态
   const chefPanel = document.getElementById("chefAgentPanel");
   if (chefPanel) chefPanel.classList.add("hidden");
+  closeChefRecipeMenu();
+  // 清除大厨笔记并恢复FAB图标为默认大厨图标
+  if (window.ChefGuides && ChefGuides.isNotesActive()) {
+    ChefGuides.clearNotesFromPage();
+  }
+  updateChefFabState();
   document.querySelectorAll(".nav-btn").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.page === page);
   });
