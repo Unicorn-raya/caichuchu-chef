@@ -2897,6 +2897,235 @@ function showChefs() {
       </div>
     </div>
   `;
+  // 异步加载默认大厨笔记数量
+  loadDefaultChefNoteCount();
+}
+
+// 加载默认大厨的笔记数量（从 index.json 获取）
+async function loadDefaultChefNoteCount() {
+  try {
+    const resp = await fetch("data/guides/index.json");
+    if (!resp.ok) return;
+    const index = await resp.json();
+    const count = Object.keys(index).length;
+    document.querySelectorAll(".chef-note-count[data-default-count]").forEach((el) => {
+      el.textContent = `${count} 条笔记`;
+    });
+  } catch (e) {
+    document.querySelectorAll(".chef-note-count[data-default-count]").forEach((el) => {
+      el.textContent = "笔记加载失败";
+    });
+  }
+}
+
+// 编辑自定义大厨（预填表单）
+function editChef(chefId) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  const recipe = chef.recipes[0] || {};
+  const noteContent = recipe.content || "";
+  const summaryContent = recipe.summary || "";
+  const recipeTitle = recipe.title || "";
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showChefs()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">编辑大厨</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="chef-form">
+        <div class="chef-form-section">
+          <label class="chef-form-label">大厨名称</label>
+          <input type="text" id="newChefName" class="chef-form-input" placeholder="如：川菜大师" value="${chef.name}" />
+        </div>
+        <div class="chef-form-section">
+          <label class="chef-form-label">选择菜谱</label>
+          <div class="chef-recipe-picker" id="chefRecipePicker">
+            <input type="text" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterChefRecipeList(this.value)" />
+            <div class="chef-recipe-list" id="chefRecipeList">
+              ${renderChefRecipeListWithSelection("", recipeTitle)}
+            </div>
+          </div>
+        </div>
+        <div class="chef-form-section">
+          <label class="chef-form-label">大厨笔记（菜谱做法，支持Markdown格式）</label>
+          <textarea id="newChefContent" class="chef-form-textarea" rows="10" placeholder="示例：&#10;## 食材准备&#10;- 猪肉切丝，用生抽、料酒、淀粉腌制10分钟">${noteContent}</textarea>
+        </div>
+        <div class="chef-form-section">
+          <label class="chef-form-label">大厨总结（烹饪技法与要点，支持Markdown格式）</label>
+          <textarea id="newChefSummary" class="chef-form-textarea" rows="6" placeholder="示例：&#10;## 食材处理&#10;- 猪肉逆纹切丝更嫩">${summaryContent}</textarea>
+        </div>
+        <div class="chef-form-actions">
+          <button class="chef-form-submit" onclick="updateChef('${chefId}')">保存修改</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// 渲染菜谱列表并标记已选项
+function renderChefRecipeListWithSelection(filter, selectedTitle) {
+  const recipes = allRecipes.filter((r) => {
+    if (r.category === "condiment" || r.category === "template") return false;
+    if (filter && !r.title.toLowerCase().includes(filter.toLowerCase())) return false;
+    return true;
+  }).slice(0, 100);
+
+  return recipes.map((r) => `
+    <label class="chef-recipe-item">
+      <input type="radio" name="chefRecipeRadio" class="chef-recipe-checkbox" value="${r.title}" ${r.title === selectedTitle ? "checked" : ""} />
+      <span class="chef-recipe-item-title">${r.title}</span>
+      <span class="chef-recipe-item-category">${r.categoryLabel || r.category}</span>
+    </label>
+  `).join("");
+}
+
+// 更新自定义大厨
+function updateChef(chefId) {
+  const name = document.getElementById("newChefName").value.trim();
+  const content = document.getElementById("newChefContent").value.trim();
+  const summary = document.getElementById("newChefSummary").value.trim();
+  const checkedRadio = document.querySelector(".chef-recipe-checkbox:checked");
+  const selectedRecipe = checkedRadio ? checkedRadio.value : "";
+
+  if (!name) {
+    showToast("请输入大厨名称");
+    return;
+  }
+  if (!selectedRecipe) {
+    showToast("请选择一道菜谱");
+    return;
+  }
+  if (!content) {
+    showToast("请输入大厨笔记内容");
+    return;
+  }
+
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  // 更新厨师信息
+  chef.name = name;
+  // 更新菜谱笔记
+  const existingRecipe = chef.recipes.find(r => r.title === selectedRecipe);
+  if (existingRecipe) {
+    existingRecipe.content = content;
+    existingRecipe.summary = summary;
+    existingRecipe.updatedAt = new Date().toISOString();
+  } else {
+    // 如果选了新菜谱，替换原来的
+    chef.recipes = [{
+      title: selectedRecipe,
+      content: content,
+      summary: summary,
+      rawContent: content,
+      rawSummary: summary,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }];
+  }
+  ChefManager._save();
+  showToast("已保存修改");
+  showChefs();
+}
+
+// 查看默认大厨笔记列表
+async function showDefaultChefNotes() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showChefs()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">默认大厨笔记</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="chef-notes-list" id="defaultChefNotesList">
+        <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const resp = await fetch("data/guides/index.json");
+    if (!resp.ok) throw new Error("加载失败");
+    const index = await resp.json();
+    const entries = Object.values(index).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+
+    const listEl = document.getElementById("defaultChefNotesList");
+    listEl.innerHTML = entries.map((entry) => `
+      <div class="chef-note-item" onclick="viewDefaultChefNote('${entry.file}')">
+        <span class="chef-note-item-icon">📄</span>
+        <span class="chef-note-item-title">${entry.title}</span>
+        <span class="chef-note-item-arrow">›</span>
+      </div>
+    `).join("");
+  } catch (e) {
+    document.getElementById("defaultChefNotesList").innerHTML =
+      `<div style="text-align:center;padding:40px;color:#999;">加载失败：${e.message}</div>`;
+  }
+}
+
+// 查看默认大厨某道菜的笔记详情（只读，可复制）
+async function viewDefaultChefNote(file) {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showDefaultChefNotes()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">笔记详情</div>
+        <div style="width:60px"></div>
+      </div>
+      <div id="defaultNoteDetail" style="padding:16px;">
+        <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const resp = await fetch("data/guides/recipes/" + file);
+    if (!resp.ok) throw new Error("加载失败");
+    const md = await resp.text();
+    const detailEl = document.getElementById("defaultNoteDetail");
+    detailEl.innerHTML = `
+      <div class="cg-readonly-note">
+        ${ChefGuides.renderMarkdown(md)}
+      </div>
+      <button class="chef-copy-btn" onclick="copyDefaultChefNote('${file}')">📋 复制笔记内容</button>
+    `;
+  } catch (e) {
+    document.getElementById("defaultNoteDetail").innerHTML =
+      `<div style="text-align:center;padding:40px;color:#999;">加载失败：${e.message}</div>`;
+  }
+}
+
+// 复制默认大厨笔记内容
+async function copyDefaultChefNote(file) {
+  try {
+    const resp = await fetch("data/guides/recipes/" + file);
+    const md = await resp.text();
+    await navigator.clipboard.writeText(md);
+    showToast("已复制到剪贴板");
+  } catch (e) {
+    showToast("复制失败");
+  }
 }
 
 function renderChefCard(chef) {
@@ -2906,17 +3135,25 @@ function renderChefCard(chef) {
     ? `<img class="chef-card-avatar-img" src="${chef.avatar}" alt="${chef.name}" />`
     : `<span class="chef-card-avatar-emoji">${isDefault ? "👨‍🍳" : "🧑‍🍳"}</span>`;
 
+  const noteCount = isDefault
+    ? `<span class="chef-note-count" data-default-count="1">加载中...</span>`
+    : `${chef.recipes.length} 条笔记`;
+
   return `
     <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
       <div class="chef-card-avatar" onclick="showChefAvatarPicker('${chef.id}')">
         ${avatarHtml}
         <div class="chef-card-avatar-edit">✏️</div>
       </div>
-      <div class="chef-card-info">
+      <div class="chef-card-info" onclick="${isDefault ? `showDefaultChefNotes()` : `editChef('${chef.id}')`}">
         <div class="chef-card-name">${chef.name}</div>
-        <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${chef.recipes.length} 条笔记</div>
+        <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${noteCount}</div>
       </div>
       <div class="chef-card-actions">
+        ${isDefault
+          ? `<button class="chef-card-view-btn" onclick="event.stopPropagation(); showDefaultChefNotes()" title="查看笔记">📖</button>`
+          : `<button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>`
+        }
         <button class="chef-card-toggle ${enabled ? "active" : ""}" onclick="event.stopPropagation(); toggleChefEnabled('${chef.id}')">
           <span class="chef-card-toggle-dot"></span>
         </button>

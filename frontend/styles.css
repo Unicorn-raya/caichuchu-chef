@@ -4392,6 +4392,7 @@ u.cg-underline {
 .chef-card-info {
   flex: 1;
   min-width: 0;
+  cursor: pointer;
 }
 
 .chef-card-name {
@@ -4461,6 +4462,118 @@ u.cg-underline {
 
 .chef-card-delete:active {
   background: #ffe0e0;
+}
+
+.chef-card-view-btn,
+.chef-card-edit-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #f0f7ff;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.chef-card-view-btn:active,
+.chef-card-edit-btn:active {
+  background: #e0efff;
+}
+
+/* 默认大厨笔记列表 */
+.chef-notes-list {
+  padding: 8px 16px;
+}
+
+.chef-note-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chef-note-item:active {
+  background: #f8f8f8;
+}
+
+.chef-note-item-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.chef-note-item-title {
+  flex: 1;
+  font-size: 15px;
+  color: #333;
+}
+
+.chef-note-item-arrow {
+  color: #ccc;
+  font-size: 20px;
+}
+
+/* 只读笔记详情 */
+.cg-readonly-note {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  line-height: 1.8;
+  font-size: 14px;
+  color: #333;
+}
+
+.cg-readonly-note h2 {
+  font-size: 18px;
+  margin: 16px 0 8px;
+  color: #222;
+}
+
+.cg-readonly-note h3 {
+  font-size: 15px;
+  margin: 12px 0 6px;
+  color: #444;
+}
+
+.cg-readonly-note ul,
+.cg-readonly-note ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.cg-readonly-note li {
+  margin: 4px 0;
+}
+
+.cg-readonly-note strong {
+  color: #e8853a;
+}
+
+.chef-copy-btn {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #e8853a;
+  border-radius: 12px;
+  background: #fff;
+  color: #e8853a;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.chef-copy-btn:active {
+  background: #fff5eb;
 }
 
 .chef-add-section {
