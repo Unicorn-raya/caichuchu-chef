@@ -3014,8 +3014,12 @@ function updateChef(chefId) {
 
   // 更新厨师信息
   chef.name = name;
-  // 更新菜谱笔记
+
+  // 检查笔记内容是否有变化
   const existingRecipe = chef.recipes.find(r => r.title === selectedRecipe);
+  const contentChanged = existingRecipe ? existingRecipe.content !== content : true;
+  const summaryChanged = existingRecipe ? existingRecipe.summary !== summary : true;
+
   if (existingRecipe) {
     existingRecipe.content = content;
     existingRecipe.summary = summary;
@@ -3033,8 +3037,28 @@ function updateChef(chefId) {
     }];
   }
   ChefManager._save();
-  showToast("已保存修改");
   showChefs();
+
+  // 如果笔记内容有变化，重新提交AI处理
+  if (contentChanged) {
+    const noteValidation = validateChefContent(content);
+    if (noteValidation.valid) {
+      processChefContentWithAI(chefId, selectedRecipe, content, "note");
+    } else {
+      showToast("笔记内容未通过验证，已保存原始版本");
+    }
+  }
+  // 如果总结内容有变化，重新提交AI处理
+  if (summary && summaryChanged) {
+    const summaryValidation = validateChefContent(summary);
+    if (summaryValidation.valid) {
+      processChefContentWithAI(chefId, selectedRecipe, summary, "summary");
+    }
+  }
+
+  if (!contentChanged && !summaryChanged) {
+    showToast("已保存修改");
+  }
 }
 
 // 查看默认大厨笔记列表
@@ -3052,6 +3076,9 @@ async function showDefaultChefNotes() {
         <div class="swipe-header-title">默认大厨笔记</div>
         <div style="width:60px"></div>
       </div>
+      <div class="chef-notes-search-bar">
+        <input type="text" id="defaultNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterDefaultChefNotes(this.value)" />
+      </div>
       <div class="chef-notes-list" id="defaultChefNotesList">
         <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
       </div>
@@ -3062,20 +3089,41 @@ async function showDefaultChefNotes() {
     const resp = await fetch("data/guides/index.json");
     if (!resp.ok) throw new Error("加载失败");
     const index = await resp.json();
-    const entries = Object.values(index).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-
-    const listEl = document.getElementById("defaultChefNotesList");
-    listEl.innerHTML = entries.map((entry) => `
-      <div class="chef-note-item" onclick="viewDefaultChefNote('${entry.file}')">
-        <span class="chef-note-item-icon">📄</span>
-        <span class="chef-note-item-title">${entry.title}</span>
-        <span class="chef-note-item-arrow">›</span>
-      </div>
-    `).join("");
+    // 存到全局供搜索使用
+    window._defaultChefNotesIndex = Object.values(index).sort((a, b) =>
+      (a.title || "").localeCompare(b.title || "")
+    );
+    renderDefaultChefNotesList("");
   } catch (e) {
     document.getElementById("defaultChefNotesList").innerHTML =
       `<div style="text-align:center;padding:40px;color:#999;">加载失败：${e.message}</div>`;
   }
+}
+
+// 渲染默认大厨笔记列表（带过滤）
+function renderDefaultChefNotesList(keyword) {
+  const entries = window._defaultChefNotesIndex || [];
+  const filtered = keyword
+    ? entries.filter((e) => e.title.toLowerCase().includes(keyword.toLowerCase()))
+    : entries;
+
+  const listEl = document.getElementById("defaultChefNotesList");
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center;padding:40px;color:#999;">未找到匹配的菜谱</div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map((entry) => `
+    <div class="chef-note-item" onclick="viewDefaultChefNote('${entry.file}')">
+      <span class="chef-note-item-icon">📄</span>
+      <span class="chef-note-item-title">${entry.title}</span>
+      <span class="chef-note-item-arrow">›</span>
+    </div>
+  `).join("");
+}
+
+// 搜索过滤默认大厨笔记
+function filterDefaultChefNotes(keyword) {
+  renderDefaultChefNotesList(keyword);
 }
 
 // 查看默认大厨某道菜的笔记详情（只读，可复制）
@@ -3349,8 +3397,8 @@ function submitNewChef() {
       summary: summary,
       rawContent: content,
       rawSummary: summary,
-      noteProcessed: noteValidation.valid,
-      summaryProcessed: summaryValidation.valid,
+      noteProcessed: false,
+      summaryProcessed: false,
       createdAt: new Date().toISOString(),
     }],
   });
@@ -3400,11 +3448,14 @@ async function processChefContentWithAI(chefId, recipeTitle, content, type = "no
   const model = getAIModelByUse("recommend");
   if (!model) {
     console.log("未配置推荐模型，跳过AI处理");
+    showToast("未配置AI模型，内容已保存但未经AI处理");
     return;
   }
 
+  const systemPrompt = "你是一位专业的中餐厨师，擅长将用户输入的菜谱内容整理成标准格式的厨房笔记。";
+
   const prompt = type === "summary"
-    ? `你是一位专业的中餐厨师。请将以下用户输入的烹饪总结，整理成标准的大厨总结格式。
+    ? `请将以下用户输入的烹饪总结，整理成标准的大厨总结格式。
 
 要求：
 1. 提取食材处理要点（如有）
@@ -3417,14 +3468,18 @@ async function processChefContentWithAI(chefId, recipeTitle, content, type = "no
 ${content}
 
 请输出整理后的Markdown内容：`
-    : `你是一位专业的中餐厨师。请将以下用户输入的菜谱做法，整理成标准的菜谱笔记格式。
+    : `请将以下用户输入的菜谱做法，整理成标准的菜谱笔记格式。
 
 要求：
-1. 提取食材准备部分（包括食材处理方法）
-2. 提取烹饪步骤部分（numbered list）
+1. 提取食材准备部分（包括食材处理方法，如切法、腌制等）
+2. 提取详细做法部分（按步骤编号，每步一个要点）
 3. 提取关键技巧和注意事项
-4. 输出为Markdown格式，包含 ## 食材准备、## 烹饪步骤、## 关键技巧 三个部分
-5. 语言简洁专业，适合作为厨房笔记
+4. 输出为Markdown格式，必须包含以下三个二级标题：
+   - ## 食材准备
+   - ## 详细做法
+   - ## 关键技巧
+5. 每个部分用列表项（- 开头）或编号（1. 开头）列出具体内容
+6. 语言简洁专业，适合作为厨房笔记
 
 用户输入内容：
 ${content}
@@ -3432,22 +3487,7 @@ ${content}
 请输出整理后的Markdown内容：`;
 
   try {
-    const resp = await fetch(model.endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${model.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model.model,
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
-      }),
-    });
-
-    if (!resp.ok) throw new Error("AI处理失败");
-    const data = await resp.json();
-    const processedContent = data.choices[0].message.content;
+    const processedContent = await callAI(prompt, "recommend", systemPrompt);
 
     // 更新厨师的菜谱内容为处理后的版本
     const chef = ChefManager.getById(chefId);
@@ -3463,10 +3503,12 @@ ${content}
         }
       }
       ChefManager._save();
-      console.log("AI处理完成", processedContent.substring(0, 200));
+      console.log("AI处理完成", type, processedContent.substring(0, 200));
+      showToast(type === "summary" ? "大厨总结已由AI处理完成" : "大厨笔记已由AI处理完成");
     }
   } catch (err) {
     console.error("AI处理出错:", err);
+    showToast("AI处理失败：" + err.message + "，内容已保存原始版本");
   }
 }
 

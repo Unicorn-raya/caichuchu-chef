@@ -4485,6 +4485,10 @@ u.cg-underline {
 }
 
 /* 默认大厨笔记列表 */
+.chef-notes-search-bar {
+  padding: 12px 16px 8px;
+}
+
 .chef-notes-list {
   padding: 8px 16px;
 }
