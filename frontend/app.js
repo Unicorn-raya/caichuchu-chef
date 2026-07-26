@@ -3278,6 +3278,7 @@ function renderChefCard(chef) {
 
   return `
     <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
+      <div class="chef-card-color-dot" style="background:${chef.color}" onclick="showChefColorPicker('${chef.id}', this)" title="点击更换颜色"></div>
       <div class="chef-card-avatar" onclick="showChefAvatarPicker('${chef.id}')">
         ${avatarHtml}
         <div class="chef-card-avatar-edit">✏️</div>
@@ -3305,6 +3306,73 @@ function toggleChefEnabled(chefId) {
   showChefs();
   // 更新FAB状态
   updateChefFabState();
+}
+
+// 颜色选择弹窗
+function showChefColorPicker(chefId, dotEl) {
+  event.stopPropagation();
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  const existing = document.getElementById("chefColorPicker");
+  if (existing) { existing.remove(); return; }
+
+  const rect = dotEl.getBoundingClientRect();
+  const colors = ChefManager.COLOR_PALETTE;
+  const usedColors = new Set(ChefManager.getAll().map(c => c.color));
+
+  const picker = document.createElement("div");
+  picker.id = "chefColorPicker";
+  picker.className = "chef-color-picker";
+
+  const colorDots = colors.map(c => {
+    const isCurrent = c === chef.color;
+    const isUsed = usedColors.has(c) && !isCurrent;
+    return `<div class="chef-color-option ${isCurrent ? 'current' : ''} ${isUsed ? 'used' : ''}" 
+              style="background:${c}" 
+              onclick="selectChefColor('${chefId}', '${c}')"
+              title="${isUsed ? '已被其他厨师使用' : '点击选择'}">
+              ${isCurrent ? '✓' : ''}
+            </div>`;
+  }).join("");
+
+  // 自定义颜色输入
+  const customSection = `
+    <div class="chef-color-custom">
+      <input type="color" id="customColorInput" value="${chef.color}" onchange="selectChefColor('${chefId}', this.value)" />
+      <span>自定义</span>
+    </div>
+  `;
+
+  picker.innerHTML = colorDots + customSection;
+  document.body.appendChild(picker);
+
+  // 定位
+  const pickerRect = picker.getBoundingClientRect();
+  let top = rect.top - pickerRect.height - 8;
+  let left = rect.left + rect.width / 2 - pickerRect.width / 2;
+  if (top < 8) top = rect.bottom + 8;
+  if (left < 8) left = 8;
+  if (left + pickerRect.width > window.innerWidth - 8) left = window.innerWidth - pickerRect.width - 8;
+  picker.style.top = top + "px";
+  picker.style.left = left + "px";
+
+  // 点击外部关闭
+  const closeHandler = (e) => {
+    if (!picker.contains(e.target) && e.target !== dotEl) {
+      picker.remove();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+}
+
+function selectChefColor(chefId, color) {
+  ChefManager.updateColor(chefId, color);
+  document.getElementById("chefColorPicker")?.remove();
+  showChefs();
+  updateChefFabState();
+  showToast("颜色已更新");
 }
 
 function deleteChef(chefId) {
@@ -4235,6 +4303,8 @@ function updateChefFabState() {
     } else {
       iconEl.textContent = "👨‍🍳";
     }
+    fab.style.background = "";
+    fab.style.boxShadow = "";
   } else {
     fab.classList.remove("chef-fab-disabled");
     const iconEl = fab.querySelector(".chef-agent-fab-icon");
@@ -4244,6 +4314,16 @@ function updateChefFabState() {
       iconEl.innerHTML = `<img src="${displayChef.avatar}" class="chef-fab-avatar-img" />`;
     } else {
       iconEl.textContent = displayChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
+    }
+    // FAB背景色跟随厨师颜色
+    const color = displayChef.color || "var(--carrot)";
+    fab.style.background = color;
+    // 将hex颜色转为半透明rgba用于阴影
+    if (color.startsWith("#") && color.length === 7) {
+      const r = parseInt(color.slice(1,3), 16);
+      const g = parseInt(color.slice(3,5), 16);
+      const b = parseInt(color.slice(5,7), 16);
+      fab.style.boxShadow = `0 4px 16px rgba(${r},${g},${b},0.4)`;
     }
   }
 }

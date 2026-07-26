@@ -10,6 +10,26 @@ const ChefManager = {
   // 默认厨师配置
   DEFAULT_CHEF_ID: "default_chef",
 
+  // 预设色板（用于自动分配新厨师颜色）
+  COLOR_PALETTE: [
+    "#ff6b6b", // 珊瑚红
+    "#4ecdc4", // 青绿
+    "#45b7d1", // 天蓝
+    "#96ceb4", // 薄荷绿
+    "#feca57", // 金黄
+    "#ff9ff3", // 粉红
+    "#54a0ff", // 钴蓝
+    "#5f27cd", // 紫色
+    "#ff9f43", // 橙色
+    "#1dd1a1", // 青绿
+    "#ee5a24", // 橙红
+    "#009432", // 深绿
+    "#0652DD", // 深蓝
+    "#833471", // 深紫
+    "#b33939", // 砖红
+    "#218c74", // 墨绿
+  ],
+
   // 初始化
   init() {
     if (this._chefs) return;
@@ -107,6 +127,28 @@ const ChefManager = {
     return chef;
   },
 
+  // 更新厨师颜色
+  updateColor(id, color) {
+    this.init();
+    const chef = this._chefs.find(c => c.id === id);
+    if (chef) {
+      chef.color = color;
+      this._save();
+    }
+    return chef;
+  },
+
+  // 自动分配一个未被使用的颜色
+  _pickNextColor() {
+    this.init();
+    const usedColors = new Set(this._chefs.map(c => c.color));
+    for (const color of this.COLOR_PALETTE) {
+      if (!usedColors.has(color)) return color;
+    }
+    // 所有色板颜色都用完了，随机生成一个
+    return "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0");
+  },
+
   // 新增自定义厨师
   addChef(config) {
     this.init();
@@ -116,7 +158,7 @@ const ChefManager = {
       avatar: config.avatar || null,
       enabled: true,
       isDefault: false,
-      color: config.color || "#ff6b6b", // 用户自定义厨师用红色系
+      color: config.color || this._pickNextColor(), // 自动分配未使用的颜色
       recipes: config.recipes || [],
     };
     this._chefs.push(newChef);

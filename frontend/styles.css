@@ -4388,6 +4388,109 @@ u.cg-underline {
   border-radius: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   transition: opacity 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+
+.chef-card-color-dot {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+  transition: transform 0.15s;
+  z-index: 2;
+}
+
+.chef-card-color-dot:hover {
+  transform: scale(1.3);
+}
+
+/* 颜色选择器弹窗 */
+.chef-color-picker {
+  position: fixed;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 12px;
+  z-index: 10000;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  animation: chefColorPickerPop 0.2s ease-out;
+  min-width: 220px;
+}
+
+@keyframes chefColorPickerPop {
+  from { opacity: 0; transform: scale(0.9) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.chef-color-option {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  font-weight: bold;
+  transition: transform 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+
+.chef-color-option:hover {
+  transform: scale(1.15);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.chef-color-option.current {
+  border-color: #333;
+  box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.chef-color-option.used {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chef-color-custom {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+  margin-top: 4px;
+}
+
+.chef-color-custom input[type="color"] {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+}
+
+.chef-color-custom input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.chef-color-custom input[type="color"]::-webkit-color-swatch {
+  border: 2px solid #ddd;
+  border-radius: 50%;
+}
+
+.chef-color-custom span {
+  font-size: 13px;
+  color: #666;
 }
 
 .chef-card-disabled {
