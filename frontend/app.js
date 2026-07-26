@@ -2956,12 +2956,12 @@ function editChef(chefId) {
           </div>
         </div>
         <div class="chef-form-section">
-          <label class="chef-form-label">大厨笔记（菜谱做法，支持Markdown格式）</label>
-          <textarea id="newChefContent" class="chef-form-textarea" rows="10" placeholder="示例：&#10;## 食材准备&#10;- 猪肉切丝，用生抽、料酒、淀粉腌制10分钟">${noteContent}</textarea>
+          <label class="chef-form-label">大厨笔记（菜谱做法，按模板填写）</label>
+          <textarea id="newChefContent" class="chef-form-textarea" rows="14">${noteContent || "## 食材准备\n\n## 详细做法\n\n## 关键技巧\n"}</textarea>
         </div>
         <div class="chef-form-section">
-          <label class="chef-form-label">大厨总结（烹饪技法与要点，支持Markdown格式）</label>
-          <textarea id="newChefSummary" class="chef-form-textarea" rows="6" placeholder="示例：&#10;## 食材处理&#10;- 猪肉逆纹切丝更嫩">${summaryContent}</textarea>
+          <label class="chef-form-label">大厨总结（烹饪技法与要点，按模板填写）</label>
+          <textarea id="newChefSummary" class="chef-form-textarea" rows="10">${summaryContent || "## 食材处理\n\n## 烹饪技法\n\n## 通用要点\n"}</textarea>
         </div>
         <div class="chef-form-actions">
           <button class="chef-form-submit" onclick="updateChef('${chefId}')">保存修改</button>
@@ -3313,12 +3313,22 @@ function showAddChefForm() {
           </div>
         </div>
         <div class="chef-form-section">
-          <label class="chef-form-label">大厨笔记（菜谱做法，支持Markdown格式）</label>
-          <textarea id="newChefContent" class="chef-form-textarea" rows="10" placeholder="示例：\n## 食材准备\n- 猪肉切丝，用生抽、料酒、淀粉腌制10分钟\n- 青椒切丝备用\n\n## 烹饪步骤\n1. 热锅凉油，下肉丝滑炒至变色\n2. 加入青椒丝大火快炒\n3. 调入适量盐、糖、生抽，炒匀出锅"></textarea>
+          <label class="chef-form-label">大厨笔记（菜谱做法，按模板填写）</label>
+          <textarea id="newChefContent" class="chef-form-textarea" rows="14">## 食材准备
+
+## 详细做法
+
+## 关键技巧
+</textarea>
         </div>
         <div class="chef-form-section">
-          <label class="chef-form-label">大厨总结（烹饪技法与要点，支持Markdown格式）</label>
-          <textarea id="newChefSummary" class="chef-form-textarea" rows="6" placeholder="示例：\n## 食材处理\n- 猪肉逆纹切丝更嫩\n- 青椒手掰比刀切更入味\n\n## 火候要点\n- 热锅凉油防粘\n- 大火快炒锁汁"></textarea>
+          <label class="chef-form-label">大厨总结（烹饪技法与要点，按模板填写）</label>
+          <textarea id="newChefSummary" class="chef-form-textarea" rows="10">## 食材处理
+
+## 烹饪技法
+
+## 通用要点
+</textarea>
         </div>
         <div class="chef-form-actions">
           <button class="chef-form-submit" onclick="submitNewChef()">提交并保存</button>
@@ -3424,6 +3434,15 @@ function validateChefContent(content) {
   // 检查长度
   if (trimmed.length < 20) {
     return { valid: false, reason: "内容过短，请提供更详细的做法" };
+  }
+
+  // 去除模板标题行后检查是否有实际内容
+  const bodyOnly = trimmed
+    .replace(/^#{1,6}\s+.*$/gm, "")
+    .replace(/^\s*$/gm, "")
+    .trim();
+  if (bodyOnly.length < 10) {
+    return { valid: false, reason: "请在模板标题下填写具体内容" };
   }
 
   // 检查是否包含烹饪相关关键词
