@@ -133,6 +133,7 @@ async function init() {
   setupNavigation();
   renderPage("home");
   initChefAgentFab();
+  updateChefFabState();
 }
 
 // 开机动画：逐字显示问候语，类似苹果开机
@@ -1989,6 +1990,12 @@ function backToHome() {
 // 菜谱详情
 // ============================================
 function showRecipeDetail(rec) {
+  // 打开新菜谱前清除大厨笔记状态
+  if (window.ChefGuides && ChefGuides.isNotesActive()) {
+    ChefGuides.clearNotesFromPage();
+  }
+  closeChefAgentPanel();
+  closeChefRecipeMenu();
   document.getElementById("bottomNav").style.display = "";
   const recipe = rec.recipe;
   const app = document.getElementById("app");
@@ -2477,6 +2484,14 @@ function showRecipeDetailDirect(recipeId) {
 
 // 菜谱详情页返回：根据入口回到对应上级页
 function goBackFromRecipeDetail() {
+  // 离开菜谱页时清除大厨笔记
+  if (window.ChefGuides && ChefGuides.isNotesActive()) {
+    ChefGuides.clearNotesFromPage();
+    const fab = document.getElementById("chefAgentFab");
+    if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+  }
+  closeChefAgentPanel();
+  closeChefRecipeMenu();
   if (recipeDetailBackFn) {
     recipeDetailBackFn();
     recipeDetailBackFn = null;
@@ -2823,6 +2838,11 @@ function renderMe() {
       </div>
 
       <div class="me-section-title">设置</div>
+      <div class="me-menu-item" onclick="showChefs()">
+        <span>👨‍🍳 厨师管理</span>
+        <span class="me-menu-value">${ChefManager.getEnabled().length} 位启用</span>
+        <span class="me-menu-arrow">›</span>
+      </div>
       <div class="me-menu-item" onclick="showAIModels()">
         <span>🤖 AI模型管理</span>
         <span class="me-menu-arrow">›</span>
@@ -2847,6 +2867,330 @@ function renderMe() {
       </div>
     </div>
   `;
+}
+
+// ============================================
+// 厨师管理页
+// ============================================
+function showChefs() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  const chefs = ChefManager.getAll();
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">厨师管理</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="chef-list">
+        ${chefs.map((chef) => renderChefCard(chef)).join("")}
+      </div>
+      <div class="chef-add-section">
+        <button class="chef-add-btn" onclick="showAddChefForm()">
+          <span class="chef-add-icon">+</span>
+          <span>新增自定义大厨</span>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderChefCard(chef) {
+  const isDefault = chef.isDefault;
+  const enabled = chef.enabled;
+  const avatarHtml = chef.avatar
+    ? `<img class="chef-card-avatar-img" src="${chef.avatar}" alt="${chef.name}" />`
+    : `<span class="chef-card-avatar-emoji">${isDefault ? "👨‍🍳" : "🧑‍🍳"}</span>`;
+
+  return `
+    <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
+      <div class="chef-card-avatar" onclick="showChefAvatarPicker('${chef.id}')">
+        ${avatarHtml}
+        <div class="chef-card-avatar-edit">✏️</div>
+      </div>
+      <div class="chef-card-info">
+        <div class="chef-card-name">${chef.name}</div>
+        <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${chef.recipes.length} 条笔记</div>
+      </div>
+      <div class="chef-card-actions">
+        <button class="chef-card-toggle ${enabled ? "active" : ""}" onclick="event.stopPropagation(); toggleChefEnabled('${chef.id}')">
+          <span class="chef-card-toggle-dot"></span>
+        </button>
+        ${!isDefault ? `<button class="chef-card-delete" onclick="event.stopPropagation(); deleteChef('${chef.id}')">🗑️</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function toggleChefEnabled(chefId) {
+  ChefManager.toggleEnabled(chefId);
+  showChefs();
+  // 更新FAB状态
+  updateChefFabState();
+}
+
+function deleteChef(chefId) {
+  if (confirm("确定删除这位大厨？其所有笔记将被清除。")) {
+    ChefManager.removeChef(chefId);
+    showChefs();
+    updateChefFabState();
+    showToast("已删除");
+  }
+}
+
+// 头像选择弹窗
+function showChefAvatarPicker(chefId) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  // 创建隐藏的文件输入
+  let input = document.getElementById("chefAvatarInput");
+  if (!input) {
+    input = document.createElement("input");
+    input.type = "file";
+    input.id = "chefAvatarInput";
+    input.accept = "image/*";
+    input.style.display = "none";
+    document.body.appendChild(input);
+  }
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // 压缩并裁剪为方形头像
+    const dataUrl = await resizeAndCropImage(file, 200, 200);
+    ChefManager.updateAvatar(chefId, dataUrl);
+    showChefs();
+    updateChefFabState();
+    showToast("头像已更新");
+  };
+
+  input.click();
+}
+
+// 图片压缩裁剪工具
+function resizeAndCropImage(file, targetWidth, targetHeight) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d");
+
+        // 计算裁剪区域（中心裁剪为正方形）
+        const size = Math.min(img.width, img.height);
+        const sx = (img.width - size) / 2;
+        const sy = (img.height - size) / 2;
+
+        ctx.drawImage(img, sx, sy, size, size, 0, 0, targetWidth, targetHeight);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// 新增厨师表单
+function showAddChefForm() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showChefs()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">新增大厨</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="chef-form">
+        <div class="chef-form-section">
+          <label class="chef-form-label">大厨名称</label>
+          <input type="text" id="newChefName" class="chef-form-input" placeholder="如：川菜大师" value="" />
+        </div>
+        <div class="chef-form-section">
+          <label class="chef-form-label">选择菜谱（可多选）</label>
+          <div class="chef-recipe-picker" id="chefRecipePicker">
+            <input type="text" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterChefRecipeList(this.value)" />
+            <div class="chef-recipe-list" id="chefRecipeList">
+              ${renderChefRecipeList("")}
+            </div>
+          </div>
+        </div>
+        <div class="chef-form-section">
+          <label class="chef-form-label">输入菜谱做法（每行一条，支持Markdown格式）</label>
+          <textarea id="newChefContent" class="chef-form-textarea" rows="10" placeholder="示例：\n## 食材准备\n- 猪肉切丝，用生抽、料酒、淀粉腌制10分钟\n- 青椒切丝备用\n\n## 烹饪步骤\n1. 热锅凉油，下肉丝滑炒至变色\n2. 加入青椒丝大火快炒\n3. 调入适量盐、糖、生抽，炒匀出锅"></textarea>
+        </div>
+        <div class="chef-form-actions">
+          <button class="chef-form-submit" onclick="submitNewChef()">提交并保存</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderChefRecipeList(filter) {
+  const recipes = allRecipes.filter((r) => {
+    if (r.category === "condiment" || r.category === "template") return false;
+    if (filter && !r.title.toLowerCase().includes(filter.toLowerCase())) return false;
+    return true;
+  }).slice(0, 100); // 限制显示数量
+
+  return recipes.map((r) => `
+    <label class="chef-recipe-item">
+      <input type="checkbox" class="chef-recipe-checkbox" value="${r.title}" />
+      <span class="chef-recipe-item-title">${r.title}</span>
+      <span class="chef-recipe-item-category">${r.categoryLabel || r.category}</span>
+    </label>
+  `).join("");
+}
+
+function filterChefRecipeList(keyword) {
+  const list = document.getElementById("chefRecipeList");
+  if (list) {
+    list.innerHTML = renderChefRecipeList(keyword);
+  }
+}
+
+function submitNewChef() {
+  const name = document.getElementById("newChefName").value.trim();
+  const content = document.getElementById("newChefContent").value.trim();
+  const checkboxes = document.querySelectorAll(".chef-recipe-checkbox:checked");
+  const selectedRecipes = Array.from(checkboxes).map((cb) => cb.value);
+
+  if (!name) {
+    showToast("请输入大厨名称");
+    return;
+  }
+
+  if (selectedRecipes.length === 0) {
+    showToast("请至少选择一道菜谱");
+    return;
+  }
+
+  if (!content) {
+    showToast("请输入菜谱做法");
+    return;
+  }
+
+  // 验证内容是否为有效菜谱做法
+  const validation = validateChefContent(content);
+  if (!validation.valid) {
+    showToast("内容无效：" + validation.reason + "。已保存但未处理。");
+  }
+
+  // 创建新厨师
+  const newChef = ChefManager.addChef({
+    name: name,
+    recipes: selectedRecipes.map((title) => ({
+      title,
+      content: content,
+      rawContent: content,
+      processed: validation.valid,
+      createdAt: new Date().toISOString(),
+    })),
+  });
+
+  // 如果内容有效，调用AI处理
+  if (validation.valid) {
+    processChefContentWithAI(newChef.id, selectedRecipes, content);
+  }
+
+  showToast(validation.valid ? "大厨已创建，AI正在处理内容..." : "大厨已创建（内容未处理）");
+  showChefs();
+}
+
+// 验证厨师内容是否为有效菜谱做法
+function validateChefContent(content) {
+  const trimmed = content.trim();
+
+  // 检查长度
+  if (trimmed.length < 20) {
+    return { valid: false, reason: "内容过短，请提供更详细的做法" };
+  }
+
+  // 检查是否包含烹饪相关关键词
+  const cookingKeywords = ["切", "炒", "煮", "蒸", "炸", "煎", "烤", "烧", "炖", "焖", "拌", "腌", "焯", "油", "锅", "火", "盐", "糖", "酱", "料", "食材", "步骤", "做法", "分钟", "克", "勺", "适量"];
+  const hasCookingKeyword = cookingKeywords.some((k) => trimmed.includes(k));
+
+  if (!hasCookingKeyword) {
+    return { valid: false, reason: "未检测到烹饪相关内容" };
+  }
+
+  // 检查是否包含步骤结构
+  const hasSteps = /步骤|做法|1[.、]|2[.、]|3[.、]|首先|然后|接着|最后|##|###/.test(trimmed);
+  if (!hasSteps) {
+    return { valid: false, reason: "建议按步骤格式书写（如：1. 切菜 2. 炒制...）" };
+  }
+
+  return { valid: true };
+}
+
+// 使用AI处理厨师内容
+async function processChefContentWithAI(chefId, recipeTitles, content) {
+  const model = getAIModelByUse("recommend");
+  if (!model) {
+    console.log("未配置推荐模型，跳过AI处理");
+    return;
+  }
+
+  const prompt = `你是一位专业的中餐厨师。请将以下用户输入的菜谱做法，整理成标准的菜谱笔记格式。
+
+要求：
+1. 提取食材准备部分（包括食材处理方法）
+2. 提取烹饪步骤部分（ numbered list）
+3. 提取关键技巧和注意事项
+4. 输出为Markdown格式，包含 ## 食材准备、## 烹饪步骤、## 关键技巧 三个部分
+5. 语言简洁专业，适合作为厨房笔记
+
+用户输入内容：
+${content}
+
+请输出整理后的Markdown内容：`;
+
+  try {
+    const resp = await fetch(model.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${model.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model.model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+      }),
+    });
+
+    if (!resp.ok) throw new Error("AI处理失败");
+    const data = await resp.json();
+    const processedContent = data.choices[0].message.content;
+
+    // 更新厨师的菜谱内容为处理后的版本
+    const chef = ChefManager.getById(chefId);
+    if (chef) {
+      for (const recipe of chef.recipes) {
+        if (recipeTitles.includes(recipe.title)) {
+          recipe.content = processedContent;
+          recipe.processed = true;
+        }
+      }
+      ChefManager._save();
+      console.log("AI处理完成", processedContent.substring(0, 200));
+    }
+  } catch (err) {
+    console.error("AI处理出错:", err);
+  }
 }
 
 // ============================================
@@ -3417,6 +3761,36 @@ function saveAIModelForm(modelId) {
 }
 
 // ============================================
+// 厨师FAB状态管理
+// ============================================
+function updateChefFabState() {
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+
+  const enabledChefs = ChefManager.getEnabled();
+  const defaultChef = ChefManager.getDefault();
+
+  if (enabledChefs.length === 0) {
+    // 没有启用的厨师：灰色禁用状态
+    fab.classList.add("chef-fab-disabled");
+    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    // 如果有自定义头像且默认厨师被禁用，显示灰色头像
+    if (defaultChef && defaultChef.avatar) {
+      fab.querySelector(".chef-agent-fab-icon").innerHTML = `<img src="${defaultChef.avatar}" class="chef-fab-avatar-img disabled" />`;
+    }
+  } else {
+    fab.classList.remove("chef-fab-disabled");
+    // 使用第一个启用的厨师的头像
+    const activeChef = enabledChefs[0];
+    if (activeChef.avatar) {
+      fab.querySelector(".chef-agent-fab-icon").innerHTML = `<img src="${activeChef.avatar}" class="chef-fab-avatar-img" />`;
+    } else {
+      fab.querySelector(".chef-agent-fab-icon").textContent = activeChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
+    }
+  }
+}
+
+// ============================================
 // Toast
 // ============================================
 function showToast(msg) {
@@ -3751,20 +4125,31 @@ function handleChefAgentClick() {
   if (!fab) return;
   FrontendLogger.info("chef", "大厨按钮点击", { page: currentPage, isRecipePage: ChefAgent.isOnRecipePage() });
 
-  // 菜谱详情页 → 大厨点评
+  // 检查是否有启用的厨师
+  const enabledChefs = ChefManager.getEnabled();
+  if (enabledChefs.length === 0) {
+    showChefAgentToast("当前大厨功能还未启用");
+    return;
+  }
+
+  // 菜谱详情页 → 显示大厨菜单（大厨笔记 / 大厨总结）
   if (ChefAgent.isOnRecipePage()) {
-    // 显示载入中：厨师emoji换成🤔
-    fab.classList.add("loading");
-    fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
-    setTimeout(() => {
-      const result = ChefAgent.generateAdvice();
-      fab.classList.remove("loading");
+    // 如果笔记模式已开启，点击则关闭笔记恢复原样
+    if (ChefGuides.isNotesActive()) {
+      ChefGuides.clearNotesFromPage();
       fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
-      const panel = document.getElementById("chefAgentPanel");
-      const content = document.getElementById("chefAgentPanelContent");
-      content.innerHTML = ChefAgent.renderAdvicePanel(result);
-      panel.classList.remove("hidden");
-    }, 500);
+      showChefAgentToast("已关闭大厨笔记");
+      return;
+    }
+    // 如果总结面板已打开，点击则关闭
+    const panel = document.getElementById("chefAgentPanel");
+    if (panel && !panel.classList.contains("hidden")) {
+      closeChefAgentPanel();
+      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      return;
+    }
+    // 否则弹出双选项菜单
+    showChefRecipeMenu();
     return;
   }
 
@@ -3887,8 +4272,238 @@ function confirmClearFridge() {
   }
 }
 
+// 菜谱页大厨菜单：大厨笔记 / 大厨总结（从FAB向上展开）
+function showChefRecipeMenu() {
+  if (document.getElementById("chefRecipeMenu")) return;
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+
+  const enabledChefs = ChefManager.getEnabled();
+  const defaultChef = ChefManager.getDefault();
+  const customChefs = enabledChefs.filter(c => !c.isDefault);
+  const hasDefaultEnabled = defaultChef && defaultChef.enabled;
+
+  // 如果只有一个启用的厨师（默认），直接显示笔记/总结选项
+  if (enabledChefs.length === 1 && hasDefaultEnabled) {
+    _showDefaultChefMenu(fab);
+    return;
+  }
+
+  // 如果有多个启用的厨师，先显示厨师选择
+  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+  const popup = document.createElement("div");
+  popup.id = "chefRecipeMenu";
+  popup.className = "chef-recipe-menu";
+
+  let menuHtml = "";
+
+  // 默认厨师选项
+  if (hasDefaultEnabled) {
+    menuHtml += `
+      <button class="chef-recipe-menu-btn" style="--delay: 0.08s" onclick="closeChefRecipeMenu(); setTimeout(() => _showDefaultChefMenu(document.getElementById('chefAgentFab')), 250);">
+        <span class="chef-recipe-menu-icon">👨‍🍳</span>
+        <span class="chef-recipe-menu-label">默认大厨</span>
+      </button>
+    `;
+  }
+
+  // 自定义厨师选项
+  customChefs.forEach((chef, idx) => {
+    const avatarHtml = chef.avatar
+      ? `<img src="${chef.avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;" />`
+      : "🧑‍🍳";
+    menuHtml += `
+      <button class="chef-recipe-menu-btn" style="--delay: ${0.08 + (idx + (hasDefaultEnabled ? 1 : 0)) * 0.1}s" onclick="closeChefRecipeMenu(); setTimeout(() => showCustomChefMenu('${chef.id}'), 250);">
+        <span class="chef-recipe-menu-icon">${avatarHtml}</span>
+        <span class="chef-recipe-menu-label">${chef.name}</span>
+      </button>
+    `;
+  });
+
+  popup.innerHTML = menuHtml;
+  document.body.appendChild(popup);
+  updateChefRecipeMenuPosition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.addEventListener("click", closeChefRecipeMenuOutside, true);
+      document.addEventListener("touchstart", closeChefRecipeMenuOutside, true);
+    });
+  });
+}
+
+// 显示默认大厨的笔记/总结选项
+function _showDefaultChefMenu(fab) {
+  if (document.getElementById("chefRecipeMenu")) return;
+  if (!fab) fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+  const popup = document.createElement("div");
+  popup.id = "chefRecipeMenu";
+  popup.className = "chef-recipe-menu";
+  popup.innerHTML = `
+    <button class="chef-recipe-menu-btn" style="--delay: 0.08s" onclick="closeChefRecipeMenu(); setTimeout(activateChefNotes, 250);">
+      <span class="chef-recipe-menu-icon">📝</span>
+      <span class="chef-recipe-menu-label">大厨笔记</span>
+    </button>
+    <button class="chef-recipe-menu-btn" style="--delay: 0.18s" onclick="closeChefRecipeMenu(); setTimeout(activateChefSummary, 250);">
+      <span class="chef-recipe-menu-icon">📌</span>
+      <span class="chef-recipe-menu-label">大厨总结</span>
+    </button>
+  `;
+  document.body.appendChild(popup);
+  updateChefRecipeMenuPosition();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.addEventListener("click", closeChefRecipeMenuOutside, true);
+      document.addEventListener("touchstart", closeChefRecipeMenuOutside, true);
+    });
+  });
+}
+
+// 显示自定义大厨的笔记选项
+function showCustomChefMenu(chefId) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+
+  // 检查当前菜谱是否有该厨师的笔记
+  const recipe = ChefAgent.readCurrentRecipe();
+  const title = recipe ? recipe.title : "";
+  const note = ChefManager.getRecipeNote(chefId, title);
+
+  if (!note) {
+    showChefAgentToast(`${chef.name} 暂无「${title}」的笔记`);
+    return;
+  }
+
+  // 显示自定义大厨笔记面板
+  _showCustomChefNotePanel(chef, note, title);
+}
+
+// 显示自定义大厨笔记面板
+function _showCustomChefNotePanel(chef, note, recipeTitle) {
+  const panel = document.getElementById("chefAgentPanel");
+  const content = document.getElementById("chefAgentPanelContent");
+  if (!panel || !content) return;
+
+  const avatarHtml = chef.avatar
+    ? `<img src="${chef.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;" />`
+    : "🧑‍🍳";
+
+  let html = `
+    <div class="cg-notebook-header">
+      <span class="cg-notebook-icon">${avatarHtml}</span>
+      <div>
+        <div class="cg-notebook-title">${recipeTitle} · ${chef.name}</div>
+        <div class="cg-notebook-sub">自定义大厨笔记</div>
+      </div>
+    </div>
+    <div class="cg-custom-note-content">
+      ${ChefGuides.renderMarkdown(note.content)}
+    </div>
+  `;
+
+  content.innerHTML = html;
+  panel.classList.remove("hidden");
+}
+
+function updateChefRecipeMenuPosition() {
+  const popup = document.getElementById("chefRecipeMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup || !fab) return;
+  const rect = fab.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  popup.style.left = centerX + "px";
+  popup.style.bottom = (window.innerHeight - rect.top) + "px";
+}
+
+function closeChefRecipeMenuOutside(e) {
+  const popup = document.getElementById("chefRecipeMenu");
+  if (!popup) return;
+  if (popup.contains(e.target)) return;
+  closeChefRecipeMenu();
+}
+
+function closeChefRecipeMenu() {
+  document.removeEventListener("click", closeChefRecipeMenuOutside, true);
+  document.removeEventListener("touchstart", closeChefRecipeMenuOutside, true);
+  const popup = document.getElementById("chefRecipeMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup) return;
+  const btns = popup.querySelectorAll(".chef-recipe-menu-btn");
+  btns.forEach((b, i) => {
+    b.style.animation = "chefBubbleDown 0.25s ease-in forwards";
+    b.style.animationDelay = `${0.12 - i * 0.06}s`;
+  });
+  setTimeout(() => {
+    popup.remove();
+    if (fab && !ChefGuides.isNotesActive()) {
+      const p = document.getElementById("chefAgentPanel");
+      if (!p || p.classList.contains("hidden"))
+        fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    }
+  }, 300);
+}
+
+// 激活「大厨笔记」：在原菜谱步骤上直接注入红线+绿色批注
+function activateChefNotes() {
+  const fab = document.getElementById("chefAgentFab");
+  if (fab) {
+    fab.classList.add("loading");
+    fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+  }
+  const recipe = ChefAgent.readCurrentRecipe();
+  const title = recipe ? recipe.title : "";
+  ChefGuides.injectNotesToPage(title).then((ok) => {
+    if (fab) {
+      fab.classList.remove("loading");
+      fab.querySelector(".chef-agent-fab-icon").textContent = ok ? "📝" : "👨‍🍳";
+    }
+    if (!ok) showChefAgentToast("暂无可标注的笔记");
+    else showChefAgentToast("大厨笔记已标注");
+  }).catch(() => {
+    if (fab) {
+      fab.classList.remove("loading");
+      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    }
+    showChefAgentToast("笔记加载失败");
+  });
+}
+
+// 激活「大厨总结」：弹窗显示通用技法
+function activateChefSummary() {
+  const fab = document.getElementById("chefAgentFab");
+  if (fab) {
+    fab.classList.add("loading");
+    fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+  }
+  const recipe = ChefAgent.readCurrentRecipe();
+  const title = recipe ? recipe.title : "";
+  ChefGuides.buildSummaryHTML(title).then((html) => {
+    if (fab) {
+      fab.classList.remove("loading");
+      fab.querySelector(".chef-agent-fab-icon").textContent = "📌";
+    }
+    const panel = document.getElementById("chefAgentPanel");
+    const content = document.getElementById("chefAgentPanelContent");
+    content.innerHTML = html;
+    panel.classList.remove("hidden");
+  }).catch(() => {
+    if (fab) {
+      fab.classList.remove("loading");
+      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    }
+  });
+}
+
 function closeChefAgentPanel() {
   document.getElementById("chefAgentPanel").classList.add("hidden");
+  const fab = document.getElementById("chefAgentFab");
+  if (fab && !ChefGuides.isNotesActive()) {
+    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+  }
 }
 
 // ============================================

@@ -1,0 +1,699 @@
+/* ============================================
+   chef-guides.js — 大厨烹饪指南
+   菜谱页点击大厨头像时展示：
+   1. 通用技巧（按菜谱做法+核心食材匹配）
+   2. 本菜详细做法（data/guides/recipes/{菜名}.md）
+   ============================================ */
+
+const ChefGuides = {
+  _generalMd: null,
+  _sections: null,
+  _index: null,
+  _recipeCache: {},
+  _annotate: false,
+  _termRegex: null,
+
+  // 关键烹饪术语（详细做法中会被"画线"标注，像教科书笔记）
+  _getTermRegex() {
+    if (this._termRegex) return this._termRegex;
+    const terms = [
+      "热锅凉油", "中小火", "中大火", "炒糖色",
+      "焯水", "腌制", "去腥", "去膻", "飞水",
+      "大火", "小火", "中火", "火候", "油温",
+      "勾芡", "芡汁", "复炸", "上浆", "挂糊",
+      "收汁", "爆香", "定型", "翻面",
+      "滑嫩", "酥烂", "焦黄", "焦脆",
+    ];
+    terms.sort((a, b) => b.length - a.length);
+    this._termRegex = new RegExp("(" + terms.join("|") + ")", "g");
+    return this._termRegex;
+  },
+
+  // 加载并缓存通用技巧 markdown
+  async _loadGeneral() {
+    if (this._generalMd) return this._generalMd;
+    const resp = await fetch("data/guides/general-techniques.md");
+    if (!resp.ok) throw new Error("通用技巧加载失败");
+    this._generalMd = await resp.text();
+    return this._generalMd;
+  },
+
+  // 加载菜谱 id → 指南文件映射
+  async _loadIndex() {
+    if (this._index) return this._index;
+    const resp = await fetch("data/guides/index.json");
+    if (!resp.ok) throw new Error("指南索引加载失败");
+    this._index = await resp.json();
+    return this._index;
+  },
+
+  // 把通用技巧 markdown 按二级标题切分为章节
+  _parseSections() {
+    if (this._sections) return this._sections;
+    const md = this._generalMd || "";
+    const sections = [];
+    const parts = md.split(/^## /m);
+    for (let i = 1; i < parts.length; i++) {
+      const nl = parts[i].indexOf("\n");
+      const title = parts[i].slice(0, nl).trim();
+      const body = parts[i].slice(nl + 1).trim();
+      sections.push({ title, body });
+    }
+    this._sections = sections;
+    return sections;
+  },
+
+  // 根据菜谱做法 + 食材匹配通用章节
+  _matchSections(recipe) {
+    const sections = this._parseSections();
+    const matched = [];
+
+    // 1. 技法章节：按 methodLabel 精确匹配
+    const methodLabel = recipe.methodLabel || "";
+    if (methodLabel) {
+      const sec = sections.find((s) => s.title === `技法：${methodLabel}`);
+      if (sec) matched.push(sec);
+    }
+
+    // 2. 食材处理章节：按核心食材关键词匹配
+    const text = [
+      recipe.title || "",
+      ...(recipe.coreIngredients || []),
+      ...(recipe.requiredIngredients || []),
+    ].join(" ");
+
+    const ingredientRules = [
+      { section: "食材处理：猪肉", re: /猪|五花|排骨|里脊|肉末|肉馅|肘|蹄|培根|火腿|腊肠|午餐肉|腊肉|咸肉/ },
+      { section: "食材处理：牛肉", re: /牛|牛腩|肥牛|牛排/ },
+      { section: "食材处理：鸡肉", re: /鸡(?!蛋|精|汤)|鸡翅|鸡腿|鸡胸|鸡爪/ },
+      { section: "食材处理：鱼虾水产", re: /鱼|虾|蟹|贝|蛤|蛏|鱿|海参|鳝|鳕|鲈|桂鱼|鲫|鲤|鳊|翘嘴|生蚝|小龙虾|田螺|墨鱼/ },
+      { section: "食材处理：蔬菜", re: /菜|瓜|茄|豆|葱|蒜|菌|菇|豆腐|玉米|藕|笋|椒|菠菜|芹|韭|萝卜|土豆|山药|木耳|海带|西红柿|番茄/ },
+      { section: "食材处理：米饭面食", re: /饭|面|饼|馒头|包子|饺子|馄饨|汤圆|烧卖|馕|吐司|面包|年糕|米粉|河粉|粉丝|凉粉|燕麦|粥/ },
+    ];
+    for (const rule of ingredientRules) {
+      if (rule.re.test(text)) {
+        const sec = sections.find((s) => s.title === rule.section);
+        if (sec) matched.push(sec);
+      }
+    }
+
+    // 3. 油温与勾芡：炒/炸/烧/煎类菜谱附加
+    if (["炒", "炸", "烧", "煎"].includes(methodLabel)) {
+      const sec = sections.find((s) => s.title.startsWith("通用：油温与勾芡"));
+      if (sec) matched.push(sec);
+    }
+
+    return matched;
+  },
+
+  // 轻量 markdown → HTML（标题/加粗/列表/表格/引用/分隔线/段落）
+  renderMarkdown(md) {
+    const esc = (s) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inline = (s) => {
+      let out = esc(s)
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/`([^`]+)`/g, "<code>$1</code>");
+      if (this._annotate) {
+        out = out.replace(this._getTermRegex(), '<u class="cg-mark">$1</u>');
+      }
+      return out;
+    };
+
+    const lines = md.split("\n");
+    let html = "";
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // 空行
+      if (!trimmed) { i++; continue; }
+
+      // 分隔线
+      if (/^-{3,}$/.test(trimmed)) { html += "<hr>"; i++; continue; }
+
+      // 标题
+      const h = trimmed.match(/^(#{1,4})\s+(.*)$/);
+      if (h) {
+        const level = h[1].length + 2; // # → h3, ## → h4, ### → h5
+        html += `<h${level}>${inline(h[2])}</h${level}>`;
+        i++; continue;
+      }
+
+      // 表格
+      if (trimmed.startsWith("|")) {
+        const rows = [];
+        while (i < lines.length && lines[i].trim().startsWith("|")) {
+          rows.push(lines[i].trim());
+          i++;
+        }
+        const cells = (r) =>
+          r.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+        if (rows.length >= 2) {
+          html += "<table><thead><tr>";
+          for (const c of cells(rows[0])) html += `<th>${inline(c)}</th>`;
+          html += "</tr></thead><tbody>";
+          for (let r = 2; r < rows.length; r++) { // 跳过分隔行
+            html += "<tr>";
+            for (const c of cells(rows[r])) html += `<td>${inline(c)}</td>`;
+            html += "</tr>";
+          }
+          html += "</tbody></table>";
+        }
+        continue;
+      }
+
+      // 无序列表
+      if (/^[-*]\s+/.test(trimmed)) {
+        html += "<ul>";
+        while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+          html += `<li>${inline(lines[i].trim().replace(/^[-*]\s+/, ""))}</li>`;
+          i++;
+        }
+        html += "</ul>";
+        continue;
+      }
+
+      // 有序列表（允许条目之间有空行，保持编号连续）
+      if (/^\d+[.、]\s*/.test(trimmed)) {
+        html += "<ol>";
+        while (i < lines.length) {
+          const t = lines[i].trim();
+          if (/^\d+[.、]\s*/.test(t)) {
+            html += `<li>${inline(t.replace(/^\d+[.、]\s*/, ""))}</li>`;
+            i++;
+            continue;
+          }
+          if (!t) {
+            let j = i + 1;
+            while (j < lines.length && !lines[j].trim()) j++;
+            if (j < lines.length && /^\d+[.、]\s*/.test(lines[j].trim())) {
+              i = j;
+              continue;
+            }
+          }
+          break;
+        }
+        html += "</ol>";
+        continue;
+      }
+
+      // 引用
+      if (trimmed.startsWith(">")) {
+        html += `<blockquote>${inline(trimmed.replace(/^>\s*/, ""))}</blockquote>`;
+        i++; continue;
+      }
+
+      // 普通段落
+      html += `<p>${inline(trimmed)}</p>`;
+      i++;
+    }
+    return html;
+  },
+
+  // 加载单个菜谱的详细指南（带缓存）
+  async _loadRecipeGuide(file) {
+    if (this._recipeCache[file]) return this._recipeCache[file];
+    const resp = await fetch(`data/guides/recipes/${encodeURIComponent(file)}`);
+    if (!resp.ok) return null;
+    const md = await resp.text();
+    this._recipeCache[file] = md;
+    return md;
+  },
+
+  // 构建面板 HTML：通用技法 + 菜谱笔记（原步骤 + markdown 标注）
+  async buildGuideHTML(recipeTitle) {
+    try {
+      await Promise.all([this._loadGeneral(), this._loadIndex()]);
+
+      const recipe =
+        (typeof allRecipes !== "undefined" &&
+          allRecipes.find((r) => r.title === recipeTitle)) ||
+        { title: recipeTitle };
+
+      // 获取原菜谱步骤（优先 allRecipes，其次 DOM）
+      let steps = recipe.steps || [];
+      if (steps.length === 0 && window.ChefAgent) {
+        const domRecipe = ChefAgent.readCurrentRecipe();
+        if (domRecipe) steps = domRecipe.steps || [];
+      }
+
+      let html = "";
+
+      // 头部
+      html += `<div class="cg-notebook-header">
+        <span class="cg-notebook-icon">📝</span>
+        <div>
+          <div class="cg-notebook-title">${recipe.title} · 做菜笔记</div>
+          <div class="cg-notebook-sub">原菜谱步骤 + 大厨标注笔记</div>
+        </div>
+      </div>`;
+
+      // 做菜记忆
+      if (window.ChefMemory) {
+        const cooked = ChefMemory.getCookedRecipes();
+        const mem = cooked.find((r) => r.title === recipe.title);
+        if (mem) {
+          const date = new Date(mem.lastCooked).toLocaleDateString();
+          html += `<div class="cg-memory-note">
+            <span class="cg-memory-icon">🧠</span>
+            <span>你做过这道菜 ${mem.count} 次，上次 ${date}。</span>
+          </div>`;
+        }
+      }
+
+      // 通用技法（3 维度批注）
+      const sections = this._matchSections(recipe);
+      const ingredientSecs = sections.filter((s) => s.title.startsWith("食材处理"));
+      const techniqueSecs = sections.filter((s) => s.title.startsWith("技法"));
+      const generalSecs = sections.filter((s) => s.title.startsWith("通用"));
+      this._annotate = false;
+      if (ingredientSecs.length || techniqueSecs.length || generalSecs.length) {
+        html += `<div class="cg-annotations">
+          <div class="cg-annotations-label">📌 通用技法</div>`;
+        for (const sec of ingredientSecs)
+          html += this._renderAnnotationCard("🥩", sec.title.replace("食材处理：", ""), sec.body, "ingredient");
+        for (const sec of techniqueSecs)
+          html += this._renderAnnotationCard("🔥", sec.title.replace("技法：", ""), sec.body, "technique");
+        for (const sec of generalSecs)
+          html += this._renderAnnotationCard("💧", sec.title.replace("通用：", ""), sec.body, "general");
+        html += `</div>`;
+      }
+
+      // 菜谱笔记：原菜谱步骤（书本）+ markdown 标注（笔记）
+      const entry = this._index[recipe.id] ||
+        Object.values(this._index).find((e) => e.title === recipeTitle);
+      if (entry && steps.length > 0) {
+        const md = await this._loadRecipeGuide(entry.file);
+        if (md) {
+          const parsed = this._parseRecipeMarkdown(md);
+          const pool = [
+            ...parsed.prep.map((t) => ({ text: t, section: "食材准备" })),
+            ...parsed.steps.map((t) => ({ text: t, section: "详细做法" })),
+            ...parsed.tips.map((t) => ({ text: t, section: "关键技巧" })),
+            ...parsed.problems.map((t) => ({ text: t, section: "常见问题" })),
+          ];
+
+          // 全局匹配：按关键词重合度评分，贪心分配
+          const allPairs = [];
+          for (let si = 0; si < steps.length; si++) {
+            const stepKw = new Set(this._extractKeywords(steps[si]));
+            if (stepKw.size === 0) continue;
+            for (let pi = 0; pi < pool.length; pi++) {
+              const noteKw = this._extractKeywords(pool[pi].text);
+              const overlap = noteKw.filter((k) => stepKw.has(k));
+              if (overlap.length > 0)
+                allPairs.push({ si, pi, score: overlap.length });
+            }
+          }
+          allPairs.sort((a, b) => b.score - a.score);
+
+          const stepNotes = steps.map(() => []);
+          const usedIndices = new Set();
+          const maxPerStep = 3;
+          for (const pair of allPairs) {
+            if (usedIndices.has(pair.pi)) continue;
+            if (stepNotes[pair.si].length >= maxPerStep) continue;
+            stepNotes[pair.si].push(pool[pair.pi]);
+            usedIndices.add(pair.pi);
+          }
+
+          // 渲染：原步骤（带红色下划线锚点）+ 绿色引线批注
+          html += `<div class="cg-recipe-notes">
+            <div class="cg-recipe-notes-label">烹饪步骤</div>`;
+          for (let si = 0; si < steps.length; si++) {
+            const notes = stepNotes[si];
+            // 为步骤文本中的锚点词加红色下划线
+            const highlightedStep = this._highlightStepText(steps[si], notes);
+            html += `<div class="cg-step-block">
+              <div class="cg-step-text">
+                <span class="cg-step-num">${si + 1}</span>
+                <span class="cg-step-content">${highlightedStep}</span>
+              </div>`;
+            if (notes.length > 0) {
+              html += `<div class="cg-notes-wrapper">`;
+              for (const note of notes) {
+                html += `<div class="cg-annotation-bubble">
+                  <span class="cg-anno-dot"></span>
+                  <span class="cg-step-note-tag">${note.section}</span>
+                  <span class="cg-anno-text">${this.renderMarkdownInline(note.text)}</span>
+                </div>`;
+              }
+              html += `</div>`;
+            }
+            html += `</div>`;
+          }
+          html += `</div>`;
+
+          // 补充笔记
+          const remaining = pool.filter((_, idx) => !usedIndices.has(idx)).slice(0, 8);
+          if (remaining.length > 0) {
+            html += `<div class="cg-supplementary">
+              <div class="cg-supplementary-label">附加内容</div>`;
+            for (const note of remaining) {
+              html += `<div class="cg-supplementary-note">
+                <span class="cg-step-note-tag">${note.section}</span>
+                <span>${this.renderMarkdownInline(note.text)}</span>
+              </div>`;
+            }
+            html += `</div>`;
+          }
+        }
+      }
+
+      return html || `<div class="chef-guide-empty">暂无这道菜的烹饪指南</div>`;
+    } catch (e) {
+      return `<div class="chef-guide-empty">烹饪指南加载失败：${e.message}</div>`;
+    }
+  },
+
+  // 渲染单张批注卡片（左侧色条 + 图标 + 标题 + 正文）
+  _renderAnnotationCard(icon, name, body, type) {
+    return `<div class="cg-anno-card ${type}">
+      <div class="cg-anno-card-head"><span>${icon}</span><span>${name}</span></div>
+      <div class="cg-anno-card-body">${this.renderMarkdown(body)}</div>
+    </div>`;
+  },
+
+  // HTML 转义
+  _escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  },
+
+  // 找步骤文本中的锚点词：从笔记中找在步骤里出现的最长有意义短语
+  _findAnchorPhrase(stepText, noteText) {
+    const badTail = new Set([
+      "朝","让","用","在","把","从","向","到","给","对","为","与","和","等",
+      "着","过","的","了","一","不","也","就","才","很","最","再","又","还",
+      "将","被","比","按","照","据","沿","顺","经","靠",
+      "轻","轻","大","小","多","少","好","快","慢","高","低","长","短","厚","薄",
+      "太","非","未","已","正","刚","恰","稍","略","些","点",
+    ]);
+    const badHead = new Set(["的","了","在","是","和","与","或","而","但","如","以","为","对","从","到","被","把","将","让","向","朝","给","跟","比","按","照"]);
+    // 把笔记按标点/空格切分，提取所有中文片段
+    const segments = noteText.split(/[，。；：！？、\s\d\.a-zA-Z,;:!?""'()（）\[\]【】%℃~\-—…·]+/).filter(Boolean);
+    const candidates = new Set();
+    for (const seg of segments) {
+      const chinese = seg.replace(/[^\u4e00-\u9fa5]/g, "");
+      if (chinese.length < 2) continue;
+      // 取 2-5 字的子串（避免过长标注）
+      for (let len = Math.min(5, chinese.length); len >= 2; len--) {
+        for (let i = 0; i <= chinese.length - len; i++) {
+          const sub = chinese.slice(i, i + len);
+          if (!badTail.has(sub[sub.length - 1]) && !badHead.has(sub[0])) {
+            candidates.add(sub);
+          }
+        }
+      }
+    }
+    // 按长度降序，找第一个在步骤中出现的
+    const sorted = [...candidates].sort((a, b) => b.length - a.length);
+    for (const cand of sorted) {
+      if (stepText.includes(cand)) return cand;
+    }
+    return "";
+  },
+
+  // 在步骤文本中给锚点词加红色下划线（合并重叠/相邻的锚点）
+  _highlightStepText(stepText, notes) {
+    const anchors = [];
+    for (const note of notes) {
+      const anchor = this._findAnchorPhrase(stepText, note.text);
+      if (anchor && anchor.length >= 2) anchors.push(anchor);
+    }
+    if (anchors.length === 0) return this._escapeHtml(stepText);
+    // 在原文本中找到每个锚点的位置（每个锚点只取第一次出现）
+    const positions = [];
+    const used = new Set();
+    for (const a of anchors) {
+      const idx = stepText.indexOf(a);
+      if (idx !== -1 && !used.has(a)) {
+        positions.push({ start: idx, end: idx + a.length });
+        used.add(a);
+      }
+    }
+    if (positions.length === 0) return this._escapeHtml(stepText);
+    // 按起始位置排序，合并重叠/相邻但不跨标点的区间
+    positions.sort((a, b) => a.start - b.start);
+    const merged = [positions[0]];
+    const punctRE = /[，。；：！？、,;:!?""'()（）\[\]【】\s]/;
+    for (let i = 1; i < positions.length; i++) {
+      const last = merged[merged.length - 1];
+      const cur = positions[i];
+      // 检查间隔中是否有标点
+      const gap = stepText.slice(last.end, cur.start);
+      if (cur.start <= last.end + 2 && !punctRE.test(gap)) {
+        last.end = Math.max(last.end, cur.end);
+      } else {
+        merged.push(cur);
+      }
+    }
+    // 从后往前切片，转义各段再拼接 u 标签
+    let result = "";
+    let cursor = stepText.length;
+    for (let i = merged.length - 1; i >= 0; i--) {
+      const { start, end } = merged[i];
+      const after = stepText.slice(end, cursor);   // 锚点后面的文本
+      const marked = stepText.slice(start, end);   // 锚点本身
+      result =
+        '<u class="cg-underline">' + this._escapeHtml(marked) + "</u>" +
+        this._escapeHtml(after) +
+        result;
+      cursor = start;
+    }
+    result = this._escapeHtml(stepText.slice(0, cursor)) + result;
+    return result;
+  },
+
+  // 内联 markdown 渲染（用于批注气泡内，不产生块级元素）
+  renderMarkdownInline(text) {
+    const esc = (s) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    let out = esc(text);
+    out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // 把冒号后的内容略做分段处理
+    out = out.replace(/：/g, "：");
+    return out;
+  },
+
+  // 解析菜谱 markdown，拆分为各章节的笔记单元
+  _parseRecipeMarkdown(md) {
+    const result = { prep: [], steps: [], tips: [], problems: [], variations: [] };
+    const body = md.replace(/^#\s+.*\n/, "");
+    const sections = body.split(/^## /m);
+    for (let i = 1; i < sections.length; i++) {
+      const nl = sections[i].indexOf("\n");
+      const title = sections[i].slice(0, nl).trim();
+      const content = sections[i].slice(nl + 1).trim();
+      let bucket = null;
+      if (/食材|准备|处理/.test(title)) bucket = result.prep;
+      else if (/详细做法|做法|步骤/.test(title)) bucket = result.steps;
+      else if (/关键技巧|技巧|要点/.test(title)) bucket = result.tips;
+      else if (/常见问题|问题|注意/.test(title)) bucket = result.problems;
+      else if (/变化做法|变化|延伸|拓展/.test(title)) bucket = result.variations;
+      if (!bucket) continue;
+
+      const lines = content.split("\n");
+      let current = "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) { if (current) { bucket.push(current); current = ""; } continue; }
+        if (/^\*\*.+\*\*$/.test(trimmed)) { if (current) { bucket.push(current); current = ""; } continue; }
+        if (/^[-*]\s+/.test(trimmed) || /^\d+[.、]\s*/.test(trimmed)) {
+          if (current) { bucket.push(current); }
+          current = trimmed.replace(/^[-*]\s+/, "").replace(/^\d+[.、]\s*/, "");
+        } else {
+          current = current ? current + " " + trimmed : trimmed;
+        }
+      }
+      if (current) { bucket.push(current); }
+    }
+    return result;
+  },
+
+  _notesActive: false,
+  _originalStepHtml: null,
+
+  // 共享逻辑：为步骤数组匹配笔记，返回 stepNotes 二维数组
+  async _matchNotesToSteps(steps, recipe) {
+    await Promise.all([this._loadGeneral(), this._loadIndex()]);
+    const entry = this._index[recipe.id] ||
+      Object.values(this._index).find((e) => e.title === recipe.title);
+    if (!entry) return steps.map(() => []);
+    const md = await this._loadRecipeGuide(entry.file);
+    if (!md) return steps.map(() => []);
+    const parsed = this._parseRecipeMarkdown(md);
+    const pool = [
+      ...parsed.prep.map((t) => ({ text: t, section: "食材准备" })),
+      ...parsed.steps.map((t) => ({ text: t, section: "详细做法" })),
+      ...parsed.tips.map((t) => ({ text: t, section: "关键技巧" })),
+      ...parsed.problems.map((t) => ({ text: t, section: "常见问题" })),
+    ];
+    const allPairs = [];
+    for (let si = 0; si < steps.length; si++) {
+      const stepKw = new Set(this._extractKeywords(steps[si]));
+      if (stepKw.size === 0) continue;
+      for (let pi = 0; pi < pool.length; pi++) {
+        const noteKw = this._extractKeywords(pool[pi].text);
+        const overlap = noteKw.filter((k) => stepKw.has(k));
+        if (overlap.length > 0)
+          allPairs.push({ si, pi, score: overlap.length });
+      }
+    }
+    allPairs.sort((a, b) => b.score - a.score);
+    const stepNotes = steps.map(() => []);
+    const usedIndices = new Set();
+    const maxPerStep = 3;
+    for (const pair of allPairs) {
+      if (usedIndices.has(pair.pi)) continue;
+      if (stepNotes[pair.si].length >= maxPerStep) continue;
+      stepNotes[pair.si].push(pool[pair.pi]);
+      usedIndices.add(pair.pi);
+    }
+    return stepNotes;
+  },
+
+  // 构建「大厨总结」面板 HTML（仅通用技法，不含步骤笔记）
+  async buildSummaryHTML(recipeTitle) {
+    try {
+      await Promise.all([this._loadGeneral(), this._loadIndex()]);
+      const recipe =
+        (typeof allRecipes !== "undefined" &&
+          allRecipes.find((r) => r.title === recipeTitle)) ||
+        { title: recipeTitle };
+      let html = "";
+      html += `<div class="cg-notebook-header">
+        <span class="cg-notebook-icon">📌</span>
+        <div>
+          <div class="cg-notebook-title">${recipe.title} · 大厨总结</div>
+          <div class="cg-notebook-sub">食材处理 + 烹饪技法 + 通用要点</div>
+        </div>
+      </div>`;
+      if (window.ChefMemory) {
+        const cooked = ChefMemory.getCookedRecipes();
+        const mem = cooked.find((r) => r.title === recipe.title);
+        if (mem) {
+          const date = new Date(mem.lastCooked).toLocaleDateString();
+          html += `<div class="cg-memory-note">
+            <span class="cg-memory-icon">🧠</span>
+            <span>你做过这道菜 ${mem.count} 次，上次 ${date}。</span>
+          </div>`;
+        }
+      }
+      const sections = this._matchSections(recipe);
+      const ingredientSecs = sections.filter((s) => s.title.startsWith("食材处理"));
+      const techniqueSecs = sections.filter((s) => s.title.startsWith("技法"));
+      const generalSecs = sections.filter((s) => s.title.startsWith("通用"));
+      if (ingredientSecs.length || techniqueSecs.length || generalSecs.length) {
+        html += `<div class="cg-annotations">`;
+        for (const sec of ingredientSecs)
+          html += this._renderAnnotationCard("🥩", sec.title.replace("食材处理：", ""), sec.body, "ingredient");
+        for (const sec of techniqueSecs)
+          html += this._renderAnnotationCard("🔥", sec.title.replace("技法：", ""), sec.body, "technique");
+        for (const sec of generalSecs)
+          html += this._renderAnnotationCard("💧", sec.title.replace("通用：", ""), sec.body, "general");
+        html += `</div>`;
+      } else {
+        html += `<div class="chef-guide-empty">暂无这道菜的通用技法总结</div>`;
+      }
+      return html;
+    } catch (e) {
+      return `<div class="chef-guide-empty">大厨总结加载失败：${e.message}</div>`;
+    }
+  },
+
+  // 「大厨笔记」：直接在原菜谱页面 .step-item 上注入红线+绿色批注
+  async injectNotesToPage(recipeTitle) {
+    if (this._notesActive) this.clearNotesFromPage();
+    const recipe =
+      (typeof allRecipes !== "undefined" &&
+        allRecipes.find((r) => r.title === recipeTitle)) ||
+      { title: recipeTitle };
+    const stepItems = document.querySelectorAll(".recipe-detail .step-item, .recipe-detail-body .step-item");
+    if (stepItems.length === 0) return false;
+    const steps = [];
+    stepItems.forEach((item) => {
+      const textEl = item.querySelector(".step-text");
+      steps.push(textEl ? textEl.textContent.trim() : "");
+    });
+    const stepNotes = await this._matchNotesToSteps(steps, recipe);
+    // 保存原始HTML用于恢复
+    this._originalStepHtml = [];
+    stepItems.forEach((item, si) => {
+      const textEl = item.querySelector(".step-text");
+      if (!textEl) return;
+      this._originalStepHtml.push({ item, textEl, originalHtml: textEl.innerHTML, afterEl: null });
+      // 给 step-text 中的关键短语加红色下划线
+      const notes = stepNotes[si];
+      if (notes && notes.length > 0) {
+        const highlighted = this._highlightStepText(steps[si], notes);
+        textEl.innerHTML = highlighted;
+        // 构建绿色批注容器
+        const wrapper = document.createElement("div");
+        wrapper.className = "cg-page-notes-wrapper";
+        for (const note of notes) {
+          const bubble = document.createElement("div");
+          bubble.className = "cg-page-annotation-bubble";
+          bubble.innerHTML =
+            '<span class="cg-anno-dot"></span>' +
+            '<span class="cg-step-note-tag">' + note.section + "</span>" +
+            '<span class="cg-anno-text">' + this.renderMarkdownInline(note.text) + "</span>";
+          wrapper.appendChild(bubble);
+        }
+        // 插入到 step-item 后面作为批注容器
+        const notesContainer = document.createElement("div");
+        notesContainer.className = "cg-page-notes-container";
+        notesContainer.appendChild(wrapper);
+        item.parentNode.insertBefore(notesContainer, item.nextSibling);
+        this._originalStepHtml[this._originalStepHtml.length - 1].afterEl = notesContainer;
+      }
+    });
+    this._notesActive = true;
+    document.body.classList.add("chef-notes-active");
+    return true;
+  },
+
+  // 清除页面上的大厨笔记，恢复原样
+  clearNotesFromPage() {
+    if (!this._notesActive || !this._originalStepHtml) return;
+    for (const { textEl, originalHtml, afterEl } of this._originalStepHtml) {
+      if (textEl) textEl.innerHTML = originalHtml;
+      if (afterEl && afterEl.parentNode) afterEl.parentNode.removeChild(afterEl);
+    }
+    this._originalStepHtml = null;
+    this._notesActive = false;
+    document.body.classList.remove("chef-notes-active");
+  },
+
+  // 当前是否处于笔记模式
+  isNotesActive() {
+    return this._notesActive;
+  },
+
+  // 提取中文关键词：2-gram 滑动窗口（中文无空格，需拆成二元词组）
+  _extractKeywords(text) {
+    const chinese = text.replace(/[^\u4e00-\u9fa5]/g, "");
+    const stop = new Set([
+      "备用","然后","这一","不要","可以","一下","轻轻","就是","这样",
+      "一个","准备","进行","直接","同时","最后","首先","已经","时候",
+      "时间","适量","少许","大约","需要","主要","方便","放入","锅中",
+      "均匀","分钟","左右","即可","不够","记得","另外","表面","出来",
+      "接着","没有","不能","还是","或者","比如","例如","现在","开始",
+      "一直","部分","里面","上面","下面","前面","后面","中间","一次",
+      "以后","以前","之前","之后","因为","所以","但是","不过","如果",
+      "尽量","最好","建议","推荐","比较","非常","特别","稍微","略微",
+    ]);
+    const terms = new Set();
+    for (let i = 0; i < chinese.length - 1; i++) {
+      const t = chinese.slice(i, i + 2);
+      if (!stop.has(t)) terms.add(t);
+    }
+    return [...terms];
+  },
+};
+
+if (typeof window !== "undefined") {
+  window.ChefGuides = ChefGuides;
+}

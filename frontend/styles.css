@@ -3674,6 +3674,368 @@ body {
   font-size: 15px;
 }
 
+/* ============ 大厨做菜笔记 ============ */
+
+/* 笔记头部 */
+.cg-notebook-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--carrot-light);
+}
+.cg-notebook-icon { font-size: 28px; flex-shrink: 0; }
+.cg-notebook-title { font-size: 17px; font-weight: 700; color: var(--text-primary, #333); }
+.cg-notebook-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* 做菜记忆条 */
+.cg-memory-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: var(--avocado-light);
+  border-left: 3px solid var(--avocado);
+  padding: 8px 12px;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--avocado-dark);
+  line-height: 1.6;
+}
+
+/* 大厨批注区 */
+.cg-annotations { margin-bottom: 18px; }
+.cg-annotations-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+/* 批注卡片：左侧色条（类似页边批注） */
+.cg-anno-card {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 10px 12px 10px 16px;
+  margin-bottom: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.cg-anno-card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 4px;
+  border-radius: 2px;
+}
+.cg-anno-card.ingredient::before { background: var(--avocado); }
+.cg-anno-card.technique::before { background: var(--carrot); }
+.cg-anno-card.general::before { background: #6a8db5; }
+
+.cg-anno-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.cg-anno-card.ingredient .cg-anno-card-head { color: var(--avocado-dark); }
+.cg-anno-card.technique .cg-anno-card-head { color: var(--carrot); }
+.cg-anno-card.general .cg-anno-card-head { color: #4a6a8a; }
+
+.cg-anno-card-body { font-size: 12px; line-height: 1.65; color: var(--text-secondary); }
+
+/* 菜谱笔记：原步骤（书本）+ 红色下划线 + 绿色引线批注 */
+.cg-recipe-notes { margin-top: 4px; }
+.cg-recipe-notes-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #333);
+  margin-bottom: 14px;
+  letter-spacing: 0;
+}
+.cg-step-block {
+  margin-bottom: 10px;
+}
+.cg-step-text {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--text-primary, #333);
+  background: #fff;
+  border-radius: 20px;
+  padding: 12px 16px;
+}
+.cg-step-num {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  background: var(--avocado);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.cg-step-content { flex: 1; }
+
+/* 红色下划线（书本上画线标注） */
+u.cg-underline {
+  text-decoration: none;
+  border-bottom: 3px solid #e84040;
+  padding-bottom: 1px;
+  position: relative;
+}
+
+/* 绿色引线容器：从步骤卡片底部延伸下来，左侧一条竖线贯穿所有批注 */
+.cg-notes-wrapper {
+  position: relative;
+  margin-left: 25px;
+  padding-left: 16px;
+  padding-top: 4px;
+}
+/* 主竖线 */
+.cg-notes-wrapper::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -10px;
+  width: 2px;
+  height: calc(100% + 10px);
+  background: #3cb371;
+  border-radius: 1px;
+}
+/* 顶部弯头：从竖线向左小横接到步骤卡片左边缘 */
+.cg-notes-wrapper::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: -10px;
+  width: 12px;
+  height: 2px;
+  background: #3cb371;
+  border-radius: 1px;
+}
+
+/* 单条绿色批注 */
+.cg-annotation-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  position: relative;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #2d7a4f;
+}
+/* 圆点接在竖线上 */
+.cg-annotation-bubble::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 9px;
+  width: 7px;
+  height: 7px;
+  background: #fff;
+  border: 2px solid #3cb371;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.cg-anno-dot { display: none; }
+.cg-annotation-bubble .cg-step-note-tag {
+  flex-shrink: 0;
+}
+.cg-anno-text { flex: 1; }
+.cg-annotation-bubble strong { color: #1f5a38; font-weight: 600; }
+
+/* 章节标签：绿色小胶囊 */
+.cg-step-note-tag {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2d7a4f;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+/* 补充笔记 / 附加内容 */
+.cg-supplementary { margin-top: 20px; }
+.cg-supplementary-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #333);
+  margin-bottom: 12px;
+}
+.cg-supplementary-note {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.cg-supplementary-note strong { color: var(--text-primary, #333); }
+
+/* 笔记内容通用排版 */
+.cg-anno-card-body h3,
+.cg-anno-card-body h4,
+.cg-anno-card-body h5,
+.cg-anno-card-body h6,
+.cg-supplementary-note h3,
+.cg-supplementary-note h4,
+.cg-supplementary-note h5,
+.cg-supplementary-note h6 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  margin: 12px 0 6px;
+}
+
+.cg-anno-card-body p,
+.cg-supplementary-note p { margin: 6px 0; }
+
+.cg-anno-card-body ul,
+.cg-anno-card-body ol,
+.cg-supplementary-note ul,
+.cg-supplementary-note ol {
+  padding-left: 20px;
+  margin: 6px 0;
+}
+
+.cg-anno-card-body li,
+.cg-supplementary-note li { margin-bottom: 4px; }
+
+.cg-anno-card-body strong,
+.cg-supplementary-note strong { color: var(--text-primary, #333); }
+
+.cg-anno-card-body table,
+.cg-supplementary-note table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 12px;
+}
+.cg-anno-card-body th,
+.cg-anno-card-body td,
+.cg-supplementary-note th,
+.cg-supplementary-note td {
+  border: 1px solid var(--border-light);
+  padding: 5px 8px;
+  text-align: left;
+}
+.cg-anno-card-body th,
+.cg-supplementary-note th {
+  background: var(--carrot-light);
+  font-weight: 600;
+}
+
+.cg-anno-card-body blockquote,
+.cg-supplementary-note blockquote {
+  border-left: 3px solid var(--avocado);
+  background: var(--avocado-light);
+  padding: 6px 10px;
+  margin: 8px 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.cg-anno-card-body hr,
+.cg-supplementary-note hr {
+  border: none;
+  border-top: 1px solid var(--border-light);
+  margin: 12px 0;
+}
+
+.cg-anno-card-body code,
+.cg-supplementary-note code {
+  background: var(--bg-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.chef-guide-empty {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ===== 页面注入模式：大厨笔记直接显示在原菜谱页 .step-item 上 ===== */
+.cg-page-notes-container {
+  margin: -4px 0 8px 0;
+  padding-left: 40px;
+}
+.cg-page-notes-wrapper {
+  position: relative;
+  padding-left: 16px;
+  padding-top: 4px;
+}
+.cg-page-notes-wrapper::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -10px;
+  width: 2px;
+  height: calc(100% + 10px);
+  background: #3cb371;
+  border-radius: 1px;
+}
+.cg-page-notes-wrapper::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: -10px;
+  width: 12px;
+  height: 2px;
+  background: #3cb371;
+  border-radius: 1px;
+}
+.cg-page-annotation-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 0;
+  position: relative;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #2d7a4f;
+}
+.cg-page-annotation-bubble::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 9px;
+  width: 7px;
+  height: 7px;
+  background: #fff;
+  border: 2px solid #3cb371;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.cg-page-annotation-bubble .cg-step-note-tag {
+  flex-shrink: 0;
+}
+.cg-page-annotation-bubble strong { color: #1f5a38; font-weight: 600; }
+/* 笔记模式下 step-text 中的红色下划线 */
+.chef-notes-active .step-text u.cg-underline {
+  text-decoration: none;
+  border-bottom: 3px solid #e84040;
+  padding-bottom: 1px;
+}
+
 .chef-agent-toast {
   position: fixed;
   bottom: 170px;
@@ -3917,4 +4279,427 @@ body {
 
 .chef-home-menu-circle.chef-home-menu-danger span {
   filter: none;
+}
+
+/* 菜谱页大厨菜单：带文字标签的按钮 */
+.chef-recipe-menu {
+  position: fixed;
+  z-index: 300;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  pointer-events: none;
+}
+.chef-recipe-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px 10px 12px;
+  border: none;
+  border-radius: 100px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.15s;
+  opacity: 0;
+  animation: chefBubbleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0s);
+  transform: translateY(20px) scale(0.8);
+  white-space: nowrap;
+}
+.chef-recipe-menu-btn:active {
+  transform: scale(0.93);
+}
+.chef-recipe-menu-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.chef-recipe-menu-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+/* ============================================
+   厨师管理页样式
+   ============================================ */
+.chef-list {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chef-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+
+.chef-card-disabled {
+  opacity: 0.5;
+}
+
+.chef-card-avatar {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--carrot, #e8853a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 3px 10px rgba(232, 133, 58, 0.3);
+}
+
+.chef-card-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chef-card-avatar-emoji {
+  font-size: 32px;
+}
+
+.chef-card-avatar-edit {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.chef-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.chef-card-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  margin-bottom: 4px;
+}
+
+.chef-card-status {
+  font-size: 13px;
+  color: var(--text-muted, #888);
+}
+
+.chef-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.chef-card-toggle {
+  width: 50px;
+  height: 28px;
+  border-radius: 14px;
+  background: #ddd;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.chef-card-toggle.active {
+  background: #3cb371;
+}
+
+.chef-card-toggle-dot {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s;
+}
+
+.chef-card-toggle.active .chef-card-toggle-dot {
+  transform: translateX(22px);
+}
+
+.chef-card-delete {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #fff0f0;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.chef-card-delete:active {
+  background: #ffe0e0;
+}
+
+.chef-add-section {
+  padding: 16px;
+}
+
+.chef-add-btn {
+  width: 100%;
+  padding: 16px;
+  border: 2px dashed #ddd;
+  border-radius: 16px;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--text-muted, #888);
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.chef-add-btn:active {
+  border-color: var(--carrot, #e8853a);
+  color: var(--carrot, #e8853a);
+}
+
+.chef-add-icon {
+  font-size: 20px;
+  font-weight: 300;
+}
+
+/* 厨师表单样式 */
+.chef-form {
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.chef-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chef-form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.chef-form-input {
+  padding: 12px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.chef-form-input:focus {
+  border-color: var(--carrot, #e8853a);
+}
+
+.chef-form-textarea {
+  padding: 12px 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  outline: none;
+  resize: vertical;
+  min-height: 200px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.chef-form-textarea:focus {
+  border-color: var(--carrot, #e8853a);
+}
+
+.chef-form-actions {
+  padding-top: 10px;
+}
+
+.chef-form-submit {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: var(--carrot, #e8853a);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.chef-form-submit:active {
+  opacity: 0.85;
+}
+
+/* 菜谱选择器 */
+.chef-recipe-picker {
+  border: 1.5px solid #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.chef-recipe-search {
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.chef-recipe-list {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.chef-recipe-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.chef-recipe-item:last-child {
+  border-bottom: none;
+}
+
+.chef-recipe-item:active {
+  background: #f8f8f8;
+}
+
+.chef-recipe-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--carrot, #e8853a);
+  flex-shrink: 0;
+}
+
+.chef-recipe-item-title {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+}
+
+.chef-recipe-item-category {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  flex-shrink: 0;
+}
+
+/* FAB禁用状态 */
+.chef-agent-fab.chef-fab-disabled {
+  background: #ccc;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  opacity: 0.6;
+}
+
+.chef-fab-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.chef-fab-avatar-img.disabled {
+  filter: grayscale(100%);
+  opacity: 0.7;
+}
+
+/* 自定义大厨笔记面板 */
+.cg-custom-note-content {
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary, #333);
+}
+
+.cg-custom-note-content h2 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 16px 0 8px;
+  color: var(--carrot, #e8853a);
+}
+
+.cg-custom-note-content h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  color: var(--text-primary, #333);
+}
+
+.cg-custom-note-content ul,
+.cg-custom-note-content ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.cg-custom-note-content li {
+  margin: 4px 0;
+}
+
+.cg-custom-note-content strong {
+  color: var(--carrot, #e8853a);
+}
+
+/* 自定义大厨标注颜色（红色系，与默认绿色区分） */
+.chef-notes-custom .cg-page-notes-wrapper::before {
+  background: #ff6b6b;
+}
+
+.chef-notes-custom .cg-page-annotation-bubble {
+  color: #c92a2a;
+}
+
+.chef-notes-custom .cg-page-annotation-bubble::before {
+  border-color: #ff6b6b;
+}
+
+.chef-notes-custom .cg-anno-dot {
+  background: #ff6b6b;
+}
+
+.chef-notes-custom .cg-step-note-tag {
+  background: #fff0f0;
+  color: #c92a2a;
+}
+
+.chef-notes-custom .cg-underline {
+  text-decoration-color: #ff6b6b;
 }
