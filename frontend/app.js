@@ -2923,12 +2923,12 @@ function editChef(chefId) {
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
 
+  window._editingChefId = chefId;
+
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
   const recipe = chef.recipes[0] || {};
-  const noteContent = recipe.content || "";
-  const summaryContent = recipe.summary || "";
   const recipeTitle = recipe.title || "";
 
   app.innerHTML = `
@@ -2949,19 +2949,24 @@ function editChef(chefId) {
         <div class="chef-form-section">
           <label class="chef-form-label">选择菜谱</label>
           <div class="chef-recipe-picker" id="chefRecipePicker">
-            <input type="text" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterChefRecipeList(this.value)" />
+            <input type="text" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterChefRecipeListForEdit(this.value)" />
+            <div class="chef-recipe-filter-bar">
+              <button class="chef-recipe-filter-btn active" data-filter="all" onclick="setChefRecipeFilter('all')">全部</button>
+              <button class="chef-recipe-filter-btn" data-filter="written" onclick="setChefRecipeFilter('written')">已写</button>
+              <button class="chef-recipe-filter-btn" data-filter="unwritten" onclick="setChefRecipeFilter('unwritten')">未写</button>
+            </div>
             <div class="chef-recipe-list" id="chefRecipeList">
-              ${renderChefRecipeListWithSelection("", recipeTitle)}
+              ${renderChefRecipeListForEdit("", "all", recipeTitle)}
             </div>
           </div>
         </div>
         <div class="chef-form-section">
           <label class="chef-form-label">大厨笔记（菜谱做法，按模板填写）</label>
-          <textarea id="newChefContent" class="chef-form-textarea" rows="14">${noteContent || "## 食材准备\n\n## 详细做法\n\n## 关键技巧\n"}</textarea>
+          <textarea id="newChefContent" class="chef-form-textarea" rows="14"></textarea>
         </div>
         <div class="chef-form-section">
           <label class="chef-form-label">大厨总结（烹饪技法与要点，按模板填写）</label>
-          <textarea id="newChefSummary" class="chef-form-textarea" rows="10">${summaryContent || "## 食材处理\n\n## 烹饪技法\n\n## 通用要点\n"}</textarea>
+          <textarea id="newChefSummary" class="chef-form-textarea" rows="10"></textarea>
         </div>
         <div class="chef-form-actions">
           <button class="chef-form-submit" onclick="updateChef('${chefId}')">保存修改</button>
@@ -2969,23 +2974,115 @@ function editChef(chefId) {
       </div>
     </div>
   `;
+  // 初始加载第一个菜谱的内容
+  loadChefRecipeContent(chefId, recipeTitle);
 }
 
-// 渲染菜谱列表并标记已选项
-function renderChefRecipeListWithSelection(filter, selectedTitle) {
+// 当前编辑状态
+window._chefRecipeFilter = "all";
+window._chefRecipeSearch = "";
+window._chefCurrentRecipe = "";
+
+// 渲染编辑页菜谱列表（支持已写/未写筛选）
+function renderChefRecipeListForEdit(keyword, statusFilter, selectedTitle) {
+  const chef = ChefManager.getById(window._editingChefId);
+  if (!chef) return "";
+  const writtenTitles = new Set(chef.recipes.filter(r => r.content || r.summary).map(r => r.title));
+
   const recipes = allRecipes.filter((r) => {
     if (r.category === "condiment" || r.category === "template") return false;
-    if (filter && !r.title.toLowerCase().includes(filter.toLowerCase())) return false;
+    if (keyword && !r.title.toLowerCase().includes(keyword.toLowerCase())) return false;
+    if (statusFilter === "written" && !writtenTitles.has(r.title)) return false;
+    if (statusFilter === "unwritten" && writtenTitles.has(r.title)) return false;
     return true;
   }).slice(0, 100);
 
-  return recipes.map((r) => `
+  return recipes.map((r) => {
+    const isWritten = writtenTitles.has(r.title);
+    const badge = isWritten ? '<span class="chef-recipe-written-badge">已写</span>' : "";
+    return `
     <label class="chef-recipe-item">
-      <input type="radio" name="chefRecipeRadio" class="chef-recipe-checkbox" value="${r.title}" ${r.title === selectedTitle ? "checked" : ""} />
+      <input type="radio" name="chefRecipeRadio" class="chef-recipe-checkbox" value="${r.title}" ${r.title === selectedTitle ? "checked" : ""} onchange="switchChefRecipe('${r.title}')" />
       <span class="chef-recipe-item-title">${r.title}</span>
+      ${badge}
       <span class="chef-recipe-item-category">${r.categoryLabel || r.category}</span>
     </label>
-  `).join("");
+  `}).join("");
+}
+
+// 搜索过滤编辑页菜谱列表
+function filterChefRecipeListForEdit(keyword) {
+  window._chefRecipeSearch = keyword;
+  const list = document.getElementById("chefRecipeList");
+  if (list) {
+    const selectedRadio = document.querySelector(".chef-recipe-checkbox:checked");
+    const selectedTitle = selectedRadio ? selectedRadio.value : "";
+    list.innerHTML = renderChefRecipeListForEdit(keyword, window._chefRecipeFilter, selectedTitle);
+  }
+}
+
+// 设置已写/未写筛选
+function setChefRecipeFilter(filter) {
+  window._chefRecipeFilter = filter;
+  document.querySelectorAll(".chef-recipe-filter-btn").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.filter === filter);
+  });
+  filterChefRecipeListForEdit(window._chefRecipeSearch);
+}
+
+// 切换菜谱时保存当前内容并加载新内容
+function switchChefRecipe(newRecipeTitle) {
+  const chefId = window._editingChefId;
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  // 保存当前菜谱的内容
+  if (window._chefCurrentRecipe) {
+    const content = document.getElementById("newChefContent").value.trim();
+    const summary = document.getElementById("newChefSummary").value.trim();
+    const existing = chef.recipes.find(r => r.title === window._chefCurrentRecipe);
+    if (existing) {
+      existing.content = content;
+      existing.summary = summary;
+      existing.rawContent = content;
+      existing.rawSummary = summary;
+    } else if (content || summary) {
+      chef.recipes.push({
+        title: window._chefCurrentRecipe,
+        content: content,
+        summary: summary,
+        rawContent: content,
+        rawSummary: summary,
+        noteProcessed: false,
+        summaryProcessed: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    ChefManager._save();
+  }
+
+  // 加载新菜谱的内容
+  loadChefRecipeContent(chefId, newRecipeTitle);
+}
+
+// 加载指定菜谱的笔记和总结到编辑表单
+function loadChefRecipeContent(chefId, recipeTitle) {
+  window._chefCurrentRecipe = recipeTitle;
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+
+  const recipe = chef.recipes.find(r => r.title === recipeTitle);
+  const noteContent = recipe ? (recipe.content || "") : "";
+  const summaryContent = recipe ? (recipe.summary || "") : "";
+
+  const noteEl = document.getElementById("newChefContent");
+  const summaryEl = document.getElementById("newChefSummary");
+  if (noteEl) {
+    noteEl.value = noteContent || "## 食材准备\n\n## 详细做法\n\n## 关键技巧\n";
+  }
+  if (summaryEl) {
+    summaryEl.value = summaryContent || "## 食材处理\n\n## 烹饪技法\n\n## 通用要点\n";
+  }
 }
 
 // 更新自定义大厨
@@ -2994,7 +3091,7 @@ function updateChef(chefId) {
   const content = document.getElementById("newChefContent").value.trim();
   const summary = document.getElementById("newChefSummary").value.trim();
   const checkedRadio = document.querySelector(".chef-recipe-checkbox:checked");
-  const selectedRecipe = checkedRadio ? checkedRadio.value : "";
+  const selectedRecipe = checkedRadio ? checkedRadio.value : window._chefCurrentRecipe || "";
 
   if (!name) {
     showToast("请输入大厨名称");
@@ -3004,10 +3101,6 @@ function updateChef(chefId) {
     showToast("请选择一道菜谱");
     return;
   }
-  if (!content) {
-    showToast("请输入大厨笔记内容");
-    return;
-  }
 
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
@@ -3015,45 +3108,40 @@ function updateChef(chefId) {
   // 更新厨师信息
   chef.name = name;
 
-  // 检查笔记内容是否有变化
+  // 保存当前选中菜谱的内容（不替换其他菜谱）
   const existingRecipe = chef.recipes.find(r => r.title === selectedRecipe);
   const contentChanged = existingRecipe ? existingRecipe.content !== content : true;
-  const summaryChanged = existingRecipe ? existingRecipe.summary !== summary : true;
+  const summaryChanged = existingRecipe ? (existingRecipe.summary || "") !== summary : true;
 
   if (existingRecipe) {
     existingRecipe.content = content;
     existingRecipe.summary = summary;
+    existingRecipe.rawContent = content;
+    existingRecipe.rawSummary = summary;
     existingRecipe.updatedAt = new Date().toISOString();
   } else {
-    // 如果选了新菜谱，替换原来的
-    chef.recipes = [{
+    chef.recipes.push({
       title: selectedRecipe,
       content: content,
       summary: summary,
       rawContent: content,
       rawSummary: summary,
+      noteProcessed: false,
+      summaryProcessed: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    }];
+    });
   }
   ChefManager._save();
   showChefs();
 
   // 如果笔记内容有变化，重新提交AI处理
   if (contentChanged) {
-    const noteValidation = validateChefContent(content);
-    if (noteValidation.valid) {
-      processChefContentWithAI(chefId, selectedRecipe, content, "note");
-    } else {
-      showToast("笔记内容未通过验证，已保存原始版本");
-    }
+    processChefContentWithAI(chefId, selectedRecipe, content, "note");
   }
   // 如果总结内容有变化，重新提交AI处理
   if (summary && summaryChanged) {
-    const summaryValidation = validateChefContent(summary);
-    if (summaryValidation.valid) {
-      processChefContentWithAI(chefId, selectedRecipe, summary, "summary");
-    }
+    processChefContentWithAI(chefId, selectedRecipe, summary, "summary");
   }
 
   if (!contentChanged && !summaryChanged) {

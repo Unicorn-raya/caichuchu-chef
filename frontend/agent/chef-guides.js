@@ -619,7 +619,16 @@ const ChefGuides = {
             : "🧑‍🍳";
           html += `<div class="cg-custom-summary-block" style="border-left:3px solid ${chef.color};padding-left:12px;margin-top:16px;">`;
           html += `<div style="font-size:13px;font-weight:600;color:${chef.color};margin-bottom:8px;">${avatarHtml} ${chef.name}的总结</div>`;
+          // 润色后内容
           html += `<div class="cg-custom-note-content">${this.renderMarkdown(this._fillEmptySections(summary))}</div>`;
+          // 原始内容（润色前）
+          const note = chef.recipes.find(r => r.title === recipeTitle);
+          if (note && note.rawSummary && note.rawSummary.trim() && note.rawSummary.trim() !== summary.trim()) {
+            html += `<div class="cg-raw-content-block">`;
+            html += `<div class="cg-raw-content-label">原始输入</div>`;
+            html += `<div class="cg-raw-content-text">${this.renderMarkdown(this._fillEmptySections(note.rawSummary))}</div>`;
+            html += `</div>`;
+          }
           html += `</div>`;
         }
       }
@@ -695,6 +704,8 @@ const ChefGuides = {
         const customStepNotes = this._matchCustomNotesToSteps(steps, note.content);
         const totalMatches = customStepNotes.reduce((s, n) => s + n.length, 0);
         console.log("[ChefGuides] 匹配结果:", totalMatches, "条笔记");
+        // 判断是否有润色前内容
+        const hasRaw = note.rawContent && note.rawContent.trim() && note.rawContent.trim() !== note.content.trim();
         stepItems.forEach((item, si) => {
           const textEl = item.querySelector(".step-text");
           if (!textEl) return;
@@ -708,6 +719,15 @@ const ChefGuides = {
             }
             // 构建批注容器（厨师自有颜色）
             const wrapper = this._buildNotesWrapper(notes, chef.color, chef.name);
+            // 如果有原始内容，在批注底部添加原始内容区块
+            if (hasRaw) {
+              const rawSection = document.createElement("div");
+              rawSection.className = "cg-raw-content-block";
+              rawSection.innerHTML =
+                '<div class="cg-raw-content-label">原始输入</div>' +
+                '<div class="cg-raw-content-text">' + this.renderMarkdown(this._fillEmptySections(note.rawContent)) + '</div>';
+              wrapper.appendChild(rawSection);
+            }
             const notesContainer = document.createElement("div");
             notesContainer.className = "cg-page-notes-container";
             notesContainer.appendChild(wrapper);
