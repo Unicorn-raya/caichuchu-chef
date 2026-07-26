@@ -3855,11 +3855,11 @@ u.cg-underline {
 .cg-anno-text { flex: 1; }
 .cg-annotation-bubble strong { color: #1f5a38; font-weight: 600; }
 
-/* 章节标签：绿色小胶囊 */
+/* 章节标签：跟随大厨颜色的小胶囊 */
 .cg-step-note-tag {
   display: inline-block;
-  background: #e8f5e9;
-  color: #2d7a4f;
+  background: color-mix(in srgb, var(--cg-color, #3cb371) 12%, white);
+  color: var(--cg-color, #2d7a4f);
   font-size: 10px;
   font-weight: 600;
   padding: 1px 6px;
@@ -3990,7 +3990,7 @@ u.cg-underline {
   top: -10px;
   width: 2px;
   height: calc(100% + 10px);
-  background: #3cb371;
+  background: var(--cg-color, #3cb371);
   border-radius: 1px;
 }
 .cg-page-notes-wrapper::after {
@@ -4000,7 +4000,7 @@ u.cg-underline {
   top: -10px;
   width: 12px;
   height: 2px;
-  background: #3cb371;
+  background: var(--cg-color, #3cb371);
   border-radius: 1px;
 }
 .cg-page-annotation-bubble {
@@ -4011,7 +4011,7 @@ u.cg-underline {
   position: relative;
   font-size: 12px;
   line-height: 1.65;
-  color: #2d7a4f;
+  color: var(--cg-color, #2d7a4f);
 }
 .cg-page-annotation-bubble::before {
   content: "";
@@ -4021,14 +4021,14 @@ u.cg-underline {
   width: 7px;
   height: 7px;
   background: #fff;
-  border: 2px solid #3cb371;
+  border: 2px solid var(--cg-color, #3cb371);
   border-radius: 50%;
   box-sizing: border-box;
 }
 .cg-page-annotation-bubble .cg-step-note-tag {
   flex-shrink: 0;
 }
-.cg-page-annotation-bubble strong { color: #1f5a38; font-weight: 600; }
+.cg-page-annotation-bubble strong { color: var(--cg-color, #1f5a38); font-weight: 600; }
 /* 笔记模式下 step-text 中的红色下划线 */
 .chef-notes-active .step-text u.cg-underline {
   text-decoration: none;

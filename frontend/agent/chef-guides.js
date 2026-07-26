@@ -671,8 +671,10 @@ const ChefGuides = {
 
     let hasAnyNotes = false;
 
-    // 1. 默认大厨笔记（绿色，从markdown文件加载）
+    // 1. 默认大厨笔记（跟随大厨颜色，从markdown文件加载）
     if (ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
+      const defaultChef = ChefManager.getDefault();
+      const defaultColor = (defaultChef && defaultChef.color) || "#3cb371";
       const stepNotes = await this._matchNotesToSteps(steps, recipe);
       stepItems.forEach((item, si) => {
         const textEl = item.querySelector(".step-text");
@@ -683,8 +685,8 @@ const ChefGuides = {
           // 高亮步骤文本
           const currentHtml = textEl.innerHTML;
           textEl.innerHTML = this._highlightStepText(steps[si], notes);
-          // 构建批注容器（绿色）
-          const wrapper = this._buildNotesWrapper(notes, "#3cb371");
+          // 构建批注容器（跟随大厨颜色）
+          const wrapper = this._buildNotesWrapper(notes, defaultColor);
           const notesContainer = document.createElement("div");
           notesContainer.className = "cg-page-notes-container";
           notesContainer.appendChild(wrapper);
@@ -764,14 +766,13 @@ const ChefGuides = {
   _buildNotesWrapper(notes, color, chefName) {
     const wrapper = document.createElement("div");
     wrapper.className = "cg-page-notes-wrapper";
-    if (chefName) {
-      wrapper.classList.add("cg-page-notes-custom");
-      wrapper.style.setProperty("--cg-color", color);
-    }
+    if (chefName) wrapper.classList.add("cg-page-notes-custom");
+    // 始终设置 --cg-color，使默认大厨笔记也能跟随大厨颜色
+    wrapper.style.setProperty("--cg-color", color);
     for (const note of notes) {
       const bubble = document.createElement("div");
       bubble.className = "cg-page-annotation-bubble";
-      if (chefName) bubble.style.setProperty("--cg-color", color);
+      bubble.style.setProperty("--cg-color", color);
       const tagText = chefName ? `${chefName}·${note.section}` : note.section;
       bubble.innerHTML =
         '<span class="cg-anno-dot"></span>' +
