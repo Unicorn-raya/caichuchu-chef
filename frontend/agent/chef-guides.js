@@ -688,9 +688,13 @@ const ChefGuides = {
 
     // 2. 自定义大厨笔记（各厨师自有颜色，从用户输入内容匹配）
     const customNotes = ChefManager.getEnabledChefNotesForRecipe(recipeTitle);
+    console.log("[ChefGuides] 自定义大厨笔记:", customNotes.length, "条", "for recipe:", recipeTitle);
     for (const { chef, note } of customNotes) {
       if (!chef.isDefault && note.content) {
+        console.log("[ChefGuides] 处理厨师:", chef.name, "content长度:", note.content.length, "content前80字:", note.content.substring(0, 80));
         const customStepNotes = this._matchCustomNotesToSteps(steps, note.content);
+        const totalMatches = customStepNotes.reduce((s, n) => s + n.length, 0);
+        console.log("[ChefGuides] 匹配结果:", totalMatches, "条笔记");
         stepItems.forEach((item, si) => {
           const textEl = item.querySelector(".step-text");
           if (!textEl) return;
@@ -745,12 +749,23 @@ const ChefGuides = {
   // 匹配自定义厨师笔记到步骤（从用户输入的markdown文本）
   _matchCustomNotesToSteps(steps, noteContent) {
     const parsed = this._parseRecipeMarkdown(noteContent);
-    const pool = [
+    let pool = [
       ...parsed.prep.map((t) => ({ text: t, section: "食材准备" })),
       ...parsed.steps.map((t) => ({ text: t, section: "详细做法" })),
       ...parsed.tips.map((t) => ({ text: t, section: "关键技巧" })),
       ...parsed.problems.map((t) => ({ text: t, section: "常见问题" })),
     ];
+
+    // 回退：如果 markdown 解析结果为空（纯文本内容未经AI处理），
+    // 按行分割，每行作为一条笔记
+    if (pool.length === 0) {
+      const lines = noteContent.split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !/^#{1,6}\s/.test(l) && l.length > 3);
+      pool = lines.map((text) => ({ text, section: "笔记" }));
+    }
+
+    // 最终仍为空则返回空
     if (pool.length === 0) return steps.map(() => []);
 
     const allPairs = [];
@@ -764,6 +779,20 @@ const ChefGuides = {
           allPairs.push({ si, pi, score: overlap.length });
       }
     }
+
+    // 回退：如果没有找到任何关键词重叠，尝试单字匹配
+    if (allPairs.length === 0) {
+      for (let si = 0; si < steps.length; si++) {
+        const stepChars = new Set(steps[si].replace(/[^\u4e00-\u9fa5]/g, "").split(""));
+        for (let pi = 0; pi < pool.length; pi++) {
+          const noteChars = new Set(pool[pi].text.replace(/[^\u4e00-\u9fa5]/g, "").split(""));
+          let overlap = 0;
+          for (const ch of noteChars) if (stepChars.has(ch)) overlap++;
+          if (overlap >= 3) allPairs.push({ si, pi, score: overlap });
+        }
+      }
+    }
+
     allPairs.sort((a, b) => b.score - a.score);
     const stepNotes = steps.map(() => []);
     const usedIndices = new Set();
