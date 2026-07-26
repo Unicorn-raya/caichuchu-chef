@@ -1996,6 +1996,8 @@ function showRecipeDetail(rec) {
   }
   closeChefAgentPanel();
   closeChefRecipeMenu();
+  // 更新FAB头像为当前启用厨师
+  updateChefFabState();
   document.getElementById("bottomNav").style.display = "";
   const recipe = rec.recipe;
   const app = document.getElementById("app");
@@ -2487,8 +2489,7 @@ function goBackFromRecipeDetail() {
   // 离开菜谱页时清除大厨笔记
   if (window.ChefGuides && ChefGuides.isNotesActive()) {
     ChefGuides.clearNotesFromPage();
-    const fab = document.getElementById("chefAgentFab");
-    if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    updateChefFabState();
   }
   closeChefAgentPanel();
   closeChefRecipeMenu();
@@ -4594,7 +4595,7 @@ function handleChefAgentClick() {
     // 如果笔记模式已开启，点击则关闭笔记恢复原样
     if (ChefGuides.isNotesActive()) {
       ChefGuides.clearNotesFromPage();
-      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      updateChefFabState();
       showChefAgentToast("已关闭大厨笔记");
       return;
     }
@@ -4602,7 +4603,7 @@ function handleChefAgentClick() {
     const panel = document.getElementById("chefAgentPanel");
     if (panel && !panel.classList.contains("hidden")) {
       closeChefAgentPanel();
-      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      updateChefFabState();
       return;
     }
     // 否则弹出双选项菜单
@@ -4712,7 +4713,7 @@ function closeChefHomeMenu() {
   // 动画结束后移除
   setTimeout(() => {
     popup.remove();
-    if (fab) fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    if (fab) updateChefFabState();
   }, 300);
 }
 
@@ -4793,7 +4794,7 @@ function closeChefRecipeMenu() {
     if (fab && !ChefGuides.isNotesActive()) {
       const p = document.getElementById("chefAgentPanel");
       if (!p || p.classList.contains("hidden"))
-        fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+        updateChefFabState();
     }
   }, 300);
 }
@@ -4810,14 +4811,18 @@ function activateChefNotes() {
   ChefGuides.injectNotesToPage(title).then((ok) => {
     if (fab) {
       fab.classList.remove("loading");
-      fab.querySelector(".chef-agent-fab-icon").textContent = ok ? "📝" : "👨‍🍳";
+      if (ok) {
+        fab.querySelector(".chef-agent-fab-icon").textContent = "📝";
+      } else {
+        updateChefFabState();
+      }
     }
     if (!ok) showChefAgentToast("暂无可标注的笔记");
     else showChefAgentToast("大厨笔记已标注");
   }).catch(() => {
     if (fab) {
       fab.classList.remove("loading");
-      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      updateChefFabState();
     }
     showChefAgentToast("笔记加载失败");
   });
@@ -4844,7 +4849,7 @@ function activateChefSummary() {
   }).catch(() => {
     if (fab) {
       fab.classList.remove("loading");
-      fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+      updateChefFabState();
     }
   });
 }
@@ -4853,7 +4858,7 @@ function closeChefAgentPanel() {
   document.getElementById("chefAgentPanel").classList.add("hidden");
   const fab = document.getElementById("chefAgentFab");
   if (fab && !ChefGuides.isNotesActive()) {
-    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
+    updateChefFabState();
   }
 }
 
