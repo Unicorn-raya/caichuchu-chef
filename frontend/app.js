@@ -3320,7 +3320,66 @@ function showChefAvatarPicker(chefId) {
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
 
-  // 创建隐藏的文件输入
+  const existing = document.getElementById("chefAvatarMenu");
+  if (existing) existing.remove();
+
+  // 找到被点击的头像元素用于定位
+  const avatarEl = event && event.currentTarget ? event.currentTarget : null;
+  const rect = avatarEl ? avatarEl.getBoundingClientRect() : null;
+
+  const menu = document.createElement("div");
+  menu.id = "chefAvatarMenu";
+  menu.className = "chef-avatar-menu";
+  menu.innerHTML = `
+    <div class="chef-avatar-menu-option" onclick="setChefAvatarDefault('${chefId}')">
+      <span class="chef-avatar-menu-icon">👨‍🍳</span>
+      <span>默认头像</span>
+    </div>
+    <div class="chef-avatar-menu-option" onclick="setChefAvatarCustom('${chefId}')">
+      <span class="chef-avatar-menu-icon">📷</span>
+      <span>自定义头像</span>
+    </div>
+  `;
+  document.body.appendChild(menu);
+
+  // 定位弹窗
+  if (rect) {
+    const menuRect = menu.getBoundingClientRect();
+    let top = rect.top - menuRect.height - 8;
+    let left = rect.left + rect.width / 2 - menuRect.width / 2;
+    if (top < 8) top = rect.bottom + 8;
+    if (left < 8) left = 8;
+    if (left + menuRect.width > window.innerWidth - 8) left = window.innerWidth - menuRect.width - 8;
+    menu.style.top = top + "px";
+    menu.style.left = left + "px";
+  } else {
+    menu.style.top = "50%";
+    menu.style.left = "50%";
+    menu.style.transform = "translate(-50%, -50%)";
+  }
+
+  const closeHandler = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener("click", closeHandler, true);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", closeHandler, true), 0);
+}
+
+// 设置默认emoji头像
+function setChefAvatarDefault(chefId) {
+  ChefManager.updateAvatar(chefId, null);
+  document.getElementById("chefAvatarMenu")?.remove();
+  showChefs();
+  updateChefFabState();
+  showToast("已使用默认头像");
+}
+
+// 上传自定义头像
+function setChefAvatarCustom(chefId) {
+  document.getElementById("chefAvatarMenu")?.remove();
+
   let input = document.getElementById("chefAvatarInput");
   if (!input) {
     input = document.createElement("input");
@@ -3335,7 +3394,6 @@ function showChefAvatarPicker(chefId) {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 压缩并裁剪为方形头像
     const dataUrl = await resizeAndCropImage(file, 200, 200);
     ChefManager.updateAvatar(chefId, dataUrl);
     showChefs();
@@ -4165,23 +4223,26 @@ function updateChefFabState() {
 
   const enabledChefs = ChefManager.getEnabled();
   const defaultChef = ChefManager.getDefault();
+  const defaultEnabled = defaultChef && defaultChef.enabled;
 
   if (enabledChefs.length === 0) {
     // 没有启用的厨师：灰色禁用状态
     fab.classList.add("chef-fab-disabled");
-    fab.querySelector(".chef-agent-fab-icon").textContent = "👨‍🍳";
-    // 如果有自定义头像且默认厨师被禁用，显示灰色头像
+    const iconEl = fab.querySelector(".chef-agent-fab-icon");
     if (defaultChef && defaultChef.avatar) {
-      fab.querySelector(".chef-agent-fab-icon").innerHTML = `<img src="${defaultChef.avatar}" class="chef-fab-avatar-img disabled" />`;
+      iconEl.innerHTML = `<img src="${defaultChef.avatar}" class="chef-fab-avatar-img disabled" />`;
+    } else {
+      iconEl.textContent = "👨‍🍳";
     }
   } else {
     fab.classList.remove("chef-fab-disabled");
-    // 使用第一个启用的厨师的头像
-    const activeChef = enabledChefs[0];
-    if (activeChef.avatar) {
-      fab.querySelector(".chef-agent-fab-icon").innerHTML = `<img src="${activeChef.avatar}" class="chef-fab-avatar-img" />`;
+    const iconEl = fab.querySelector(".chef-agent-fab-icon");
+    // 优先显示默认厨师头像；默认厨师未启用时显示自定义厨师头像
+    const displayChef = defaultEnabled ? defaultChef : enabledChefs[0];
+    if (displayChef.avatar) {
+      iconEl.innerHTML = `<img src="${displayChef.avatar}" class="chef-fab-avatar-img" />`;
     } else {
-      fab.querySelector(".chef-agent-fab-icon").textContent = activeChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
+      iconEl.textContent = displayChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
     }
   }
 }

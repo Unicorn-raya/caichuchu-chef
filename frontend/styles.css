@@ -4324,6 +4324,51 @@ u.cg-underline {
   color: var(--text-primary, #333);
 }
 
+/* 头像选择弹窗 */
+.chef-avatar-menu {
+  position: fixed;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  animation: chefAvatarMenuPop 0.2s ease-out;
+}
+
+@keyframes chefAvatarMenuPop {
+  from { opacity: 0; transform: scale(0.9) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.chef-avatar-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 14px;
+  color: var(--text-primary, #333);
+}
+
+.chef-avatar-menu-option:hover {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+.chef-avatar-menu-option:active {
+  background: var(--bg-active, #ebebeb);
+}
+
+.chef-avatar-menu-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
 /* ============================================
    厨师管理页样式
    ============================================ */
