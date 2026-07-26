@@ -555,10 +555,11 @@ const ChefGuides = {
     return stepNotes;
   },
 
-  // 构建「大厨总结」面板 HTML（仅通用技法，不含步骤笔记）
+  // 构建「大厨总结」面板 HTML（默认厨师通用技法 + 自定义厨师总结）
   async buildSummaryHTML(recipeTitle) {
-    // 检查默认厨师是否启用
-    if (!ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
+    // 检查是否有启用的厨师
+    const enabledChefs = ChefManager.getEnabled();
+    if (enabledChefs.length === 0) {
       return `<div class="chef-guide-empty">当前大厨功能还未启用</div>`;
     }
     try {
@@ -586,21 +587,45 @@ const ChefGuides = {
           </div>`;
         }
       }
-      const sections = this._matchSections(recipe);
-      const ingredientSecs = sections.filter((s) => s.title.startsWith("食材处理"));
-      const techniqueSecs = sections.filter((s) => s.title.startsWith("技法"));
-      const generalSecs = sections.filter((s) => s.title.startsWith("通用"));
-      if (ingredientSecs.length || techniqueSecs.length || generalSecs.length) {
-        html += `<div class="cg-annotations">`;
-        for (const sec of ingredientSecs)
-          html += this._renderAnnotationCard("🥩", sec.title.replace("食材处理：", ""), sec.body, "ingredient");
-        for (const sec of techniqueSecs)
-          html += this._renderAnnotationCard("🔥", sec.title.replace("技法：", ""), sec.body, "technique");
-        for (const sec of generalSecs)
-          html += this._renderAnnotationCard("💧", sec.title.replace("通用：", ""), sec.body, "general");
-        html += `</div>`;
-      } else {
-        html += `<div class="chef-guide-empty">暂无这道菜的通用技法总结</div>`;
+
+      let hasContent = false;
+
+      // 1. 默认大厨总结（通用技法）
+      if (ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
+        const sections = this._matchSections(recipe);
+        const ingredientSecs = sections.filter((s) => s.title.startsWith("食材处理"));
+        const techniqueSecs = sections.filter((s) => s.title.startsWith("技法"));
+        const generalSecs = sections.filter((s) => s.title.startsWith("通用"));
+        if (ingredientSecs.length || techniqueSecs.length || generalSecs.length) {
+          hasContent = true;
+          html += `<div class="cg-annotations">`;
+          for (const sec of ingredientSecs)
+            html += this._renderAnnotationCard("🥩", sec.title.replace("食材处理：", ""), sec.body, "ingredient");
+          for (const sec of techniqueSecs)
+            html += this._renderAnnotationCard("🔥", sec.title.replace("技法：", ""), sec.body, "technique");
+          for (const sec of generalSecs)
+            html += this._renderAnnotationCard("💧", sec.title.replace("通用：", ""), sec.body, "general");
+          html += `</div>`;
+        }
+      }
+
+      // 2. 自定义大厨总结
+      const customSummaries = ChefManager.getEnabledChefSummariesForRecipe(recipeTitle);
+      for (const { chef, summary } of customSummaries) {
+        if (!chef.isDefault && summary) {
+          hasContent = true;
+          const avatarHtml = chef.avatar
+            ? `<img src="${chef.avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;vertical-align:middle;" />`
+            : "🧑‍🍳";
+          html += `<div class="cg-custom-summary-block" style="border-left:3px solid ${chef.color};padding-left:12px;margin-top:16px;">`;
+          html += `<div style="font-size:13px;font-weight:600;color:${chef.color};margin-bottom:8px;">${avatarHtml} ${chef.name}的总结</div>`;
+          html += `<div class="cg-custom-note-content">${this.renderMarkdown(summary)}</div>`;
+          html += `</div>`;
+        }
+      }
+
+      if (!hasContent) {
+        html += `<div class="chef-guide-empty">暂无这道菜的大厨总结</div>`;
       }
       return html;
     } catch (e) {
@@ -608,12 +633,12 @@ const ChefGuides = {
     }
   },
 
-  // 「大厨笔记」：直接在原菜谱页面 .step-item 上注入红线+绿色批注
+  // 「大厨笔记」：在原菜谱页面注入所有启用厨师的笔记（默认绿色 + 自定义彩色）
   async injectNotesToPage(recipeTitle) {
-    // 检查默认厨师是否启用
-    if (!ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
-      return false;
-    }
+    // 检查是否有启用的厨师
+    const enabledChefs = ChefManager.getEnabled();
+    if (enabledChefs.length === 0) return false;
+
     if (this._notesActive) this.clearNotesFromPage();
     const recipe =
       (typeof allRecipes !== "undefined" &&
@@ -626,49 +651,142 @@ const ChefGuides = {
       const textEl = item.querySelector(".step-text");
       steps.push(textEl ? textEl.textContent.trim() : "");
     });
-    const stepNotes = await this._matchNotesToSteps(steps, recipe);
+
     // 保存原始HTML用于恢复
     this._originalStepHtml = [];
-    stepItems.forEach((item, si) => {
+    stepItems.forEach((item) => {
       const textEl = item.querySelector(".step-text");
       if (!textEl) return;
-      this._originalStepHtml.push({ item, textEl, originalHtml: textEl.innerHTML, afterEl: null });
-      // 给 step-text 中的关键短语加红色下划线
-      const notes = stepNotes[si];
-      if (notes && notes.length > 0) {
-        const highlighted = this._highlightStepText(steps[si], notes);
-        textEl.innerHTML = highlighted;
-        // 构建绿色批注容器
-        const wrapper = document.createElement("div");
-        wrapper.className = "cg-page-notes-wrapper";
-        for (const note of notes) {
-          const bubble = document.createElement("div");
-          bubble.className = "cg-page-annotation-bubble";
-          bubble.innerHTML =
-            '<span class="cg-anno-dot"></span>' +
-            '<span class="cg-step-note-tag">' + note.section + "</span>" +
-            '<span class="cg-anno-text">' + this.renderMarkdownInline(note.text) + "</span>";
-          wrapper.appendChild(bubble);
-        }
-        // 插入到 step-item 后面作为批注容器
-        const notesContainer = document.createElement("div");
-        notesContainer.className = "cg-page-notes-container";
-        notesContainer.appendChild(wrapper);
-        item.parentNode.insertBefore(notesContainer, item.nextSibling);
-        this._originalStepHtml[this._originalStepHtml.length - 1].afterEl = notesContainer;
-      }
+      this._originalStepHtml.push({ item, textEl, originalHtml: textEl.innerHTML, afterEls: [] });
     });
+
+    let hasAnyNotes = false;
+
+    // 1. 默认大厨笔记（绿色，从markdown文件加载）
+    if (ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
+      const stepNotes = await this._matchNotesToSteps(steps, recipe);
+      stepItems.forEach((item, si) => {
+        const textEl = item.querySelector(".step-text");
+        if (!textEl) return;
+        const notes = stepNotes[si];
+        if (notes && notes.length > 0) {
+          hasAnyNotes = true;
+          // 高亮步骤文本
+          const currentHtml = textEl.innerHTML;
+          textEl.innerHTML = this._highlightStepText(steps[si], notes);
+          // 构建批注容器（绿色）
+          const wrapper = this._buildNotesWrapper(notes, "#3cb371");
+          const notesContainer = document.createElement("div");
+          notesContainer.className = "cg-page-notes-container";
+          notesContainer.appendChild(wrapper);
+          item.parentNode.insertBefore(notesContainer, item.nextSibling);
+          const entry = this._originalStepHtml.find(e => e.item === item);
+          if (entry) entry.afterEls.push(notesContainer);
+        }
+      });
+    }
+
+    // 2. 自定义大厨笔记（各厨师自有颜色，从用户输入内容匹配）
+    const customNotes = ChefManager.getEnabledChefNotesForRecipe(recipeTitle);
+    for (const { chef, note } of customNotes) {
+      if (!chef.isDefault && note.content) {
+        const customStepNotes = this._matchCustomNotesToSteps(steps, note.content);
+        stepItems.forEach((item, si) => {
+          const textEl = item.querySelector(".step-text");
+          if (!textEl) return;
+          const notes = customStepNotes[si];
+          if (notes && notes.length > 0) {
+            hasAnyNotes = true;
+            // 如果默认厨师没有高亮过，需要高亮
+            const currentText = textEl.textContent.trim();
+            if (!textEl.querySelector("u.cg-underline")) {
+              textEl.innerHTML = this._highlightStepText(currentText, notes);
+            }
+            // 构建批注容器（厨师自有颜色）
+            const wrapper = this._buildNotesWrapper(notes, chef.color, chef.name);
+            const notesContainer = document.createElement("div");
+            notesContainer.className = "cg-page-notes-container";
+            notesContainer.appendChild(wrapper);
+            item.parentNode.insertBefore(notesContainer, item.nextSibling);
+            const entry = this._originalStepHtml.find(e => e.item === item);
+            if (entry) entry.afterEls.push(notesContainer);
+          }
+        });
+      }
+    }
+
     this._notesActive = true;
     document.body.classList.add("chef-notes-active");
-    return true;
+    return hasAnyNotes;
+  },
+
+  // 构建批注容器（支持自定义颜色和厨师名）
+  _buildNotesWrapper(notes, color, chefName) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cg-page-notes-wrapper";
+    if (chefName) {
+      wrapper.classList.add("cg-page-notes-custom");
+      wrapper.style.setProperty("--cg-color", color);
+    }
+    for (const note of notes) {
+      const bubble = document.createElement("div");
+      bubble.className = "cg-page-annotation-bubble";
+      if (chefName) bubble.style.setProperty("--cg-color", color);
+      const tagText = chefName ? `${chefName}·${note.section}` : note.section;
+      bubble.innerHTML =
+        '<span class="cg-anno-dot"></span>' +
+        '<span class="cg-step-note-tag">' + tagText + "</span>" +
+        '<span class="cg-anno-text">' + this.renderMarkdownInline(note.text) + "</span>";
+      wrapper.appendChild(bubble);
+    }
+    return wrapper;
+  },
+
+  // 匹配自定义厨师笔记到步骤（从用户输入的markdown文本）
+  _matchCustomNotesToSteps(steps, noteContent) {
+    const parsed = this._parseRecipeMarkdown(noteContent);
+    const pool = [
+      ...parsed.prep.map((t) => ({ text: t, section: "食材准备" })),
+      ...parsed.steps.map((t) => ({ text: t, section: "详细做法" })),
+      ...parsed.tips.map((t) => ({ text: t, section: "关键技巧" })),
+      ...parsed.problems.map((t) => ({ text: t, section: "常见问题" })),
+    ];
+    if (pool.length === 0) return steps.map(() => []);
+
+    const allPairs = [];
+    for (let si = 0; si < steps.length; si++) {
+      const stepKw = new Set(this._extractKeywords(steps[si]));
+      if (stepKw.size === 0) continue;
+      for (let pi = 0; pi < pool.length; pi++) {
+        const noteKw = this._extractKeywords(pool[pi].text);
+        const overlap = noteKw.filter((k) => stepKw.has(k));
+        if (overlap.length > 0)
+          allPairs.push({ si, pi, score: overlap.length });
+      }
+    }
+    allPairs.sort((a, b) => b.score - a.score);
+    const stepNotes = steps.map(() => []);
+    const usedIndices = new Set();
+    const maxPerStep = 3;
+    for (const pair of allPairs) {
+      if (usedIndices.has(pair.pi)) continue;
+      if (stepNotes[pair.si].length >= maxPerStep) continue;
+      stepNotes[pair.si].push(pool[pair.pi]);
+      usedIndices.add(pair.pi);
+    }
+    return stepNotes;
   },
 
   // 清除页面上的大厨笔记，恢复原样
   clearNotesFromPage() {
     if (!this._notesActive || !this._originalStepHtml) return;
-    for (const { textEl, originalHtml, afterEl } of this._originalStepHtml) {
+    for (const { textEl, originalHtml, afterEls } of this._originalStepHtml) {
       if (textEl) textEl.innerHTML = originalHtml;
-      if (afterEl && afterEl.parentNode) afterEl.parentNode.removeChild(afterEl);
+      if (afterEls) {
+        for (const el of afterEls) {
+          if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+      }
     }
     this._originalStepHtml = null;
     this._notesActive = false;

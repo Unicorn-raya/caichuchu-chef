@@ -137,7 +137,7 @@ const ChefManager = {
   },
 
   // 为厨师添加菜谱笔记
-  addRecipeNote(chefId, recipeTitle, noteContent) {
+  addRecipeNote(chefId, recipeTitle, noteContent, summaryContent) {
     this.init();
     const chef = this._chefs.find(c => c.id === chefId);
     if (chef) {
@@ -145,11 +145,13 @@ const ChefManager = {
       const existing = chef.recipes.find(r => r.title === recipeTitle);
       if (existing) {
         existing.content = noteContent;
+        if (summaryContent !== undefined) existing.summary = summaryContent;
         existing.updatedAt = new Date().toISOString();
       } else {
         chef.recipes.push({
           title: recipeTitle,
           content: noteContent,
+          summary: summaryContent || "",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -168,6 +170,40 @@ const ChefManager = {
       return chef.recipes.find(r => r.title === recipeTitle);
     }
     return null;
+  },
+
+  // 获取厨师的菜谱总结
+  getRecipeSummary(chefId, recipeTitle) {
+    const note = this.getRecipeNote(chefId, recipeTitle);
+    return note ? note.summary : null;
+  },
+
+  // 获取所有启用厨师对某菜谱的笔记列表 [{chef, note}]
+  getEnabledChefNotesForRecipe(recipeTitle) {
+    this.init();
+    const result = [];
+    for (const chef of this._chefs) {
+      if (!chef.enabled) continue;
+      const note = chef.recipes.find(r => r.title === recipeTitle);
+      if (note && note.content) {
+        result.push({ chef, note });
+      }
+    }
+    return result;
+  },
+
+  // 获取所有启用厨师对某菜谱的总结列表 [{chef, summary}]
+  getEnabledChefSummariesForRecipe(recipeTitle) {
+    this.init();
+    const result = [];
+    for (const chef of this._chefs) {
+      if (!chef.enabled) continue;
+      const note = chef.recipes.find(r => r.title === recipeTitle);
+      if (note && note.summary) {
+        result.push({ chef, summary: note.summary });
+      }
+    }
+    return result;
   },
 
   // 检查厨师是否启用

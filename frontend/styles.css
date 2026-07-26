@@ -4678,28 +4678,28 @@ u.cg-underline {
   color: var(--carrot, #e8853a);
 }
 
-/* 自定义大厨标注颜色（红色系，与默认绿色区分） */
-.chef-notes-custom .cg-page-notes-wrapper::before {
-  background: #ff6b6b;
+/* 自定义大厨标注颜色（通过 --cg-color CSS变量动态设置） */
+.cg-page-notes-custom::before {
+  background: var(--cg-color, #ff6b6b) !important;
 }
 
-.chef-notes-custom .cg-page-annotation-bubble {
-  color: #c92a2a;
+.cg-page-notes-custom::after {
+  background: var(--cg-color, #ff6b6b) !important;
 }
 
-.chef-notes-custom .cg-page-annotation-bubble::before {
-  border-color: #ff6b6b;
+.cg-page-annotation-bubble[style*="--cg-color"] {
+  color: var(--cg-color, #c92a2a);
 }
 
-.chef-notes-custom .cg-anno-dot {
-  background: #ff6b6b;
+.cg-page-annotation-bubble[style*="--cg-color"]::before {
+  border-color: var(--cg-color, #ff6b6b) !important;
 }
 
-.chef-notes-custom .cg-step-note-tag {
-  background: #fff0f0;
-  color: #c92a2a;
+.cg-page-annotation-bubble[style*="--cg-color"] .cg-anno-dot {
+  background: var(--cg-color, #ff6b6b);
 }
 
-.chef-notes-custom .cg-underline {
-  text-decoration-color: #ff6b6b;
+.cg-page-annotation-bubble[style*="--cg-color"] .cg-step-note-tag {
+  background: color-mix(in srgb, var(--cg-color, #ff6b6b) 12%, white);
+  color: var(--cg-color, #c92a2a);
 }
