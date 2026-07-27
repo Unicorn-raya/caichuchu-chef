@@ -5186,15 +5186,15 @@ function renderRadarChart(canvas, scores) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
-  const size = 300;
+  const size = 340;
   canvas.width = size * dpr;
   canvas.height = size * dpr;
   canvas.style.width = size + "px";
   canvas.style.height = size + "px";
   ctx.scale(dpr, dpr);
 
-  const center = { x: 150, y: 150 };
-  const maxRadius = 100;
+  const center = { x: size / 2, y: size / 2 };
+  const maxRadius = 90;
   const labels = ["食材处理", "调味", "火候", "做菜技巧", "稳定性"];
   const keys = ["ingredientProcessing", "seasoning", "heatControl", "techniques", "stability"];
   const values = keys.map((k) => scores[k] || 0);
@@ -5213,7 +5213,7 @@ function renderRadarChart(canvas, scores) {
 
   // 1. 深色圆形背景
   ctx.beginPath();
-  ctx.arc(center.x, center.y, maxRadius + 30, 0, Math.PI * 2);
+  ctx.arc(center.x, center.y, maxRadius + 40, 0, Math.PI * 2);
   ctx.fillStyle = "#1a1a2e";
   ctx.fill();
 
@@ -5233,7 +5233,7 @@ function renderRadarChart(canvas, scores) {
   }
 
   // 3. 从中心到各顶点的轴线（深色线）
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
   ctx.lineWidth = 1;
   for (let i = 0; i < 5; i++) {
     const p = pointAt(angles[i], maxRadius);
@@ -5246,7 +5246,7 @@ function renderRadarChart(canvas, scores) {
   // 4. 用户分数的多边形（金黄色半透明填充 + 粗边线）
   ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
   ctx.strokeStyle = "#FFD700";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2.5;
   ctx.beginPath();
   for (let i = 0; i < 5; i++) {
     const r = (values[i] / 5) * maxRadius;
@@ -5263,11 +5263,11 @@ function renderRadarChart(canvas, scores) {
     const r = (values[i] / 5) * maxRadius;
     const p = pointAt(angles[i], r);
     // 光晕
-    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 10);
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 12);
     gradient.addColorStop(0, "rgba(255, 215, 0, 0.8)");
     gradient.addColorStop(1, "rgba(255, 215, 0, 0)");
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
     ctx.fillStyle = gradient;
     ctx.fill();
     // 实心圆点（半径4px）
@@ -5277,20 +5277,36 @@ function renderRadarChart(canvas, scores) {
     ctx.fill();
   }
 
-  // 6. 各轴标签文字 + 分数值（白色，14px，在五边形外侧）
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "14px sans-serif";
-  ctx.textBaseline = "middle";
+  // 6. 各轴标签文字（分两行：标签名 + 分数，居中对齐避免截断）
+  const labelRadius = maxRadius + 35;
   for (let i = 0; i < 5; i++) {
-    const labelRadius = maxRadius + 22;
     const p = pointAt(angles[i], labelRadius);
-    const text = `${labels[i]} ${values[i].toFixed(1)}`;
-    // 根据顶点 x 坐标相对中心的位置调整对齐方式
-    const dx = p.x - center.x;
-    if (dx > 5) ctx.textAlign = "left";
-    else if (dx < -5) ctx.textAlign = "right";
-    else ctx.textAlign = "center";
-    ctx.fillText(text, p.x, p.y);
+    const labelText = labels[i];
+    const scoreText = values[i].toFixed(1);
+
+    // 判断水平对齐：左右两侧用对应方向对齐，顶部和底部居中
+    const dx = Math.cos(angles[i]);
+    let align;
+    if (dx > 0.2) align = "left";
+    else if (dx < -0.2) align = "right";
+    else align = "center";
+    ctx.textAlign = align;
+    ctx.textBaseline = "middle";
+
+    // 水平偏移：确保文字不超出边界
+    let offsetX = 0;
+    if (align === "left") offsetX = 4;
+    if (align === "right") offsetX = -4;
+
+    // 第一行：标签名称（白色 14px）
+    ctx.font = "13px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
+    ctx.fillText(labelText, p.x + offsetX, p.y - 8);
+
+    // 第二行：分数（金黄色 12px，加粗）
+    ctx.font = "bold 12px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
+    ctx.fillStyle = "#FFD700";
+    ctx.fillText(scoreText, p.x + offsetX, p.y + 8);
   }
 }
 
@@ -5400,7 +5416,7 @@ ${recentList}
       <div class="cooking-report">
         <div class="radar-section">
           <div class="radar-title">🍳 做菜能力雷达</div>
-          <canvas id="radarCanvas" width="300" height="300"></canvas>
+          <canvas id="radarCanvas" width="340" height="340"></canvas>
           <div class="tendency-badge">
             <span class="tendency-icon">${tendency.icon}</span>
             <span class="tendency-text">${tendency.type} · ${tendency.description}</span>
