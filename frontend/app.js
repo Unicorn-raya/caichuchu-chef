@@ -5016,6 +5016,284 @@ function closeChefAgentPanel() {
 // ============================================
 // 日历 AI 分析：大厨点评做菜记录
 // ============================================
+
+// 收集做菜统计数据
+function collectCookingStats() {
+  const history = getCookedHistory();
+  const records = []; // 带菜谱详情的记录
+  const methodDistribution = {}; // 技法分布
+  const ingredientFreq = {}; // 食材频率
+  const categoryDist = {}; // 分类分布
+  const dateSet = new Set(); // 做菜日期集合
+  let totalSessions = 0;
+  let difficultySum = 0;
+  let maxDifficulty = 0;
+  let stepSum = 0; // 累计步骤数（用于计算平均步骤数）
+
+  history.forEach((record) => {
+    const recipe = allRecipes.find((r) => r.id === record.recipeId);
+    if (!recipe) return;
+
+    // 根据 count 展开为多次做菜会话
+    const sessions = Math.max(1, record.count || 1);
+    totalSessions += sessions;
+
+    // 累计难度（按会话次数加权）
+    const difficulty = recipe.difficulty || 1;
+    difficultySum += difficulty * sessions;
+    if (difficulty > maxDifficulty) maxDifficulty = difficulty;
+
+    // 累计步骤数（按会话次数加权）
+    const stepCount = (recipe.steps && recipe.steps.length) || 0;
+    stepSum += stepCount * sessions;
+
+    // 统计技法分布
+    const methodLabel = recipe.methodLabel || "未知";
+    methodDistribution[methodLabel] = (methodDistribution[methodLabel] || 0) + sessions;
+
+    // 统计食材频率（requiredIngredients + coreIngredients，同一次会话内去重）
+    const ingredients = [
+      ...(recipe.requiredIngredients || []),
+      ...(recipe.coreIngredients || []),
+    ];
+    const uniqueIngredients = [...new Set(ingredients)];
+    uniqueIngredients.forEach((ing) => {
+      ingredientFreq[ing] = (ingredientFreq[ing] || 0) + sessions;
+    });
+
+    // 统计分类分布
+    const category = recipe.category || "unknown";
+    categoryDist[category] = (categoryDist[category] || 0) + sessions;
+
+    // 统计做菜日期
+    const d = new Date(record.timestamp);
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    dateSet.add(dateKey);
+
+    records.push({
+      ...record,
+      recipe,
+      sessions,
+      stepCount,
+    });
+  });
+
+  const uniqueDishes = records.length;
+  const cookingDays = dateSet.size;
+  const avgDifficulty = totalSessions > 0 ? difficultySum / totalSessions : 0;
+  const avgSteps = totalSessions > 0 ? stepSum / totalSessions : 0;
+  const repeatRate = totalSessions > 0 ? (totalSessions - uniqueDishes) / totalSessions : 0;
+  const uniqueMethods = Object.keys(methodDistribution).length;
+
+  // 食材频率排序，取前10
+  const topIngredients = Object.entries(ingredientFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
+
+  // 最近30天的记录
+  const now = Date.now();
+  const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+  const recentRecords = records.filter((r) => r.timestamp >= thirtyDaysAgo);
+
+  return {
+    totalSessions,
+    uniqueDishes,
+    cookingDays,
+    avgDifficulty,
+    maxDifficulty,
+    methodDistribution,
+    uniqueMethods,
+    ingredientFreq,
+    categoryDist,
+    repeatRate,
+    topIngredients,
+    recentRecords,
+    records,
+    avgSteps,
+  };
+}
+
+// 计算雷达图评分（5个维度，0-5分，保留1位小数）
+function computeRadarScores(stats) {
+  const { totalSessions, uniqueDishes, avgDifficulty, maxDifficulty, methodDistribution, uniqueMethods, categoryDist, repeatRate, records } = stats;
+
+  // 平均每道菜的食材数
+  let totalIngredients = 0;
+  records.forEach((r) => {
+    const ingredients = [
+      ...(r.recipe.requiredIngredients || []),
+      ...(r.recipe.coreIngredients || []),
+    ];
+    totalIngredients += [...new Set(ingredients)].length;
+  });
+  const avgIngredients = uniqueDishes > 0 ? totalIngredients / uniqueDishes : 0;
+
+  // 类别数对应的多样性加分
+  const categoryCount = Object.keys(categoryDist).length;
+  const varietyBonus = categoryCount <= 1 ? 0 : categoryCount === 2 ? 1 : 2;
+
+  // 食材处理：平均食材数 + 类别多样性
+  let ingredientProcessing = Math.min(avgIngredients / 6 * 2.5 + varietyBonus, 5);
+  // 调味：技法多样性 + 菜谱丰富度
+  let seasoning = Math.min(uniqueMethods / 4 * 2 + uniqueDishes / 15 * 1.5, 5);
+  // 火候：需要精确火候控制的技法（炒、炸、煎、烧、烤）次数 + 平均难度
+  const heatMethods = ["炒", "炸", "煎", "烧", "烤"];
+  let heatCount = 0;
+  Object.entries(methodDistribution).forEach(([label, count]) => {
+    if (heatMethods.includes(label)) heatCount += count;
+  });
+  let heatControl = Math.min(heatCount / 4 * 2 + avgDifficulty / 3, 5);
+  // 做菜技巧：技法多样性 + 平均难度 + 最高难度
+  let techniques = Math.min(uniqueMethods / 3 * 1.5 + avgDifficulty / 3 + maxDifficulty / 5, 5);
+  // 稳定性：重复率 + 总次数
+  let stability = Math.min(repeatRate * 3 + Math.min(totalSessions, 20) / 20 * 2, 5);
+
+  // 最小0.5，保留1位小数
+  const clamp = (v) => Math.max(0.5, Math.round(v * 10) / 10);
+
+  return {
+    ingredientProcessing: clamp(ingredientProcessing),
+    seasoning: clamp(seasoning),
+    heatControl: clamp(heatControl),
+    techniques: clamp(techniques),
+    stability: clamp(stability),
+  };
+}
+
+// 判断做菜倾向类型
+function determineTendency(stats) {
+  const { repeatRate, avgDifficulty, uniqueMethods, avgSteps, uniqueDishes } = stats;
+
+  if (repeatRate > 0.4) {
+    return { type: "稳定型", icon: "🔄", description: "偏爱熟悉的味道，反复打磨拿手菜" };
+  }
+  if (avgDifficulty >= 3.5) {
+    return { type: "挑战型", icon: "🏔️", description: "勇于挑战高难度菜谱，追求技艺突破" };
+  }
+  if (uniqueMethods >= 6) {
+    return { type: "探索型", icon: "🧭", description: "喜欢尝试不同技法，探索多元风味" };
+  }
+  if (avgSteps < 6 && uniqueDishes >= 3) {
+    return { type: "效率型", icon: "⚡", description: "追求高效烹饪，偏爱简洁菜谱" };
+  }
+  return { type: "消耗型", icon: "♻️", description: "灵活利用现有食材，实用为主" };
+}
+
+// 在 canvas 上绘制 JoJo 风格五角星雷达图
+function renderRadarChart(canvas, scores) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const dpr = window.devicePixelRatio || 1;
+  const size = 300;
+  canvas.width = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width = size + "px";
+  canvas.style.height = size + "px";
+  ctx.scale(dpr, dpr);
+
+  const center = { x: 150, y: 150 };
+  const maxRadius = 100;
+  const labels = ["食材处理", "调味", "火候", "做菜技巧", "稳定性"];
+  const keys = ["ingredientProcessing", "seasoning", "heatControl", "techniques", "stability"];
+  const values = keys.map((k) => scores[k] || 0);
+
+  // 5个轴的角度，从 -90°（正上方）开始，顺时针每个 72°
+  const angles = [];
+  for (let i = 0; i < 5; i++) {
+    angles.push((-90 + i * 72) * Math.PI / 180);
+  }
+
+  // 计算指定角度和半径的顶点坐标
+  const pointAt = (angle, radius) => ({
+    x: center.x + Math.cos(angle) * radius,
+    y: center.y + Math.sin(angle) * radius,
+  });
+
+  // 1. 深色圆形背景
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, maxRadius + 30, 0, Math.PI * 2);
+  ctx.fillStyle = "#1a1a2e";
+  ctx.fill();
+
+  // 2. 5层同心五边形网格（深色线）
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  ctx.lineWidth = 1;
+  for (let layer = 1; layer <= 5; layer++) {
+    const r = (maxRadius / 5) * layer;
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) {
+      const p = pointAt(angles[i], r);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // 3. 从中心到各顶点的轴线（深色线）
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 5; i++) {
+    const p = pointAt(angles[i], maxRadius);
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  }
+
+  // 4. 用户分数的多边形（金黄色半透明填充 + 粗边线）
+  ctx.fillStyle = "rgba(255, 215, 0, 0.3)";
+  ctx.strokeStyle = "#FFD700";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const r = (values[i] / 5) * maxRadius;
+    const p = pointAt(angles[i], r);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 5. 各顶点的圆点（金黄色实心圆，带光晕效果）
+  for (let i = 0; i < 5; i++) {
+    const r = (values[i] / 5) * maxRadius;
+    const p = pointAt(angles[i], r);
+    // 光晕
+    const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 10);
+    gradient.addColorStop(0, "rgba(255, 215, 0, 0.8)");
+    gradient.addColorStop(1, "rgba(255, 215, 0, 0)");
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    // 实心圆点（半径4px）
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = "#FFD700";
+    ctx.fill();
+  }
+
+  // 6. 各轴标签文字 + 分数值（白色，14px，在五边形外侧）
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "14px sans-serif";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i < 5; i++) {
+    const labelRadius = maxRadius + 22;
+    const p = pointAt(angles[i], labelRadius);
+    const text = `${labels[i]} ${values[i].toFixed(1)}`;
+    // 根据顶点 x 坐标相对中心的位置调整对齐方式
+    const dx = p.x - center.x;
+    if (dx > 5) ctx.textAlign = "left";
+    else if (dx < -5) ctx.textAlign = "right";
+    else ctx.textAlign = "center";
+    ctx.fillText(text, p.x, p.y);
+  }
+}
+
 async function analyzeCalendarWithAI() {
   FrontendLogger.info("calendar", "日历AI分析");
   const model = getAIModelByUse("calendar");
@@ -5030,26 +5308,66 @@ async function analyzeCalendarWithAI() {
     return;
   }
 
-  // 收集菜谱信息
-  const recipeSummaries = records.map((r) => {
-    const recipe = allRecipes.find((x) => x.id === r.recipeId);
-    const category = recipe ? (recipe.categoryLabel || recipe.category || "未知") : "未知";
-    const date = new Date(r.timestamp);
-    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
-    return `- ${dateStr}：${r.title}（${category}）${r.count > 1 ? `，做过${r.count}次` : ""}`;
+  // 收集做菜统计数据
+  const stats = collectCookingStats();
+  // 计算雷达图评分
+  const scores = computeRadarScores(stats);
+  // 判断做菜倾向
+  const tendency = determineTendency(stats);
+
+  // 构造技法分布列表
+  const methodList = Object.entries(stats.methodDistribution)
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => `- ${label}：${count} 次`)
+    .join("\n");
+
+  // 构造食材偏好列表
+  const ingredientList = stats.topIngredients
+    .map((item) => `- ${item.name}：${item.count} 次`)
+    .join("\n");
+
+  // 构造最近做菜记录（最近10条）
+  const recentList = stats.records.slice(0, 10).map((r) => {
+    const d = new Date(r.timestamp);
+    const dateStr = `${d.getMonth() + 1}月${d.getDate()}日`;
+    return `- ${dateStr}：${r.title}（${r.recipe.methodLabel || "未知"}，难度${r.recipe.difficulty || 1}/5）${r.count > 1 ? `，做过${r.count}次` : ""}`;
   }).join("\n");
 
-  const prompt = `以下是我最近的做菜记录，请作为一位资深美食顾问进行分析并给出建议：
+  const prompt = `以下是用户的做菜数据分析结果，请作为一位资深中餐大厨进行深入分析：
 
-${recipeSummaries}
+## 基础数据
+- 总做菜次数：${stats.totalSessions} 次
+- 独立菜谱数：${stats.uniqueDishes} 道
+- 做菜天数：${stats.cookingDays} 天
+- 平均菜谱难度：${stats.avgDifficulty.toFixed(1)}/5
+- 最高难度：${stats.maxDifficulty}/5
 
-请从以下方面给出建议（用中文回答）：
-1. **饮食均衡分析**：最近的菜品在荤素搭配、营养均衡方面做得如何？
-2. **食材多样性**：食材种类是否丰富？有没有过于单一的食材？
-3. **做菜建议**：根据最近的饮食趋势，推荐接下来适合做什么菜（给出3-5道具体菜名和理由）。比如如果肉类太多就推荐清淡的蔬菜类，如果偏清淡可以适当推荐一些肉类。
-4. **烹饪技巧建议**：针对已做的菜品，有什么可以改进的烹饪技巧？
+## 技法分布
+${methodList}
 
-请简洁明了地回答，用 markdown 格式。`;
+## 食材偏好（Top 10）
+${ingredientList}
+
+## 能力雷达评分（基于做菜数据计算）
+- 食材处理：${scores.ingredientProcessing}/5
+- 调味：${scores.seasoning}/5
+- 火候：${scores.heatControl}/5
+- 做菜技巧：${scores.techniques}/5
+- 稳定性：${scores.stability}/5
+
+## 最近做菜记录
+${recentList}
+
+请从以下三个方面给出分析（用中文，markdown格式，每个部分2-3句话即可）：
+
+### 做菜水平
+根据数据评估用户的做菜水平等级（新手/进阶/熟练/高手），说明评分依据，特别指出优势和待提升的维度。
+
+### 做菜偏好
+分析用户偏好的食材类型和口味特征，指出营养均衡方面的建议。
+
+### 做菜倾向
+判断用户的做菜倾向（${tendency.type}），分析其做菜习惯特点，给出针对性建议。`;
 
   // 显示加载状态
   const panel = document.getElementById("chefAgentPanel");
@@ -5070,17 +5388,53 @@ ${recipeSummaries}
   panel.classList.remove("hidden");
 
   try {
-    const result = await callAI(prompt, "calendar", "你是一位资深美食顾问和营养师，擅长分析饮食记录并给出均衡饮食建议。请用简洁专业的中文回答。");
+    const result = await callAI(prompt, "calendar", "你是一位资深中餐大厨和美食顾问，擅长基于做菜数据分析用户的烹饪水平、偏好和倾向，并给出专业建议。请用简洁专业的中文回答，使用 markdown 格式。");
     content.innerHTML = `
       <div class="chef-agent-header">
         <span class="chef-agent-emoji">👨‍🍳</span>
         <div>
           <div class="chef-agent-title">大厨点评</div>
-          <div class="chef-agent-recipe">基于 ${records.length} 道做菜记录的分析</div>
+          <div class="chef-agent-recipe">基于 ${stats.records.length} 道做菜记录的分析</div>
         </div>
       </div>
-      <div class="chef-agent-ai-result">${formatAIResult(result)}</div>
+      <div class="cooking-report">
+        <div class="radar-section">
+          <div class="radar-title">🍳 做菜能力雷达</div>
+          <canvas id="radarCanvas" width="300" height="300"></canvas>
+          <div class="tendency-badge">
+            <span class="tendency-icon">${tendency.icon}</span>
+            <span class="tendency-text">${tendency.type} · ${tendency.description}</span>
+          </div>
+        </div>
+        <div class="chef-agent-ai-result">${formatAIResult(result)}</div>
+        <div class="stats-summary">
+          <div class="stats-title">📊 做菜统计</div>
+          <div class="stats-grid">
+            <div class="stat-item">
+              <div class="stat-value">${stats.totalSessions}</div>
+              <div class="stat-label">总做菜次数</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${stats.uniqueDishes}</div>
+              <div class="stat-label">独立菜谱</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${stats.cookingDays}</div>
+              <div class="stat-label">做菜天数</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-value">${stats.uniqueMethods}</div>
+              <div class="stat-label">技法种类</div>
+            </div>
+          </div>
+        </div>
+      </div>
     `;
+    // 使用 requestAnimationFrame 确保 canvas 已渲染到 DOM 后再绘制
+    requestAnimationFrame(() => {
+      const canvas = document.getElementById("radarCanvas");
+      renderRadarChart(canvas, scores);
+    });
   } catch (e) {
     content.innerHTML = `
       <div class="chef-agent-header">

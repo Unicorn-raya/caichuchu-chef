@@ -4149,6 +4149,98 @@ u.cg-underline {
 }
 
 /* ============================================
+   做菜总结报告（雷达图 + 统计）
+   ============================================ */
+.cooking-report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.radar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+}
+
+.radar-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+#radarCanvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.tendency-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  color: #e0e0e0;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.tendency-icon {
+  font-size: 18px;
+}
+
+.tendency-text {
+  font-weight: 500;
+}
+
+.stats-summary {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.stats-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 10px 4px;
+  background: var(--bg-warm);
+  border-radius: var(--radius-sm);
+}
+
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--carrot);
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* ============================================
    开机动画
    ============================================ */
 .boot-overlay {
