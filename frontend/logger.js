@@ -77,13 +77,9 @@ const FrontendLogger = {
     const url = `${apiBase}/api/log`;
 
     try {
-      // 优先用 sendBeacon（不阻塞页面卸载）
-      if (navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify(entries)], { type: "application/json" });
-        const ok = navigator.sendBeacon(url, blob);
-        if (ok) return;
-      }
-      // sendBeacon 不可用或失败，用 fetch
+      // 使用 fetch + keepalive 替代 sendBeacon
+      // sendBeacon 的 credentials:"include" 在跨域 + CORS allow_origins=["*"] 时
+      // 会被浏览器阻止预检，导致日志请求无法发出
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
