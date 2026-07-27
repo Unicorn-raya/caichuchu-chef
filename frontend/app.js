@@ -5279,7 +5279,7 @@ function renderRadarChart(canvas, scores) {
   }
 
   // 6. 各轴标签文字（分两行：标签名 + 分数，居中对齐避免截断）
-  const labelRadius = maxRadius + 48;
+  const labelRadius = maxRadius + 25;
   for (let i = 0; i < 5; i++) {
     const p = pointAt(angles[i], labelRadius);
     const labelText = labels[i];
