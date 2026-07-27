@@ -5186,7 +5186,7 @@ function renderRadarChart(canvas, scores) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const dpr = window.devicePixelRatio || 1;
-  const size = 340;
+  const size = 360;
   canvas.width = size * dpr;
   canvas.height = size * dpr;
   canvas.style.width = size + "px";
@@ -5194,7 +5194,7 @@ function renderRadarChart(canvas, scores) {
   ctx.scale(dpr, dpr);
 
   const center = { x: size / 2, y: size / 2 };
-  const maxRadius = 90;
+  const maxRadius = 95;
   const labels = ["食材处理", "调味", "火候", "做菜技巧", "稳定性"];
   const keys = ["ingredientProcessing", "seasoning", "heatControl", "techniques", "stability"];
   const values = keys.map((k) => scores[k] || 0);
@@ -5211,9 +5211,10 @@ function renderRadarChart(canvas, scores) {
     y: center.y + Math.sin(angle) * radius,
   });
 
-  // 1. 深色圆形背景
+  // 1. 深色圆形背景（半径要覆盖所有标签文字）
+  const bgRadius = maxRadius + 70;
   ctx.beginPath();
-  ctx.arc(center.x, center.y, maxRadius + 40, 0, Math.PI * 2);
+  ctx.arc(center.x, center.y, bgRadius, 0, Math.PI * 2);
   ctx.fillStyle = "#1a1a2e";
   ctx.fill();
 
@@ -5278,7 +5279,7 @@ function renderRadarChart(canvas, scores) {
   }
 
   // 6. 各轴标签文字（分两行：标签名 + 分数，居中对齐避免截断）
-  const labelRadius = maxRadius + 35;
+  const labelRadius = maxRadius + 48;
   for (let i = 0; i < 5; i++) {
     const p = pointAt(angles[i], labelRadius);
     const labelText = labels[i];
@@ -5293,20 +5294,20 @@ function renderRadarChart(canvas, scores) {
     ctx.textAlign = align;
     ctx.textBaseline = "middle";
 
-    // 水平偏移：确保文字不超出边界
+    // 水平偏移：让左右标签向内收一点
     let offsetX = 0;
-    if (align === "left") offsetX = 4;
-    if (align === "right") offsetX = -4;
+    if (align === "left") offsetX = 2;
+    if (align === "right") offsetX = -2;
 
     // 第一行：标签名称（白色 14px）
-    ctx.font = "13px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
+    ctx.font = "14px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
     ctx.fillStyle = "rgba(255, 255, 255, 0.95)";
-    ctx.fillText(labelText, p.x + offsetX, p.y - 8);
+    ctx.fillText(labelText, p.x + offsetX, p.y - 9);
 
-    // 第二行：分数（金黄色 12px，加粗）
-    ctx.font = "bold 12px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
+    // 第二行：分数（金黄色 13px，加粗）
+    ctx.font = "bold 13px -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif";
     ctx.fillStyle = "#FFD700";
-    ctx.fillText(scoreText, p.x + offsetX, p.y + 8);
+    ctx.fillText(scoreText, p.x + offsetX, p.y + 9);
   }
 }
 
@@ -5416,7 +5417,7 @@ ${recentList}
       <div class="cooking-report">
         <div class="radar-section">
           <div class="radar-title">🍳 做菜能力雷达</div>
-          <canvas id="radarCanvas" width="340" height="340"></canvas>
+          <canvas id="radarCanvas" width="360" height="360"></canvas>
           <div class="tendency-badge">
             <span class="tendency-icon">${tendency.icon}</span>
             <span class="tendency-text">${tendency.type} · ${tendency.description}</span>
