@@ -131,6 +131,7 @@ async function init() {
   await bootPromise;
 
   setupNavigation();
+  initClickTracking();
   renderPage("home");
   initChefAgentFab();
   updateChefFabState();
@@ -681,6 +682,47 @@ function setupNavigation() {
     btn.addEventListener("click", () => {
       const page = btn.dataset.page;
       renderPage(page);
+    });
+  });
+}
+
+// ============================================
+// 全局点击埋点
+// ============================================
+function initClickTracking() {
+  document.addEventListener("click", (e) => {
+    // 从点击目标向上查找最近的可交互元素
+    const actionable = e.target.closest(
+      "button, a, [onclick], .nav-btn, .ingredient-card, .recipe-card, .tag-chip, .chef-agent-fab, .cta-generate, .btn-add-ingredient, input[type=submit]"
+    );
+    const el = actionable || e.target;
+    const tag = el.tagName.toLowerCase();
+
+    // 提取元素标识：优先 id，其次 data-* 属性，最后 class
+    let label = el.id || "";
+    if (!label) {
+      const dataPage = el.dataset.page;
+      if (dataPage) label = `page:${dataPage}`;
+    }
+    if (!label && el.dataset.recipeId) label = `recipe:${el.dataset.recipeId}`;
+    if (!label && el.classList.length) label = `.${[...el.classList].slice(0, 3).join(".")}`;
+
+    // 提取文字内容（截断）
+    const text = (el.textContent || "").trim().slice(0, 40);
+
+    // 提取 onclick 函数名
+    let onclickFn = "";
+    const onclickAttr = el.getAttribute("onclick");
+    if (onclickAttr) onclickFn = onclickAttr.slice(0, 60);
+
+    FrontendLogger.info("click", `点击 ${tag}${label ? " #" + label : ""}`, {
+      page: currentPage || "unknown",
+      tag,
+      label: label || undefined,
+      text: text || undefined,
+      onclick: onclickFn || undefined,
+      x: e.clientX,
+      y: e.clientY,
     });
   });
 }
