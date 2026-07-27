@@ -894,6 +894,8 @@ function clearShakeIfActive() {
 }
 
 function removeIngredient(index) {
+  const item = fridge[index];
+  FrontendLogger.info("fridge", "删除食材", { name: item ? item.name : "", index });
   fridge.splice(index, 1);
   saveFridge();
   shakingIngredientIdx = -1;
@@ -908,6 +910,7 @@ async function openIngredientDetail(index) {
   const item = fridge[index];
   if (!item) return;
   const name = item.name;
+  FrontendLogger.info("fridge", "查看食材灵感", { name });
   const emoji = INGREDIENT_EMOJI[name] || "🥘";
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
@@ -1063,9 +1066,11 @@ function renderQuickTags() {
 function toggleQuickTag(name, el) {
   const existing = fridge.find((i) => i.name === name);
   if (existing) {
+    FrontendLogger.info("fridge", "取消快捷标签", { name });
     fridge = fridge.filter((i) => i !== existing);
     el.classList.remove("selected");
   } else {
+    FrontendLogger.info("fridge", "添加快捷标签", { name });
     fridge.push({ name, addedAt: Date.now() / 1000 });
     el.classList.add("selected");
   }
@@ -1080,6 +1085,7 @@ function addManualIngredient() {
     showToast("已存在");
     return;
   }
+  FrontendLogger.info("fridge", "手动添加食材", { name });
   fridge.push({ name, addedAt: Date.now() / 1000 });
   saveFridge();
   input.value = "";
@@ -1308,13 +1314,16 @@ function confirmAddAIIngredients() {
     return;
   }
   let added = 0;
+  const addedNames = [];
   chips.forEach((chip) => {
     const name = chip.dataset.name;
     if (!fridge.find((i) => i.name === name)) {
       fridge.push({ name, addedAt: Date.now() / 1000 });
+      addedNames.push(name);
       added++;
     }
   });
+  FrontendLogger.info("fridge", "AI识别添加食材", { count: added, names: addedNames });
   saveFridge();
   document.getElementById("aiResultArea").classList.add("hidden");
   document.getElementById("voiceInputArea").classList.add("hidden");
@@ -2141,6 +2150,7 @@ function showRecipeDetailFromRecommend(rec) {
     document.getElementById("bottomNav").style.display = "none";
     renderSwipePage();
   };
+  FrontendLogger.info("recipe", "查看推荐菜谱详情", { recipeId: rec.recipe.id, title: rec.recipe.title });
   showRecipeDetail(rec);
 }
 
@@ -2159,6 +2169,7 @@ async function startCooking(recipeId, missingIngredients) {
   const recipe = allRecipes.find((r) => r.id === recipeId);
   if (!recipe) return;
 
+  FrontendLogger.info("cooking", "开始做菜", { recipeId, title: recipe.title, missingCount: (missingIngredients || []).length });
   cookingSteps = recipe.steps || [];
   cookingStepIndex = 0;
   cookingRecipeTitle = recipe.title;
@@ -2190,6 +2201,7 @@ function renderCookingStep() {
 
   if (cookingStepIndex >= cookingSteps.length) {
     // 烹饪完成
+    FrontendLogger.info("cooking", "做菜完成", { recipeId: cookingRecipeId, title: cookingRecipeTitle });
     body.innerHTML = `
       <div class="cooking-done-icon">🎉</div>
       <div class="cooking-done-text">大功告成！</div>
@@ -2465,6 +2477,7 @@ function renderRecipeListCard(recipe) {
 let currentDiscoverCategory = null; // 当前在发现页查看的分类（null 表示分类总览）
 
 function showCategory(category) {
+  FrontendLogger.info("discover", "查看分类", { category });
   const recipes = allRecipes.filter((r) => r.category === category);
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
@@ -2493,6 +2506,7 @@ function showRecipeDetailDirect(recipeId) {
   // 根据当前所在页面设置返回动作
   const activeNav = document.querySelector(".nav-btn.active");
   const activePage = activeNav ? activeNav.dataset.page : null;
+  FrontendLogger.info("recipe", "查看菜谱详情", { recipeId, title: recipe.title, from: activePage || "unknown" });
   if (activePage === "discover") {
     // 从发现页进入：如果在分类列表视图，返回分类列表；否则返回发现首页
     const cat = currentDiscoverCategory;
@@ -2603,6 +2617,7 @@ function showCalendar() {
 
 // 注入演示数据（用于查看日历/时间线效果）
 function loadDemoCalendarData() {
+  FrontendLogger.info("calendar", "加载演示数据");
   if (!allRecipes || allRecipes.length === 0) {
     showToast("菜谱未加载完成，请稍候");
     return;
@@ -2645,6 +2660,7 @@ function loadDemoCalendarData() {
 
 function clearDemoCalendarData() {
   if (!confirm("确定清空所有做菜记录？")) return;
+  FrontendLogger.info("calendar", "清空做菜记录");
   window.userStats = window.userStats || {};
   window.userStats.cookedRecipes = {};
   window.userStats.cooked = 0;
@@ -2675,6 +2691,7 @@ function renderCalendarPage() {
 }
 
 function switchCalendarMode(mode) {
+  FrontendLogger.info("calendar", "切换日历模式", { mode });
   calendarMode = mode;
   if (mode === 'calendar') timelineHighlightKey = null;
   renderCalendarPage();
@@ -2682,6 +2699,7 @@ function switchCalendarMode(mode) {
 
 // 从日历模式点击有做菜的天 → 跳到时间线并滚动到对应卡片
 function jumpToTimeline(dateKey) {
+  FrontendLogger.info("calendar", "点击日历日期跳转时间线", { dateKey });
   timelineHighlightKey = dateKey;
   calendarMode = 'timeline';
   renderCalendarPage();
@@ -2711,8 +2729,8 @@ function renderCalendarMode() {
   const daysInMonth = lastDay.getDate();
 
   const monthLabel = `${year}年${month + 1}月`;
-  const prevMonth = () => { calendarMonth = new Date(year, month - 1, 1); renderCalendarPage(); };
-  const nextMonth = () => { calendarMonth = new Date(year, month + 1, 1); renderCalendarPage(); };
+  const prevMonth = () => { FrontendLogger.info("calendar", "上一月", { month: `${year}-${month}` }); calendarMonth = new Date(year, month - 1, 1); renderCalendarPage(); };
+  const nextMonth = () => { FrontendLogger.info("calendar", "下一月", { month: `${year}-${month + 2}` }); calendarMonth = new Date(year, month + 1, 1); renderCalendarPage(); };
 
   const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
   let cells = "";
@@ -4780,6 +4798,7 @@ function handleChefAgentClick() {
 function showChefHomeMenu() {
   // 已存在则不重复创建
   if (document.getElementById("chefHomeMenu")) return;
+  FrontendLogger.info("chef", "弹出冰箱页大厨菜单");
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
   // 大厨emoji变成思考
@@ -4851,6 +4870,7 @@ function confirmClearFridge() {
     return;
   }
   if (confirm("确定清空冰箱所有食材？")) {
+    FrontendLogger.info("fridge", "清空冰箱", { count: fridge.length });
     fridge = [];
     saveFridge();
     renderPage("home");
@@ -4864,6 +4884,7 @@ function showChefRecipeMenu() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
 
+  FrontendLogger.info("chef", "弹出菜谱页大厨菜单");
   // 始终显示大厨笔记 / 大厨总结
   fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
   const popup = document.createElement("div");
@@ -4929,6 +4950,7 @@ function closeChefRecipeMenu() {
 
 // 激活「大厨笔记」：在原菜谱步骤上直接注入红线+绿色批注
 function activateChefNotes() {
+  FrontendLogger.info("chef", "激活大厨笔记");
   const fab = document.getElementById("chefAgentFab");
   if (fab) {
     fab.classList.add("loading");
@@ -4958,6 +4980,7 @@ function activateChefNotes() {
 
 // 激活「大厨总结」：弹窗显示通用技法
 function activateChefSummary() {
+  FrontendLogger.info("chef", "激活大厨总结");
   const fab = document.getElementById("chefAgentFab");
   if (fab) {
     fab.classList.add("loading");
