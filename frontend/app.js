@@ -337,6 +337,19 @@ function recipeHasUserAllergen(recipe) {
   return allergens.some((a) => recipeContainsAllergen(recipe, a));
 }
 
+// 获取菜谱中含的用户过敏源名称列表
+function getRecipeAllergenLabels(recipe) {
+  if (allergens.length === 0) return [];
+  const labels = [];
+  for (const a of allergens) {
+    const opt = ALLERGEN_OPTIONS.find((o) => o.value === a);
+    if (opt && recipeContainsAllergen(recipe, a)) {
+      labels.push(opt.label);
+    }
+  }
+  return labels;
+}
+
 // 按饮食偏好过滤（硬过滤）
 function filterByDietPrefs(results) {
   if (dietPreferences.length === 0) return results;
@@ -1381,6 +1394,94 @@ function isSideDish(recipe) {
 function isMeatDish(recipe) { return isMainDish(recipe); }
 function isVegDish(recipe) { return isSideDish(recipe); }
 
+// 前端本地食材匹配：检查食材是否在库存中（简化版，不做等价类/泛化匹配）
+function localItemMatches(inventorySet, item) {
+  if (inventorySet.has(item)) return true;
+  // 检查别名
+  const aliases = [
+    ["番茄", "西红柿"], ["蕃茄", "西红柿"], ["蛋", "鸡蛋"],
+    ["大葱", "葱"], ["香葱", "葱"], ["小葱", "葱"], ["葱花", "葱"],
+    ["生姜", "姜"], ["大蒜", "蒜"], ["植物油", "食用油"], ["油", "食用油"],
+    ["食盐", "盐"], ["白糖", "糖"],
+  ];
+  for (const [from, to] of aliases) {
+    if (item === from && inventorySet.has(to)) return true;
+    if (item === to && inventorySet.has(from)) return true;
+  }
+  return false;
+}
+
+// 计算菜谱与冰箱的已有/缺失食材
+function computeExistingMissing(recipe) {
+  const inventorySet = new Set([...fridge.map((i) => i.name), ...seasonings]);
+  const required = recipe.requiredIngredients || [];
+  const existing = required.filter((i) => localItemMatches(inventorySet, i));
+  const missing = required.filter((i) => !localItemMatches(inventorySet, i));
+  const coreIng = recipe.coreIngredients || [];
+  const missingCore = coreIng.filter(
+    (i) => !localItemMatches(inventorySet, i) && !isLocalBasicSeasoning(i)
+  );
+  const coverage = required.length > 0 ? existing.length / required.length : 0;
+  return {
+    existing,
+    missing,
+    missingCore,
+    matchPercent: Math.round(coverage * 100),
+  };
+}
+
+// 前端版基础调料判断
+function isLocalBasicSeasoning(item) {
+  const basic = new Set([
+    "盐", "糖", "冰糖", "白糖", "酱油", "生抽", "老抽", "醋", "料酒",
+    "食用油", "植物油", "油", "葱", "姜", "蒜", "辣椒", "花椒", "八角",
+    "桂皮", "香叶", "淀粉", "蚝油", "豆瓣酱", "味精", "鸡精",
+    "芝麻", "香油", "清水", "蜂蜜",
+  ]);
+  return basic.has(item);
+}
+
+// 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
+// 检查 allRecipes 中不在 API 结果里的菜谱，如果核心食材全部命中则补充
+function supplementExactMatches(apiResults, ingredients) {
+  if (!allRecipes || allRecipes.length === 0) return apiResults;
+  const resultIds = new Set(apiResults.map((r) => r.recipe.id));
+  const inventorySet = new Set(ingredients);
+  const supplemented = [...apiResults];
+  let added = 0;
+  for (const recipe of allRecipes) {
+    if (resultIds.has(recipe.id)) continue;
+    // 检查核心食材是否全部命中（基础调料跳过）
+    const coreIng = recipe.coreIngredients || [];
+    const missingCore = coreIng.filter(
+      (i) => !localItemMatches(inventorySet, i) && !isLocalBasicSeasoning(i)
+    );
+    if (missingCore.length === 0 && coreIng.length > 0) {
+      // 核心食材全部命中，补充到结果中
+      const required = recipe.requiredIngredients || [];
+      const existing = required.filter((i) => localItemMatches(inventorySet, i));
+      const missing = required.filter((i) => !localItemMatches(inventorySet, i));
+      const coverage = required.length > 0 ? existing.length / required.length : 0;
+      supplemented.push({
+        recipe,
+        score: coverage * 100 + 20, // 给精确匹配额外加分
+        matchPercent: Math.round(coverage * 100),
+        existing,
+        missing,
+        missingCore: [],
+        missingSeasonings: [],
+        optional: recipe.optionalIngredients || [],
+        reason: "食材全部匹配",
+      });
+      added++;
+    }
+  }
+  if (added > 0) {
+    FrontendLogger.info("api", "本地兜底补充", { added, total: supplemented.length });
+  }
+  return supplemented;
+}
+
 // 组合类型标签
 function comboTypeLabel(type) {
   switch (type) {
@@ -1524,8 +1625,10 @@ async function generateMenu() {
   try {
     // 获取更多结果用于本地标签过滤 + 组合去重（去重需要较大菜谱池）
     const rawResults = await searchRecipes(allIngredients, "scrappy", [], 80);
+    // 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
+    const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
-    const processed = applyDietAndAllergens(rawResults);
+    const processed = applyDietAndAllergens(supplemented);
     // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
     processed.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
     // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
@@ -1534,7 +1637,7 @@ async function generateMenu() {
     searchResults = buildMenuCombinations(processed);
     selectedTags = [];
     swipeIndex = 0;
-    FrontendLogger.info("menu", "菜单生成完成", { rawResults: rawResults.length, combos: searchResults.length });
+    FrontendLogger.info("menu", "菜单生成完成", { rawResults: rawResults.length, supplemented: supplemented.length, combos: searchResults.length });
     renderSwipePage();
   } catch (e) {
     FrontendLogger.error("menu", "生成菜单失败", { error: e.message });
@@ -1705,7 +1808,7 @@ function renderSwipeCard(combo, stackIdx) {
           : `<div class="swipe-card-placeholder">${emoji}</div>`
         }
         <div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>
-        ${rec.hasAllergen ? `<div class="allergen-flag">含过敏源</div>` : ""}
+        ${rec.hasAllergen ? `<div class="allergen-flag">含过敏源：${(getRecipeAllergenLabels(recipe) || []).join("、")}</div>` : ""}
         <div class="swipe-card-body">
           <div class="swipe-card-title">${recipe.title}</div>
           <div class="swipe-card-meta">
@@ -1748,7 +1851,7 @@ function renderSwipeCard(combo, stackIdx) {
             ${recipe.timeMinutes ? `<span>⏱${recipe.timeMinutes}'</span>` : ""}
             ${recipe.difficulty ? `<span>${"★".repeat(recipe.difficulty)}</span>` : ""}
             <span class="combo-item-match">匹配${rec.matchPercent}%</span>
-            ${rec.hasAllergen ? `<span class="combo-item-allergen">⚠含过敏源</span>` : ""}
+            ${rec.hasAllergen ? `<span class="combo-item-allergen">⚠含过敏源：${(getRecipeAllergenLabels(recipe) || []).join("、")}</span>` : ""}
           </div>
           <div class="combo-item-missing">
             ${(rec.missing || []).length === 0
@@ -2426,7 +2529,8 @@ function getRecipeConflictLabels(recipe) {
   const labels = [];
   // 过敏源标记
   if (allergens.length > 0 && recipeHasUserAllergen(recipe)) {
-    labels.push({ text: "含过敏源", cls: "conflict-allergen" });
+    const allergenLabels = getRecipeAllergenLabels(recipe);
+    labels.push({ text: `含过敏源：${allergenLabels.join("、")}`, cls: "conflict-allergen" });
   }
   // 饮食偏好标记
   if (dietPreferences.length > 0) {
@@ -2536,12 +2640,14 @@ function showRecipeDetailDirect(recipeId) {
       renderSwipePage();
     };
   }
+  // 从冰箱+调料中计算已有/缺失食材，同步到菜谱详情页
+  const matchInfo = computeExistingMissing(recipe);
   const rec = {
     recipe,
-    matchPercent: 0,
-    existing: [],
-    missing: recipe.requiredIngredients,
-    reason: "浏览菜谱",
+    matchPercent: matchInfo.matchPercent,
+    existing: matchInfo.existing,
+    missing: matchInfo.missing,
+    reason: matchInfo.matchPercent === 100 ? "食材齐备" : "浏览菜谱",
   };
   showRecipeDetail(rec);
 }
