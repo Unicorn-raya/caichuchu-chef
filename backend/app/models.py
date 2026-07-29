@@ -47,4 +47,5 @@ class Recommendation(BaseModel):
     missingSeasonings: list[str]
     optional: list[str]
     reason: str
+    homeRank: int = 0
     ragScore: Optional[float] = None

@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir --prefer-binary -r backend/requirements.txt
 
 COPY --chown=user data/ ./data/
 COPY --chown=user backend/ ./backend/
-COPY --chown=user frontend/data/ ./frontend/data/
+COPY --chown=user frontend/ ./frontend/
 
 WORKDIR /app/backend
 

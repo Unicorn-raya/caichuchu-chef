@@ -38,6 +38,24 @@ const UTENSILS_KEY = "caichuchu_utensils";
 const DEFAULT_SEASONINGS = ["酱油", "食用油", "生抽", "老抽", "蚝油", "盐", "糖"];
 const DEFAULT_UTENSILS = ["铁锅", "烤箱"];
 
+// 常见家常主菜（与后端 home_main_dish_rank 保持一致）
+const COMMON_HOME_DISH_TITLES = new Set([
+  "西红柿炒鸡蛋", "酸辣土豆丝", "红烧茄子", "炒茄子", "蒜蓉西兰花",
+  "蚝油生菜", "炒青菜", "凉拌黄瓜", "皮蛋豆腐", "麻婆豆腐", "家常豆腐",
+  "可乐鸡翅", "红烧鸡翅", "宫保鸡丁", "鱼香肉丝", "回锅肉", "小炒肉",
+  "糖醋里脊", "水煮肉片", "糖醋排骨", "番茄炒蛋", "葱烧豆腐",
+  "蒜蓉空心菜", "手撕包菜", "地三鲜", "干煸四季豆",
+]);
+const COMMON_HOME_DISH_KEYWORDS = ["红烧肉", "红烧鱼", "清蒸鱼", "清蒸鲈鱼", "番茄牛腩", "西红柿牛腩", "土豆炖排骨"];
+const HOME_MAIN_DISH_CATEGORIES = new Set(["aquatic", "meat_dish", "vegetable_dish"]);
+
+function getHomeRank(recipe) {
+  if (!recipe || !HOME_MAIN_DISH_CATEGORIES.has(recipe.category)) return 0;
+  if (COMMON_HOME_DISH_TITLES.has(recipe.title)) return 2;
+  if (COMMON_HOME_DISH_KEYWORDS.some(kw => recipe.title.includes(kw))) return 2;
+  return 1;
+}
+
 // 饮食偏好选项（硬过滤：不符合的菜谱不进入推荐队列）
 const DIET_PREFERENCE_OPTIONS = [
   { value: "no_spicy", label: "不吃辣", icon: "🌶️" },
@@ -1476,9 +1494,11 @@ function supplementExactMatches(apiResults, ingredients) {
       const existing = required.filter((i) => localItemMatches(inventorySet, i));
       const missing = required.filter((i) => !localItemMatches(inventorySet, i));
       const coverage = required.length > 0 ? existing.length / required.length : 0;
+      const _hr = getHomeRank(recipe);
+      const homeBonus = _hr === 2 ? 30 : (_hr === 1 ? 12 : 0);
       supplemented.push({
         recipe,
-        score: coverage * 100 + 20, // 给精确匹配额外加分
+        score: coverage * 100 + 20 + homeBonus, // 精确匹配加分+家常菜加分
         matchPercent: Math.round(coverage * 100),
         existing,
         missing,
@@ -1486,6 +1506,7 @@ function supplementExactMatches(apiResults, ingredients) {
         missingSeasonings: [],
         optional: recipe.optionalIngredients || [],
         reason: "食材全部匹配",
+        homeRank: _hr,
       });
       added++;
     }
@@ -1518,18 +1539,21 @@ function buildCombo(recs, type) {
 
 /**
  * 根据搜索结果生成菜单推荐
- * 不再做荤素搭配，直接按排名取最前的 2 道菜作为一个推荐组合
- * 排序：缺失核心食材数（少→多）→ 匹配度（高→低）→ sortScore（小→大）
+ * 排序规则：按综合评分 score 降序（score已包含家常菜加分、覆盖率、缺失惩罚、难度、快手奖励等）
  */
 function buildMenuCombinations(results) {
   if (!results || results.length === 0) return [];
 
   const sorted = results.slice().sort((a, b) => {
-    const aMissing = (a.missingCore || a.missing || []).length;
-    const bMissing = (b.missingCore || b.missing || []).length;
+    // 主排序：综合评分降序
+    const scoreDiff = (b.score || 0) - (a.score || 0);
+    if (Math.abs(scoreDiff) > 0.01) return scoreDiff;
+    // 兜底：缺失核心食材少的优先
+    const aMissing = (a.missingCore || []).length;
+    const bMissing = (b.missingCore || []).length;
     if (aMissing !== bMissing) return aMissing - bMissing;
-    if (a.matchPercent !== b.matchPercent) return b.matchPercent - a.matchPercent;
-    return (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10);
+    // 兜底：匹配度高的优先
+    return (b.matchPercent || 0) - (a.matchPercent || 0);
   });
 
   const top2 = sorted.slice(0, 2);
@@ -1565,11 +1589,9 @@ async function generateMenu() {
     const processed = applyDietAndAllergens(supplemented);
     // 规范化：API 结果可能只有 missing（含基础调料），需补充 missingCore（排除基础调料的核心缺失）
     normalizeMissingCore(processed);
-    // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
-    processed.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
     // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
     allSearchResults = processed;
-    // 生成菜单组合（2-3 道菜，或兜底单菜）
+    // 生成菜单推荐（取排名最前的2道菜）
     searchResults = buildMenuCombinations(processed);
     selectedTags = [];
     swipeIndex = 0;

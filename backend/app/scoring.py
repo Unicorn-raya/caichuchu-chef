@@ -217,7 +217,7 @@ BASIC_SEASONINGS: set[str] = {
     "葱", "大葱", "小葱", "香葱", "葱花",
     "姜", "生姜", "姜片", "姜末",
     "蒜", "大蒜", "蒜瓣", "蒜末",
-    "辣椒", "干辣椒", "小米辣", "小米椒", "青椒",
+    "辣椒", "干辣椒", "小米辣", "小米椒",
     "花椒", "八角", "桂皮", "香叶", "丁香", "草果", "小茴香", "五香粉", "十三香",
     "胡椒粉", "白胡椒粉", "黑胡椒粉", "白胡椒", "黑胡椒", "胡椒",
     "淀粉", "生粉", "水淀粉",
@@ -415,6 +415,11 @@ def score_recipe(
             - max(0, time - 75) * 0.08
         )
 
+    # 家常菜加分：常见家常菜 +30，一般主菜 +12，非主菜 +0
+    # 让常见菜获得合理优势，但不会让完全不匹配的家常菜压过完美匹配的菜
+    _hr = home_main_dish_rank(recipe)
+    score += {2: 30, 1: 12, 0: 0}.get(_hr, 0)
+
     # 生成推荐理由
     if mode == "scrappy":
         if len(missing_core) == 0:
@@ -439,6 +444,7 @@ def score_recipe(
         "missingSeasonings": missing_seasonings,
         "optional": recipe.optionalIngredients,
         "reason": reason,
+        "homeRank": home_main_dish_rank(recipe),
     }
 
 
@@ -474,10 +480,8 @@ def filter_and_sort(
         # 标签筛选模式：按缺失食材数量升序排序（前端也会再排一次）
         results.sort(key=lambda x: (len(x["missingCore"]), -x["score"]))
     else:
-        # 正常模式：家常主菜排名 > 评分
-        results.sort(
-            key=lambda x: (-home_main_dish_rank(x["recipe"]), -x["score"])
-        )
+        # 正常模式：按综合评分降序（score已含家常菜加分）
+        results.sort(key=lambda x: -x["score"])
     return results[:top_k]
 
 
