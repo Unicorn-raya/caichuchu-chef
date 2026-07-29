@@ -1441,6 +1441,20 @@ function isLocalBasicSeasoning(item) {
   return basic.has(item);
 }
 
+// 规范化 missingCore：API 结果可能只有 missing（含基础调料），需补充 missingCore
+// missingCore = missing 中属于核心食材且非基础调料的部分
+function normalizeMissingCore(results) {
+  for (const r of results) {
+    if (Array.isArray(r.missingCore)) continue;
+    const core = (r.recipe && r.recipe.coreIngredients) || [];
+    const coreSet = new Set(core);
+    r.missingCore = (r.missing || []).filter(
+      (i) => coreSet.has(i) && !isLocalBasicSeasoning(i)
+    );
+  }
+  return results;
+}
+
 // 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
 // 检查 allRecipes 中不在 API 结果里的菜谱，如果核心食材全部命中则补充
 function supplementExactMatches(apiResults, ingredients) {
@@ -1571,8 +1585,8 @@ function buildMenuCombinations(results) {
   // 兜底：没有荤素组合，只推荐单道菜（缺失最少 + sortScore 最小，最多用剩菜）
   if (finalCombos.length === 0) {
     const singles = results.slice().sort((a, b) => {
-      const aMissing = (a.missing || []).length;
-      const bMissing = (b.missing || []).length;
+      const aMissing = (a.missingCore || a.missing || []).length;
+      const bMissing = (b.missingCore || b.missing || []).length;
       if (aMissing !== bMissing) return aMissing - bMissing;
       return (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10);
     });
@@ -1631,6 +1645,8 @@ async function generateMenu() {
     const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
     const processed = applyDietAndAllergens(supplemented);
+    // 规范化：API 结果可能只有 missing（含基础调料），需补充 missingCore（排除基础调料的核心缺失）
+    normalizeMissingCore(processed);
     // 按 sortScore 升序排列（越简单的菜排在前面），便于组合生成时优先选用简单菜
     processed.sort((a, b) => (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10));
     // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
