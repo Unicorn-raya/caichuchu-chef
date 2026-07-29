@@ -1499,9 +1499,7 @@ function supplementExactMatches(apiResults, ingredients) {
 // 组合类型标签
 function comboTypeLabel(type) {
   switch (type) {
-    case "1m1v": return "一主菜一副菜";
-    case "2m1v": return "两主菜一副菜";
-    case "1m2v": return "一主菜两副菜";
+    case "top2": return "今日推荐";
     case "single": return "今日精选";
     default: return "推荐组合";
   }
@@ -1519,103 +1517,23 @@ function buildCombo(recs, type) {
 }
 
 /**
- * 根据搜索结果生成菜单组合
- * 优先级：3菜组合（2荤1素 或 1荤2素）> 2菜组合（1荤1素）> 单菜兜底
- * 排序：缺失食材总数（少→多）+ sortScore 总和（小→大）
- * 兜底：荤或素不足时，只推 1 道菜（缺失最少 + sortScore 最小）
+ * 根据搜索结果生成菜单推荐
+ * 不再做荤素搭配，直接按排名取最前的 2 道菜作为一个推荐组合
+ * 排序：缺失核心食材数（少→多）→ 匹配度（高→低）→ sortScore（小→大）
  */
 function buildMenuCombinations(results) {
   if (!results || results.length === 0) return [];
 
-  const meatList = results.filter((r) => isMeatDish(r.recipe));
-  const vegList = results.filter((r) => isVegDish(r.recipe));
-
-  const combos = [];
-
-  // 3 菜组合：2 荤 1 素
-  for (let i = 0; i < meatList.length; i++) {
-    for (let j = i + 1; j < meatList.length; j++) {
-      for (let k = 0; k < vegList.length; k++) {
-        combos.push(buildCombo([meatList[i], meatList[j], vegList[k]], "2m1v"));
-      }
-    }
-  }
-  // 3 菜组合：1 荤 2 素
-  for (let i = 0; i < meatList.length; i++) {
-    for (let j = 0; j < vegList.length; j++) {
-      for (let k = j + 1; k < vegList.length; k++) {
-        combos.push(buildCombo([meatList[i], vegList[j], vegList[k]], "1m2v"));
-      }
-    }
-  }
-  // 2 菜组合：1 荤 1 素
-  for (let i = 0; i < meatList.length; i++) {
-    for (let j = 0; j < vegList.length; j++) {
-      combos.push(buildCombo([meatList[i], vegList[j]], "1m1v"));
-    }
-  }
-
-  // 排序：缺失核心食材数（少→多）→ 匹配度（高→低）→ sortScore 总和（小→大）
-  combos.sort((a, b) => {
-    if (a.totalMissing !== b.totalMissing) return a.totalMissing - b.totalMissing;
-    if (a.totalMatchPercent !== b.totalMatchPercent) return b.totalMatchPercent - a.totalMatchPercent;
-    return a.totalSortScore - b.totalSortScore;
+  const sorted = results.slice().sort((a, b) => {
+    const aMissing = (a.missingCore || a.missing || []).length;
+    const bMissing = (b.missingCore || b.missing || []).length;
+    if (aMissing !== bMissing) return aMissing - bMissing;
+    if (a.matchPercent !== b.matchPercent) return b.matchPercent - a.matchPercent;
+    return (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10);
   });
 
-  const maxCombos = 12;
-  // 组合级别去重：先移除完全相同的组合（菜品集合相同）
-  const comboSignatures = new Set();
-  const uniqueCombos = [];
-  for (const combo of combos) {
-    const sig = combo.recipes.map((r) => r.recipe.id).sort().join(",");
-    if (!comboSignatures.has(sig)) {
-      comboSignatures.add(sig);
-      uniqueCombos.push(combo);
-    }
-  }
-
-  // 第一轮：严格去重（每道菜只在一个组合中出现）
-  let finalCombos = _selectCombosDedup(uniqueCombos, 1, maxCombos);
-
-  // 若严格去重后组合太少，放宽限制：每道菜最多出现 2 次
-  if (finalCombos.length < 5) {
-    finalCombos = _selectCombosDedup(uniqueCombos, 2, maxCombos);
-  }
-
-  // 兜底：没有荤素组合，只推荐单道菜（缺失最少 + sortScore 最小，最多用剩菜）
-  if (finalCombos.length === 0) {
-    const singles = results.slice().sort((a, b) => {
-      const aMissing = (a.missingCore || a.missing || []).length;
-      const bMissing = (b.missingCore || b.missing || []).length;
-      if (aMissing !== bMissing) return aMissing - bMissing;
-      return (a.recipe.sortScore || 10) - (b.recipe.sortScore || 10);
-    });
-    return singles.slice(0, 5).map((r) => buildCombo([r], "single"));
-  }
-
-  return finalCombos;
-}
-
-// 贪心去重选择组合
-// maxUsePerRecipe: 每道菜最多在几个组合中出现（1=严格不重复，2=允许出现2次）
-function _selectCombosDedup(combos, maxUsePerRecipe, maxCombos) {
-  const useCount = new Map(); // recipeId -> 已使用次数
-  const finalCombos = [];
-  for (const combo of combos) {
-    // 检查该组合内所有菜品使用次数是否都未超限
-    const allUsable = combo.recipes.every((r) => {
-      const cnt = useCount.get(r.recipe.id) || 0;
-      return cnt < maxUsePerRecipe;
-    });
-    if (allUsable) {
-      finalCombos.push(combo);
-      combo.recipes.forEach((r) => {
-        useCount.set(r.recipe.id, (useCount.get(r.recipe.id) || 0) + 1);
-      });
-      if (finalCombos.length >= maxCombos) break;
-    }
-  }
-  return finalCombos;
+  const top2 = sorted.slice(0, 2);
+  return [buildCombo(top2, "top2")];
 }
 
 async function generateMenu() {
