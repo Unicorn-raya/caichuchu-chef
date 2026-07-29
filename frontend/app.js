@@ -1495,7 +1495,8 @@ function comboTypeLabel(type) {
 
 // 构建单个组合对象
 function buildCombo(recs, type) {
-  const totalMissing = recs.reduce((s, r) => s + (r.missing || []).length, 0);
+  // 使用 missingCore（排除基础调料）而非 missing，避免只缺葱/盐等调料的菜谱被误判
+  const totalMissing = recs.reduce((s, r) => s + (r.missingCore || r.missing || []).length, 0);
   const totalSortScore = recs.reduce((s, r) => s + (r.recipe.sortScore || 10), 0);
   const totalMatchPercent = Math.round(
     recs.reduce((s, r) => s + r.matchPercent, 0) / recs.length
@@ -1540,9 +1541,10 @@ function buildMenuCombinations(results) {
     }
   }
 
-  // 排序：缺失总数 + sortScore 总和
+  // 排序：缺失核心食材数（少→多）→ 匹配度（高→低）→ sortScore 总和（小→大）
   combos.sort((a, b) => {
     if (a.totalMissing !== b.totalMissing) return a.totalMissing - b.totalMissing;
+    if (a.totalMatchPercent !== b.totalMatchPercent) return b.totalMatchPercent - a.totalMatchPercent;
     return a.totalSortScore - b.totalSortScore;
   });
 
