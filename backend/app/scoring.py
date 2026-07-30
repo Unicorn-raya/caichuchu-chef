@@ -411,6 +411,8 @@ def score_recipe(
         if len(missing_core) > 2:
             return None
         core_penalty = len(missing_core) * 40
+        # 消耗食材奖励：用的冰箱食材越多越好（核心食材每个+10，已有食材每个+5）
+        consumption_bonus = core_hits * 10 + len(existing) * 5
         score = (
             coverage * 100
             - core_penalty
@@ -418,6 +420,7 @@ def score_recipe(
             - recipe.difficulty * 3
             + quick_bonus
             + few_things_bonus
+            + consumption_bonus
         )
     else:
         score = (
