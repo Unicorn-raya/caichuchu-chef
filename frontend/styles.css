@@ -1120,6 +1120,67 @@ body {
   margin: 24px 0 12px;
 }
 
+/* 精选菜谱刷新按钮 */
+.refresh-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: var(--bg-soft);
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover {
+  background: var(--carrot-light);
+  color: var(--carrot);
+}
+
+.refresh-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 推荐页大厨按钮 */
+.swipe-chef-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: var(--carrot-light);
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--carrot);
+  transition: all 0.2s;
+}
+
+.swipe-chef-btn:hover {
+  background: var(--carrot);
+  color: white;
+}
+
+.swipe-chef-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* AI推荐理由 */
+.combo-ai-reason {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+}
+
 .ingredient-list {
   display: flex;
   flex-direction: column;

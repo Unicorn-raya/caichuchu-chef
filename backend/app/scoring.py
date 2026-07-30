@@ -358,6 +358,7 @@ def score_recipe(
     recipe: Recipe,
     inventory: set[str],
     mode: str,
+    expiring_ingredients: list[str] | None = None,
 ) -> dict | None:
     """对单个菜谱计算评分，返回推荐结果或 None（不匹配）
 
@@ -397,9 +398,13 @@ def score_recipe(
     proper_difficulty_bonus = 8 if recipe.difficulty >= 3 else 2
 
     if mode == "scrappy":
+        # 核心主料缺失惩罚：缺1个扣40分，缺2个及以上直接淘汰（返回None）
+        if len(missing_core) > 2:
+            return None
+        core_penalty = len(missing_core) * 40
         score = (
             coverage * 100
-            - len(missing_core) * 18
+            - core_penalty
             - len(missing_seasonings) * 4
             - recipe.difficulty * 3
             + quick_bonus
@@ -420,19 +425,21 @@ def score_recipe(
     _hr = home_main_dish_rank(recipe)
     score += {2: 30, 1: 12, 0: 0}.get(_hr, 0)
 
-    # 生成推荐理由
-    if mode == "scrappy":
-        if len(missing_core) == 0:
-            reason = "基本不用买主料"
-        elif len(missing_core) <= 2:
-            reason = "补少量菜就能开火"
-        else:
-            reason = "能消耗一部分剩菜"
+    # 生成推荐理由（支持临期食材信息）
+    if expiring_ingredients:
+        expiring_set = set(expiring_ingredients)
+        used_expiring = [ing for ing in existing if ing in expiring_set]
     else:
-        if recipe.difficulty >= 3:
-            reason = "更像正经出品"
-        else:
-            reason = "简单但卖相稳"
+        used_expiring = []
+
+    if used_expiring:
+        reason = f"可消耗临期{used_expiring[0]}"
+    elif len(missing_core) == 0:
+        reason = f"使用冰箱{len(existing)}种食材，无需购买"
+    elif len(missing_core) == 1:
+        reason = f"使用冰箱{len(existing)}种食材，需购买1样：{missing_core[0]}"
+    else:
+        reason = f"使用冰箱{len(existing)}种食材，需购买{len(missing_core)}样"
 
     return {
         "recipe": recipe,
@@ -492,6 +499,7 @@ def recommend_recipes(
     top_k: int = 12,
     tags: list[str] | None = None,
     show_all: bool = False,
+    expiring_ingredients: list[str] | None = None,
 ) -> list[dict]:
     """完整的规则推荐流程：标签过滤 → 评分 → 过滤 → 排序"""
     logger.info("评分 | 输入: 菜谱=%d, 食材=%s, 模式=%s, top_k=%d, 标签=%s, show_all=%s",
@@ -506,7 +514,7 @@ def recommend_recipes(
     inventory = {normalize_item(item) for item in inventory_items if item}
     recommendations = []
     for recipe in filtered:
-        result = score_recipe(recipe, inventory, mode)
+        result = score_recipe(recipe, inventory, mode, expiring_ingredients)
         if result is not None:
             recommendations.append(result)
     results = filter_and_sort(recommendations, mode, top_k, show_all=show_all)

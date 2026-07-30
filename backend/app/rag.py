@@ -121,6 +121,7 @@ class RecipeRAG:
         rag_top_n: int = 150,
         tags: list[str] | None = None,
         show_all: bool = False,
+        expiring_ingredients: list[str] | None = None,
     ) -> list[dict]:
         """RAG 检索 + 规则评分
 
@@ -141,6 +142,7 @@ class RecipeRAG:
             results = recommend_recipes(
                 self.recipes, ingredients, mode, top_k,
                 tags=tags, show_all=True,
+                expiring_ingredients=expiring_ingredients,
             )
             logger.info("RAG 标签筛选 → %d 条结果", len(results))
             return results
@@ -164,7 +166,10 @@ class RecipeRAG:
         # 3. 对候选菜谱应用规则评分
         candidates = [self.recipes[i] for i in top_indices]
         logger.info("RAG 检索 | 查询=%s, 候选=%d, top_k=%d", query_text, len(candidates), top_k)
-        results = recommend_recipes(candidates, ingredients, mode, top_k, tags=tags)
+        results = recommend_recipes(
+            candidates, ingredients, mode, top_k, tags=tags,
+            expiring_ingredients=expiring_ingredients,
+        )
 
         # 附加 RAG 相似度分数
         for result in results:

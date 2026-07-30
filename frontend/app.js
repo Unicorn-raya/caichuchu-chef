@@ -644,9 +644,9 @@ async function fetchTags() {
   }
 }
 
-async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false) {
-  FrontendLogger.info("api", "搜索菜谱", { ingredients, mode, tags, topK, showAll });
-  const body = JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll });
+async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false, expiringIngredients = []) {
+  FrontendLogger.info("api", "搜索菜谱", { ingredients, mode, tags, topK, showAll, expiringIngredients });
+  const body = JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll, expiring_ingredients: expiringIngredients });
   // 线上后端冷启动需要 30+ 秒（模型延迟加载），移动端网络不稳定，需要超时 + 重试
   const MAX_RETRIES = 1;
   const TIMEOUT_MS = 60000; // 单次请求最多等 60 秒（容忍模型冷启动）
@@ -1520,8 +1520,9 @@ function supplementExactMatches(apiResults, ingredients) {
 // 组合类型标签
 function comboTypeLabel(type) {
   switch (type) {
-    case "top2": return "今日推荐";
-    case "single": return "今日精选";
+    case "top2": return "双菜组合";
+    case "single": return "今日推荐";
+    case "ai": return "AI大厨推荐";
     default: return "推荐组合";
   }
 }
@@ -1540,6 +1541,7 @@ function buildCombo(recs, type) {
 /**
  * 根据搜索结果生成菜单推荐
  * 排序规则：按综合评分 score 降序（score已包含家常菜加分、覆盖率、缺失惩罚、难度、快手奖励等）
+ * 默认只推荐最容易做的1道菜
  */
 function buildMenuCombinations(results) {
   if (!results || results.length === 0) return [];
@@ -1556,8 +1558,128 @@ function buildMenuCombinations(results) {
     return (b.matchPercent || 0) - (a.matchPercent || 0);
   });
 
+  // 默认只推荐最容易做的1道菜
+  const top1 = sorted.slice(0, 1);
+  return [buildCombo(top1, "single")];
+}
+
+/**
+ * 生成双菜组合推荐（大厨弹窗选择"两个菜组合"时调用）
+ */
+function buildDualMenuCombinations(results) {
+  if (!results || results.length === 0) return [];
+
+  const sorted = results.slice().sort((a, b) => {
+    const scoreDiff = (b.score || 0) - (a.score || 0);
+    if (Math.abs(scoreDiff) > 0.01) return scoreDiff;
+    const aMissing = (a.missingCore || []).length;
+    const bMissing = (b.missingCore || []).length;
+    if (aMissing !== bMissing) return aMissing - bMissing;
+    return (b.matchPercent || 0) - (a.matchPercent || 0);
+  });
+
   const top2 = sorted.slice(0, 2);
   return [buildCombo(top2, "top2")];
+}
+
+/**
+ * 通过AI生成双菜推荐（大厨弹窗选择"AI推荐"时调用）
+ */
+async function generateAIRecommendedMenu() {
+  const ingredients = fridge.map((i) => i.name);
+  const allIngredients = [...ingredients, ...seasonings];
+  if (ingredients.length === 0) {
+    showToast("冰箱还是空的，先添加食材吧");
+    return;
+  }
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="page" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh">
+      <div class="loading-spinner"></div>
+      <div style="margin-top:12px;color:var(--text-muted)">AI大厨正在为你搭配…</div>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">AI正在思考最佳菜谱组合</div>
+    </div>
+  `;
+
+  try {
+    // 先获取候选菜谱
+    const expiringItems = getExpiringIngredients();
+    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
+    const supplemented = supplementExactMatches(rawResults, allIngredients);
+    const processed = applyDietAndAllergens(supplemented);
+    normalizeMissingCore(processed);
+
+    // 构建候选菜谱列表给AI
+    const candidates = processed.slice(0, 20).map((r, i) => {
+      const recipe = r.recipe;
+      return `${i + 1}. ${recipe.title}（${recipe.categoryLabel}，${recipe.timeMinutes || 30}分钟，匹配${r.matchPercent}%）`;
+    }).join("\n");
+
+    const expiringHint = expiringItems.length > 0
+      ? `\n临期食材（优先使用）：${expiringItems.join("、")}`
+      : "";
+
+    const prompt = `你是一位专业厨师。用户冰箱里有以下食材：${ingredients.join("、")}。
+可用调料：${seasonings.join("、")}。${expiringHint}
+
+候选菜谱（按匹配度排序）：
+${candidates}
+
+请从这些候选菜谱中，为用户推荐2道搭配合理的菜。要求：
+1. 优先考虑使用临期食材的菜
+2. 两道菜应该互补（如一荤一素、一主一副）
+3. 总烹饪时间合理（不超过1小时）
+4. 难度适中
+
+请以JSON格式返回，格式如下：
+{"dish1": "菜名1", "dish2": "菜名2", "reason": "推荐理由"}`;
+
+    const aiResponse = await callAI(prompt, "recommend");
+    FrontendLogger.info("menu", "AI推荐结果", { aiResponse });
+
+    // 解析AI返回的JSON
+    let aiResult;
+    try {
+      // 尝试提取JSON部分
+      const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        aiResult = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("AI未返回有效JSON");
+      }
+    } catch (e) {
+      FrontendLogger.warning("menu", "AI返回解析失败，使用默认推荐", { error: e.message });
+      // 解析失败则使用默认推荐
+      searchResults = buildDualMenuCombinations(processed);
+      renderSwipePage();
+      return;
+    }
+
+    // 根据AI推荐的菜名找到对应的菜谱
+    const allResults = processed;
+    const dish1 = allResults.find(r => r.recipe.title === aiResult.dish1);
+    const dish2 = allResults.find(r => r.recipe.title === aiResult.dish2);
+
+    if (dish1 && dish2) {
+      const combo = buildCombo([dish1, dish2], "ai");
+      combo.aiReason = aiResult.reason || "AI大厨推荐";
+      searchResults = [combo];
+    } else {
+      // 找不到则回退到默认推荐
+      FrontendLogger.warning("menu", "AI推荐的菜谱未找到，使用默认推荐");
+      searchResults = buildDualMenuCombinations(processed);
+    }
+
+    selectedTags = [];
+    swipeIndex = 0;
+    renderSwipePage();
+  } catch (e) {
+    FrontendLogger.error("menu", "AI推荐失败", { error: e.message });
+    showToast("AI推荐失败，使用默认推荐");
+    // 回退到默认推荐
+    generateMenu();
+  }
 }
 
 async function generateMenu() {
@@ -1581,8 +1703,10 @@ async function generateMenu() {
   `;
 
   try {
+    // 获取临期食材，用于生成推荐理由
+    const expiringItems = getExpiringIngredients();
     // 获取更多结果用于本地标签过滤 + 组合去重（去重需要较大菜谱池）
-    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 80);
+    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 80, false, expiringItems);
     // 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
     const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
@@ -1657,7 +1781,9 @@ function renderSwipePage() {
           返回
         </button>
         <div class="swipe-header-title">为你推荐</div>
-        <div style="width:50px"></div>
+        <button class="swipe-chef-btn" onclick="showChefRecommendMenu()" title="大厨推荐">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 11h.01"/><path d="M11 15h.01"/><path d="M16 16h.01"/><path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/><path d="M5.71 17.11a17.04 17.04 0 0 1 11.4-11.4"/></svg>
+        </button>
       </div>
 
       <div class="tag-filter-bar">
@@ -1830,6 +1956,7 @@ function renderSwipeCard(combo, stackIdx) {
         <span class="combo-match">综合匹配 ${combo.totalMatchPercent}%</span>
       </div>
       <div class="combo-items">${items}</div>
+      ${combo.aiReason ? `<div class="combo-ai-reason">🤖 ${combo.aiReason}</div>` : ""}
       <div class="combo-card-footer">
         <span class="combo-footer-hint">点击菜品开始做菜 · 点击空白处切换</span>
       </div>
@@ -2408,9 +2535,14 @@ function renderDiscover() {
           `).join("")}
         </div>
 
-        <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px">热门菜谱</div>
+        <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
+          <span>精选菜谱</span>
+          <button class="refresh-btn" onclick="refreshCuratedRecipes()" title="换一批">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+          </button>
+        </div>
         <div class="recipe-list" id="discoverRecipeList">
-          ${allRecipes.slice(0, 20).map((r) => renderRecipeListCard(r)).join("")}
+          ${getCuratedRecipes().map((r) => renderRecipeListCard(r)).join("")}
         </div>
       </div>
     </div>
@@ -2452,6 +2584,89 @@ function filterDiscoverRecipes(query) {
       </div>
     </div>
   `;
+}
+
+// 精选菜谱：基于最近做过的菜推荐相似菜
+let curatedRecipesPool = [];
+let curatedOffset = 0;
+const CURATED_PAGE_SIZE = 5;
+
+// 获取最近做过的菜（最多10道）
+function getRecentCookedRecipes() {
+  const history = getCookedHistory();
+  return history.slice(0, 10);
+}
+
+// 计算菜谱相似度：基于分类、标签、核心食材
+function computeRecipeSimilarity(recipeA, recipeB) {
+  let score = 0;
+  // 同分类 +3分
+  if (recipeA.category === recipeB.category) score += 3;
+  // 共同标签每个+1分
+  const tagsA = new Set(recipeA.tags || []);
+  const tagsB = new Set(recipeB.tags || []);
+  for (const t of tagsA) {
+    if (tagsB.has(t)) score += 1;
+  }
+  // 共同核心食材每个+2分
+  const coreA = new Set(recipeA.coreIngredients || []);
+  const coreB = new Set(recipeB.coreIngredients || []);
+  for (const c of coreA) {
+    if (coreB.has(c)) score += 2;
+  }
+  return score;
+}
+
+// 构建精选菜谱池：基于最近做过的菜推荐相似菜
+function buildCuratedRecipesPool() {
+  const recentCooked = getRecentCookedRecipes();
+  if (recentCooked.length === 0 || !allRecipes || allRecipes.length === 0) {
+    // 没有做菜记录，随机选20道
+    const shuffled = [...allRecipes].sort(() => Math.random() - 0.5);
+    curatedRecipesPool = shuffled.slice(0, 20);
+    return;
+  }
+
+  // 获取最近做过的菜谱对象
+  const cookedIds = new Set(recentCooked.map(r => r.recipeId));
+  const cookedRecipes = allRecipes.filter(r => cookedIds.has(r.id));
+
+  // 为每道未做过的菜计算与最近做过菜的最高相似度
+  const scored = allRecipes
+    .filter(r => !cookedIds.has(r.id))
+    .map(r => {
+      let maxSim = 0;
+      for (const cooked of cookedRecipes) {
+        const sim = computeRecipeSimilarity(r, cooked);
+        if (sim > maxSim) maxSim = sim;
+      }
+      return { recipe: r, similarity: maxSim };
+    });
+
+  // 按相似度降序排序
+  scored.sort((a, b) => b.similarity - a.similarity);
+  curatedRecipesPool = scored.map(s => s.recipe);
+}
+
+// 获取当前页的精选菜谱
+function getCuratedRecipes() {
+  if (curatedRecipesPool.length === 0) {
+    buildCuratedRecipesPool();
+  }
+  return curatedRecipesPool.slice(curatedOffset, curatedOffset + CURATED_PAGE_SIZE);
+}
+
+// 刷新精选菜谱（换一批）
+function refreshCuratedRecipes() {
+  curatedOffset += CURATED_PAGE_SIZE;
+  // 如果到底了，重新打乱
+  if (curatedOffset >= curatedRecipesPool.length) {
+    curatedOffset = 0;
+    // 重新打乱池子
+    curatedRecipesPool.sort(() => Math.random() - 0.5);
+  }
+  renderPage("discover");
+  showToast("已换一批精选菜谱");
 }
 
 // 随机抽一道菜（大厨按钮在发现页的行为）
@@ -4828,11 +5043,9 @@ function handleChefAgentClick() {
     return;
   }
 
-  // 食材灵感推荐页面 → 随机推荐3道菜（跳转到发现页展示）
+  // 食材灵感推荐页面 → 弹出大厨推荐菜单（两个菜组合 / AI推荐）
   if (currentPage === "home" && document.querySelector(".swipe-page")) {
-    document.getElementById("bottomNav").style.display = "";
-    renderPage("discover");
-    pickRandomRecipe();
+    showChefRecommendMenu();
     return;
   }
 
@@ -4926,6 +5139,90 @@ function closeChefHomeMenu() {
     popup.remove();
     if (fab) updateChefFabState();
   }, 300);
+}
+
+// 推荐页大厨弹窗：两个菜组合 / AI推荐
+function showChefRecommendMenu() {
+  // 已存在则不重复创建
+  if (document.getElementById("chefRecommendMenu")) return;
+  FrontendLogger.info("chef", "弹出推荐页大厨菜单");
+  const fab = document.getElementById("chefAgentFab");
+  if (!fab) return;
+  // 大厨emoji变成思考
+  fab.querySelector(".chef-agent-fab-icon").textContent = "🤔";
+
+  const popup = document.createElement("div");
+  popup.id = "chefRecommendMenu";
+  popup.className = "chef-home-menu";
+  popup.innerHTML = `
+    <button class="chef-home-menu-circle" style="--delay: 0.1s" onclick="closeChefRecommendMenu(); setTimeout(switchToDualMenu, 250);" title="两个菜组合">
+      <span>🍱</span>
+    </button>
+    <button class="chef-home-menu-circle" style="--delay: 0.2s" onclick="closeChefRecommendMenu(); setTimeout(generateAIRecommendedMenu, 250);" title="AI推荐">
+      <span>✨</span>
+    </button>
+  `;
+  document.body.appendChild(popup);
+  updateChefRecommendMenuPosition();
+
+  // 点击页面其他地方关闭（下一帧添加，避免当前click事件触发）
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.addEventListener("click", closeChefRecommendMenuOutside, true);
+      document.addEventListener("touchstart", closeChefRecommendMenuOutside, true);
+    });
+  });
+}
+
+// 根据FAB位置更新弹窗位置
+function updateChefRecommendMenuPosition() {
+  const popup = document.getElementById("chefRecommendMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup || !fab) return;
+  const fabRect = fab.getBoundingClientRect();
+  const fabCenterX = fabRect.left + fabRect.width / 2;
+  popup.style.left = fabCenterX + "px";
+  popup.style.bottom = (window.innerHeight - fabRect.top) + "px";
+}
+
+function closeChefRecommendMenuOutside(e) {
+  const popup = document.getElementById("chefRecommendMenu");
+  if (!popup) return;
+  if (popup.contains(e.target)) return;
+  closeChefRecommendMenu();
+}
+
+function closeChefRecommendMenu() {
+  document.removeEventListener("click", closeChefRecommendMenuOutside, true);
+  document.removeEventListener("touchstart", closeChefRecommendMenuOutside, true);
+  const popup = document.getElementById("chefRecommendMenu");
+  const fab = document.getElementById("chefAgentFab");
+  if (!popup) return;
+  // 退出动画：逆向气泡下降
+  const circles = popup.querySelectorAll(".chef-home-menu-circle");
+  circles.forEach((c, i) => {
+    c.style.animation = "chefBubbleDown 0.25s ease-in forwards";
+    c.style.animationDelay = `${0.15 - i * 0.07}s`;
+  });
+  // 动画结束后移除
+  setTimeout(() => {
+    popup.remove();
+    if (fab) updateChefFabState();
+  }, 300);
+}
+
+// 切换到双菜组合模式
+function switchToDualMenu() {
+  if (allSearchResults && allSearchResults.length > 0) {
+    searchResults = buildDualMenuCombinations(allSearchResults);
+    selectedTags = [];
+    swipeIndex = 0;
+    renderSwipePage();
+    showToast("已切换到双菜组合模式");
+  } else {
+    // 如果没有搜索结果，重新生成
+    generateMenu();
+  }
 }
 
 function confirmClearFridge() {

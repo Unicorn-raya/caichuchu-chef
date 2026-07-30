@@ -94,8 +94,8 @@ async def search_recipes(request: SearchRequest):
     2. 规则评分：对候选菜谱应用食材覆盖率计算 + 加权评分公式
     3. 过滤排序：按模式过滤，按家常主菜排名和评分排序
     """
-    logger.info("POST /api/search | 食材=%s, 模式=%s, top_k=%d, 标签=%s, show_all=%s",
-                request.ingredients, request.mode, request.top_k, request.tags, request.show_all)
+    logger.info("POST /api/search | 食材=%s, 模式=%s, top_k=%d, 标签=%s, show_all=%s, 临期=%s",
+                request.ingredients, request.mode, request.top_k, request.tags, request.show_all, request.expiring_ingredients)
     t0 = time.time()
     engine = get_rag_engine()
     results = engine.search(
@@ -104,6 +104,7 @@ async def search_recipes(request: SearchRequest):
         top_k=request.top_k,
         tags=request.tags if request.tags else None,
         show_all=request.show_all,
+        expiring_ingredients=request.expiring_ingredients if request.expiring_ingredients else None,
     )
     elapsed = (time.time() - t0) * 1000
     logger.info("→ 返回 %d 条推荐, 耗时 %.0fms", len(results), elapsed)
