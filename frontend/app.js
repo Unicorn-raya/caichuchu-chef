@@ -2913,13 +2913,20 @@ function renderRecipeListCard(recipe) {
 
 function toggleFavoriteAndUpdate(recipeId) {
   toggleFavorite(recipeId);
-  // 刷新当前页面
-  const activeNav = document.querySelector(".nav-btn.active");
-  const activePage = activeNav ? activeNav.dataset.page : null;
-  if (activePage === "me" && document.querySelector(".favorites-page")) {
+  // 就地更新按钮图标，不重新渲染页面（避免丢失分类视图/滚动位置）
+  const fav = isFavorite(recipeId);
+  document.querySelectorAll(`.recipe-fav-btn`).forEach((btn) => {
+    // 找到对应recipeId的按钮（在卡片内）
+    const card = btn.closest('.recipe-list-card');
+    if (card && card.getAttribute('onclick') && card.getAttribute('onclick').includes(recipeId)) {
+      btn.textContent = fav ? '❤️' : '🤍';
+      btn.classList.toggle('active', fav);
+      btn.title = fav ? '取消收藏' : '收藏';
+    }
+  });
+  // 如果在收藏页面取消收藏，刷新列表移除该项
+  if (!fav && document.querySelector(".favorites-page")) {
     showFavoriteRecipes();
-  } else if (activePage) {
-    renderPage(activePage);
   }
 }
 
