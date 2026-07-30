@@ -231,7 +231,7 @@ BASIC_SEASONINGS: set[str] = {
 }
 
 # 水类食材：自动视为已有，不作为缺失食材
-WATER_ITEMS: set[str] = {"水", "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水"}
+WATER_ITEMS: set[str] = {"水", "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水", "沸水", "100°C沸水", "30°C温水"}
 
 # 标点/数量修饰词，用于判断食材名是否带修饰（如"生抽3汤匙"）
 
@@ -381,7 +381,7 @@ def score_recipe(
     只保留"需要专门采买的主料/配菜"。
     """
     required = list(dict.fromkeys(recipe.requiredIngredients))
-    existing = [item for item in required if item_matches(inventory, item)]
+    existing = [item for item in required if item_matches(inventory, item) and normalize_item(item) not in WATER_ITEMS]
     missing = [item for item in required if not item_matches(inventory, item)]
     # missingCore 排除常见基础调料，只算需要专门采买的主料/配菜
     missing_core = [
@@ -390,10 +390,13 @@ def score_recipe(
     ]
     missing_seasonings = [item for item in recipe.seasonings if not item_matches(inventory, item)]
 
-    core_hits = len([item for item in recipe.coreIngredients if item_matches(inventory, item)])
+    # 核心食材命中数（排除水类，水是免费资源不计入消耗）
+    core_hits = len([item for item in recipe.coreIngredients if item_matches(inventory, item) and normalize_item(item) not in WATER_ITEMS])
     seasoning_hits = len([item for item in recipe.seasonings if item_matches(inventory, item)])
 
-    weighted_total = (len(recipe.coreIngredients) * 2 + len(recipe.seasonings) * 0.75) or 1
+    # 覆盖率计算时排除水类食材（水不算食材）
+    non_water_core = [item for item in recipe.coreIngredients if normalize_item(item) not in WATER_ITEMS]
+    weighted_total = (len(non_water_core) * 2 + len(recipe.seasonings) * 0.75) or 1
     weighted_hits = core_hits * 2 + seasoning_hits * 0.75
     coverage = weighted_hits / weighted_total
 
