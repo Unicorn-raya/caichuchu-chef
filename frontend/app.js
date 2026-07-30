@@ -417,6 +417,7 @@ function applyDietAndAllergens(results) {
 const BUILTIN_DEFAULT_MODEL = {
   id: "builtin_default",
   name: "默认模型",
+  model: "gemini-2.5-flash",
   uses: ["recommend", "recognize", "calendar"],
   builtin: true,
 };
@@ -2614,13 +2615,22 @@ function renderDiscover() {
         </div>
 
         <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
-          <span>精选菜谱</span>
-          <button class="refresh-btn" onclick="refreshCuratedRecipes()" title="换一批">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span>${discoverListMode === "curated" ? "精选菜谱" : "最近浏览"}</span>
+            <button class="discover-toggle-btn ${discoverListMode === 'curated' ? 'active' : ''}" onclick="toggleDiscoverListMode('curated')" title="精选菜谱">精选</button>
+            <button class="discover-toggle-btn ${discoverListMode === 'recent' ? 'active' : ''}" onclick="toggleDiscoverListMode('recent')" title="最近浏览">最近浏览</button>
+          </div>
+          ${discoverListMode === "curated" ? `<button class="refresh-btn" onclick="refreshCuratedRecipes()" title="换一批">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-          </button>
+          </button>` : ""}
         </div>
         <div class="recipe-list" id="discoverRecipeList">
-          ${getCuratedRecipes().map((r) => renderRecipeListCard(r)).join("")}
+          ${discoverListMode === "curated"
+            ? getCuratedRecipes().map((r) => renderRecipeListCard(r)).join("")
+            : (getRecentlyViewedRecipes(5).length > 0
+              ? getRecentlyViewedRecipes(5).map((r) => renderRecipeListCard(r)).join("")
+              : `<div style="text-align:center;padding:32px;color:var(--text-muted)"><div style="font-size:36px;margin-bottom:8px">📖</div><div>还没有浏览记录</div><div style="font-size:13px;margin-top:4px">去看看菜谱吧</div></div>`)
+          }
         </div>
       </div>
     </div>
@@ -2663,6 +2673,32 @@ function filterDiscoverRecipes(query) {
     </div>
   `;
 }
+
+// 最近浏览记录
+const RECENTLY_VIEWED_KEY = "ccc_recently_viewed";
+const RECENTLY_VIEWED_MAX = 20;
+
+function getRecentlyViewed() {
+  try {
+    return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || "[]");
+  } catch { return []; }
+}
+
+function addRecentlyViewed(recipeId) {
+  let list = getRecentlyViewed();
+  list = list.filter(id => id !== recipeId);
+  list.unshift(recipeId);
+  if (list.length > RECENTLY_VIEWED_MAX) list = list.slice(0, RECENTLY_VIEWED_MAX);
+  localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(list));
+}
+
+function getRecentlyViewedRecipes(limit = 5) {
+  const ids = getRecentlyViewed().slice(0, limit);
+  return ids.map(id => allRecipes.find(r => r.id === id)).filter(r => r);
+}
+
+// 精选菜谱 / 最近浏览 切换状态
+let discoverListMode = "curated"; // "curated" | "recent"
 
 // 精选菜谱：基于最近做过的菜推荐相似菜
 let curatedRecipesPool = [];
@@ -2732,6 +2768,13 @@ function getCuratedRecipes() {
     buildCuratedRecipesPool();
   }
   return curatedRecipesPool.slice(curatedOffset, curatedOffset + CURATED_PAGE_SIZE);
+}
+
+// 切换发现页列表模式：精选菜谱 / 最近浏览
+function toggleDiscoverListMode(mode) {
+  if (discoverListMode === mode) return;
+  discoverListMode = mode;
+  renderPage("discover");
 }
 
 // 刷新精选菜谱（换一批）
@@ -2858,6 +2901,8 @@ function showCategory(category) {
 function showRecipeDetailDirect(recipeId) {
   const recipe = allRecipes.find((r) => r.id === recipeId);
   if (!recipe) return;
+  // 记录浏览历史
+  addRecentlyViewed(recipeId);
   // 根据当前所在页面设置返回动作
   const activeNav = document.querySelector(".nav-btn.active");
   const activePage = activeNav ? activeNav.dataset.page : null;
@@ -3250,44 +3295,51 @@ function renderMe() {
       </div>
 
       <div class="me-section-title">厨房</div>
-      <div class="me-menu-item" onclick="showKitchenSection('seasonings')">
-        <span>🧂 调料</span>
-        <span class="me-menu-value">${seasonings.length} 样</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="showKitchenSection('utensils')">
-        <span>🍳 厨具</span>
-        <span class="me-menu-value">${utensils.length} 样</span>
-        <span class="me-menu-arrow">›</span>
+      <div class="me-option-grid">
+        <div class="me-option-card" onclick="showKitchenSection('seasonings')">
+          <div class="me-option-icon">🧂</div>
+          <div class="me-option-label">调料</div>
+          <div class="me-option-sub">${seasonings.length}样</div>
+        </div>
+        <div class="me-option-card" onclick="showKitchenSection('utensils')">
+          <div class="me-option-icon">🍳</div>
+          <div class="me-option-label">厨具</div>
+          <div class="me-option-sub">${utensils.length}样</div>
+        </div>
       </div>
 
       <div class="me-section-title">设置</div>
-      <div class="me-menu-item" onclick="showChefs()">
-        <span>👨‍🍳 厨师管理</span>
-        <span class="me-menu-value">${ChefManager.getEnabled().length} 位启用</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="showAIModels()">
-        <span>🤖 AI模型管理</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="showDietPreferences()">
-        <span>🍽️ 饮食偏好</span>
-        <span class="me-menu-value">${dietPreferences.length > 0 ? `已选 ${dietPreferences.length}` : "未设置"}</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="showAllergens()">
-        <span>⚠️ 过敏原管理</span>
-        <span class="me-menu-value">${allergens.length > 0 ? `已选 ${allergens.length}` : "未设置"}</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="clearAllData()">
-        <span>🗑️ 清空冰箱</span>
-        <span class="me-menu-arrow">›</span>
-      </div>
-      <div class="me-menu-item" onclick="showToast('菜厨厨 v1.0 — 基于RAG的智能菜谱推荐')">
-        <span>ℹ️ 关于</span>
-        <span class="me-menu-arrow">›</span>
+      <div class="me-option-grid">
+        <div class="me-option-card" onclick="showChefs()">
+          <div class="me-option-icon">👨‍🍳</div>
+          <div class="me-option-label">厨师管理</div>
+          <div class="me-option-sub">${ChefManager.getEnabled().length}位</div>
+        </div>
+        <div class="me-option-card" onclick="showAIModels()">
+          <div class="me-option-icon">🤖</div>
+          <div class="me-option-label">AI模型</div>
+          <div class="me-option-sub">管理</div>
+        </div>
+        <div class="me-option-card" onclick="showDietPreferences()">
+          <div class="me-option-icon">🍽️</div>
+          <div class="me-option-label">饮食偏好</div>
+          <div class="me-option-sub">${dietPreferences.length > 0 ? `已选${dietPreferences.length}` : "未设置"}</div>
+        </div>
+        <div class="me-option-card" onclick="showAllergens()">
+          <div class="me-option-icon">⚠️</div>
+          <div class="me-option-label">过敏原</div>
+          <div class="me-option-sub">${allergens.length > 0 ? `已选${allergens.length}` : "未设置"}</div>
+        </div>
+        <div class="me-option-card" onclick="clearAllData()">
+          <div class="me-option-icon">🗑️</div>
+          <div class="me-option-label">清空冰箱</div>
+          <div class="me-option-sub">&nbsp;</div>
+        </div>
+        <div class="me-option-card" onclick="showToast('菜厨厨 v1.0 — 基于RAG的智能菜谱推荐')">
+          <div class="me-option-icon">ℹ️</div>
+          <div class="me-option-label">关于</div>
+          <div class="me-option-sub">v1.0</div>
+        </div>
       </div>
     </div>
   `;

@@ -1145,6 +1145,24 @@ body {
   height: 14px;
 }
 
+/* 发现页切换按钮 */
+.discover-toggle-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.discover-toggle-btn.active {
+  background: var(--carrot);
+  color: white;
+  border-color: var(--carrot);
+}
+
 /* 推荐页大厨按钮 */
 .swipe-chef-btn {
   display: flex;
@@ -1726,6 +1744,49 @@ body {
   font-size: 17px;
   font-weight: 700;
   margin-bottom: 12px;
+}
+
+/* 我的页 - 选项卡片网格（三个一行） */
+.me-option-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.me-option-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 6px;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.me-option-card:active {
+  background: var(--bg-soft);
+  transform: scale(0.96);
+}
+
+.me-option-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.me-option-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.me-option-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .me-menu-item {
