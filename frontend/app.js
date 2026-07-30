@@ -1527,6 +1527,12 @@ function comboTypeLabel(type) {
   }
 }
 
+// 水类食材：不作为食材在前端展示
+const WATER_ITEMS_DISPLAY = new Set(["水", "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水", "沸水", "100°C沸水", "30°C温水"]);
+function filterWaterItems(items) {
+  return (items || []).filter(i => !WATER_ITEMS_DISPLAY.has(i));
+}
+
 // 构建单个组合对象
 function buildCombo(recs, type) {
   // 使用 missingCore（排除基础调料）而非 missing，避免只缺葱/盐等调料的菜谱被误判
@@ -1597,43 +1603,29 @@ async function generateAIRecommendedMenu() {
   app.innerHTML = `
     <div class="page" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh">
       <div class="loading-spinner"></div>
-      <div style="margin-top:12px;color:var(--text-muted)">AI大厨正在为你搭配…</div>
-      <div style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">AI正在思考最佳菜谱组合</div>
+      <div style="margin-top:12px;color:var(--text-muted)">AI大厨正在联网搜索…</div>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">结合冰箱食材和全网菜谱为你搭配</div>
     </div>
   `;
 
   try {
-    // 先获取候选菜谱
     const expiringItems = getExpiringIngredients();
-    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
-    const supplemented = supplementExactMatches(rawResults, allIngredients);
-    const processed = applyDietAndAllergens(supplemented);
-    normalizeMissingCore(processed);
-
-    // 构建候选菜谱列表给AI
-    const candidates = processed.slice(0, 20).map((r, i) => {
-      const recipe = r.recipe;
-      return `${i + 1}. ${recipe.title}（${recipe.categoryLabel}，${recipe.timeMinutes || 30}分钟，匹配${r.matchPercent}%）`;
-    }).join("\n");
-
     const expiringHint = expiringItems.length > 0
       ? `\n临期食材（优先使用）：${expiringItems.join("、")}`
       : "";
 
+    // AI联网推荐：不局限于本地菜谱，让AI基于食材自由推荐
     const prompt = `你是一位专业厨师。用户冰箱里有以下食材：${ingredients.join("、")}。
 可用调料：${seasonings.join("、")}。${expiringHint}
 
-候选菜谱（按匹配度排序）：
-${candidates}
-
-请从这些候选菜谱中，为用户推荐2道搭配合理的菜。要求：
+请基于这些食材，推荐2道搭配合理的菜。可以是任何菜谱，不限于本地菜谱库。要求：
 1. 优先考虑使用临期食材的菜
 2. 两道菜应该互补（如一荤一素、一主一副）
 3. 总烹饪时间合理（不超过1小时）
-4. 难度适中
+4. 尽量使用用户已有的食材，减少需要购买的食材
 
 请以JSON格式返回，格式如下：
-{"dish1": "菜名1", "dish2": "菜名2", "reason": "推荐理由"}`;
+{"dish1": "菜名1", "dish2": "菜名2", "reason": "推荐理由（简短一句话）", "dish1_ingredients": ["食材1","食材2"], "dish2_ingredients": ["食材1","食材2"]}`;
 
     const aiResponse = await callAI(prompt, "recommend");
     FrontendLogger.info("menu", "AI推荐结果", { aiResponse });
@@ -1641,7 +1633,6 @@ ${candidates}
     // 解析AI返回的JSON
     let aiResult;
     try {
-      // 尝试提取JSON部分
       const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         aiResult = JSON.parse(jsonMatch[0]);
@@ -1651,25 +1642,70 @@ ${candidates}
     } catch (e) {
       FrontendLogger.warning("menu", "AI返回解析失败，使用默认推荐", { error: e.message });
       // 解析失败则使用默认推荐
+      const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
+      const supplemented = supplementExactMatches(rawResults, allIngredients);
+      const processed = applyDietAndAllergens(supplemented);
+      normalizeMissingCore(processed);
       searchResults = buildDualMenuCombinations(processed);
       renderSwipePage();
       return;
     }
 
-    // 根据AI推荐的菜名找到对应的菜谱
-    const allResults = processed;
-    const dish1 = allResults.find(r => r.recipe.title === aiResult.dish1);
-    const dish2 = allResults.find(r => r.recipe.title === aiResult.dish2);
+    // 先尝试从本地菜谱库匹配
+    let dish1Rec = null, dish2Rec = null;
+    if (allRecipes && allRecipes.length > 0) {
+      // 模糊匹配菜名
+      const findRecipe = (name) => {
+        if (!name) return null;
+        // 精确匹配
+        let match = allRecipes.find(r => r.title === name);
+        if (match) return match;
+        // 包含匹配
+        match = allRecipes.find(r => r.title.includes(name) || name.includes(r.title));
+        return match || null;
+      };
+      const r1 = findRecipe(aiResult.dish1);
+      const r2 = findRecipe(aiResult.dish2);
 
-    if (dish1 && dish2) {
-      const combo = buildCombo([dish1, dish2], "ai");
-      combo.aiReason = aiResult.reason || "AI大厨推荐";
-      searchResults = [combo];
-    } else {
-      // 找不到则回退到默认推荐
-      FrontendLogger.warning("menu", "AI推荐的菜谱未找到，使用默认推荐");
-      searchResults = buildDualMenuCombinations(processed);
+      // 构建推荐结果
+      const allIngredientsSet = new Set(allIngredients);
+      const buildRecFromRecipe = (recipe) => {
+        const required = recipe.requiredIngredients || [];
+        const existing = required.filter(i => localItemMatches(allIngredientsSet, i));
+        const missing = required.filter(i => !localItemMatches(allIngredientsSet, i));
+        const missingCore = (recipe.coreIngredients || []).filter(
+          i => !localItemMatches(allIngredientsSet, i) && !isLocalBasicSeasoning(i)
+        );
+        const coverage = required.length > 0 ? existing.length / required.length : 0;
+        return {
+          recipe,
+          score: coverage * 100,
+          matchPercent: Math.round(coverage * 100),
+          existing,
+          missing,
+          missingCore,
+          missingSeasonings: [],
+          optional: recipe.optionalIngredients || [],
+          reason: aiResult.reason || "AI大厨推荐",
+          homeRank: getHomeRank(recipe),
+        };
+      };
+
+      if (r1) dish1Rec = buildRecFromRecipe(r1);
+      if (r2) dish2Rec = buildRecFromRecipe(r2);
     }
+
+    // 如果本地匹配失败，构建虚拟菜谱
+    if (!dish1Rec) {
+      dish1Rec = buildVirtualRecipe(aiResult.dish1, aiResult.dish1_ingredients || [], allIngredients);
+    }
+    if (!dish2Rec) {
+      dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients);
+    }
+
+    const combo = buildCombo([dish1Rec, dish2Rec], "ai");
+    combo.aiReason = aiResult.reason || "AI大厨推荐";
+    searchResults = [combo];
 
     selectedTags = [];
     swipeIndex = 0;
@@ -1677,9 +1713,47 @@ ${candidates}
   } catch (e) {
     FrontendLogger.error("menu", "AI推荐失败", { error: e.message });
     showToast("AI推荐失败，使用默认推荐");
-    // 回退到默认推荐
     generateMenu();
   }
+}
+
+// 构建虚拟菜谱（AI推荐的菜不在本地库中时）
+function buildVirtualRecipe(title, aiIngredients, userIngredients) {
+  const ingSet = new Set(userIngredients);
+  const existing = aiIngredients.filter(i => localItemMatches(ingSet, i));
+  const missing = aiIngredients.filter(i => !localItemMatches(ingSet, i));
+  const coverage = aiIngredients.length > 0 ? existing.length / aiIngredients.length : 0;
+  return {
+    recipe: {
+      id: "ai_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+      title,
+      category: "ai_recipe",
+      categoryLabel: "AI推荐",
+      sourcePath: "",
+      difficulty: 2,
+      calories: null,
+      timeMinutes: 30,
+      requiredIngredients: aiIngredients,
+      coreIngredients: aiIngredients,
+      seasonings: [],
+      optionalIngredients: [],
+      steps: [],
+      images: [],
+      tags: [],
+      description: "AI大厨推荐菜谱",
+      quantities: {},
+      tips: [],
+    },
+    score: coverage * 100,
+    matchPercent: Math.round(coverage * 100),
+    existing,
+    missing,
+    missingCore: missing,
+    missingSeasonings: [],
+    optional: [],
+    reason: "AI大厨推荐",
+    homeRank: 0,
+  };
 }
 
 async function generateMenu() {
@@ -1854,8 +1928,12 @@ function renderCardStack() {
 // 生成推荐原因：临期食材提示 / 食材齐全 / 只差一样
 function getRecommendReason(rec) {
   const expiringNames = getExpiringIngredients();
-  const existing = rec.existing || [];
-  const missing = rec.missing || [];
+  const existing = filterWaterItems(rec.existing || []);
+  const missing = filterWaterItems(rec.missing || []);
+  // 优先使用后端返回的详细理由
+  if (rec.reason && rec.reason.includes("使用冰箱") || rec.reason && rec.reason.includes("可消耗临期")) {
+    return rec.reason;
+  }
   // 找出这道菜用到的临期食材
   const usedExpiring = existing.filter((ing) => expiringNames.includes(ing));
   if (usedExpiring.length > 0) {
@@ -1878,10 +1956,10 @@ function renderSwipeCard(combo, stackIdx) {
     const recipe = rec.recipe;
     const image = getRecipeImage(recipe);
     const emoji = getRecipeEmoji(recipe);
-    const missingChips = (rec.missing || []).slice(0, 5).map((i) =>
+    const missingChips = filterWaterItems(rec.missing || []).slice(0, 5).map((i) =>
       `<span class="ingredient-chip missing">${i}</span>`
     ).join("");
-    const haveChips = (rec.existing || []).slice(0, 5).map((i) =>
+    const haveChips = filterWaterItems(rec.existing || []).slice(0, 5).map((i) =>
       `<span class="ingredient-chip have">${i}</span>`
     ).join("");
     return `
@@ -1938,9 +2016,9 @@ function renderSwipeCard(combo, stackIdx) {
             ${rec.hasAllergen ? `<span class="combo-item-allergen">⚠含过敏源：${(getRecipeAllergenLabels(recipe) || []).join("、")}</span>` : ""}
           </div>
           <div class="combo-item-missing">
-            ${(rec.missing || []).length === 0
+            ${filterWaterItems(rec.missing || []).length === 0
               ? `<span class="combo-missing-ok">食材齐备</span>`
-              : `<span class="combo-missing-text">缺 ${(rec.missing || []).slice(0, 3).join("、")}${(rec.missing || []).length > 3 ? "…" : ""}</span>`
+              : `<span class="combo-missing-text">缺 ${filterWaterItems(rec.missing || []).slice(0, 3).join("、")}${filterWaterItems(rec.missing || []).length > 3 ? "…" : ""}</span>`
             }
           </div>
           <div class="combo-item-reason">${getRecommendReason(rec)}</div>
@@ -5211,18 +5289,26 @@ function closeChefRecommendMenu() {
   }, 300);
 }
 
-// 切换到双菜组合模式
+// 切换双菜/单菜模式（再点击一次切回单菜）
 function switchToDualMenu() {
-  if (allSearchResults && allSearchResults.length > 0) {
-    searchResults = buildDualMenuCombinations(allSearchResults);
-    selectedTags = [];
-    swipeIndex = 0;
-    renderSwipePage();
-    showToast("已切换到双菜组合模式");
-  } else {
-    // 如果没有搜索结果，重新生成
+  if (!allSearchResults || allSearchResults.length === 0) {
     generateMenu();
+    return;
   }
+  // 判断当前是否已是双菜模式
+  const isDualNow = searchResults.length > 0 && searchResults[0].recipes.length > 1;
+  if (isDualNow) {
+    // 切回单菜模式
+    searchResults = buildMenuCombinations(allSearchResults);
+    showToast("已切换回单菜推荐");
+  } else {
+    // 切换到双菜模式
+    searchResults = buildDualMenuCombinations(allSearchResults);
+    showToast("已切换到双菜组合模式");
+  }
+  selectedTags = [];
+  swipeIndex = 0;
+  renderSwipePage();
 }
 
 function confirmClearFridge() {

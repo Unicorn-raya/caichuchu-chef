@@ -126,6 +126,8 @@ GENERALIZATION_MAP: dict[str, list[str]] = {
     "牛肉片": ["牛肉"],
     "鸡肉片": ["鸡肉"],
     "鸡片": ["鸡肉"],
+    # 叶菜类蔬菜 -> 具体蔬菜可替代
+    "叶菜类蔬菜": ["白菜", "青菜", "菠菜", "生菜", "空心菜", "油菜", "小白菜", "上海青", "包菜", "卷心菜", "娃娃菜", "芥蓝", "菜心", "苋菜", "韭菜", "芹菜"],
 }
 
 
@@ -224,9 +226,12 @@ BASIC_SEASONINGS: set[str] = {
     "蚝油", "豆瓣酱", "甜面酱", "黄豆酱", "海鲜酱", "番茄酱", "芝麻酱",
     "味精", "鸡精",
     "芝麻", "白芝麻", "黑芝麻", "芝麻油", "香油",
-    "清水", "开水", "温水", "凉水",
+    "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水", "水",
     "蜂蜜", "可乐", "啤酒",
 }
+
+# 水类食材：自动视为已有，不作为缺失食材
+WATER_ITEMS: set[str] = {"水", "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水"}
 
 # 标点/数量修饰词，用于判断食材名是否带修饰（如"生抽3汤匙"）
 
@@ -301,6 +306,10 @@ def item_matches(inventory: set[str], item: str) -> bool:
     """
     # 0. 先对菜谱食材做归一化（库存已归一化）
     norm_item = normalize_item(item)
+
+    # 0.5 水类食材自动匹配（水是厨房基本资源，不作为缺失食材）
+    if norm_item in WATER_ITEMS or item in WATER_ITEMS:
+        return True
 
     # 1. 精确匹配（用归一化后的值比较）
     if norm_item in inventory:
@@ -471,9 +480,9 @@ def filter_and_sort(
             # 放宽过滤：只要有1个已有食材就保留，不再要求 matchPercent >= 35%
             if len(item["existing"]) == 0:
                 continue
-            # 模式过滤：scrappy 模式允许缺核心 5 个（原为3）
+            # 模式过滤：scrappy 模式允许缺核心 5 个
             if mode == "scrappy":
-                if len(item["missingCore"]) > 5 or item["recipe"].category == "drink":
+                if len(item["missingCore"]) > 5 or item["recipe"].category in ("drink", "condiment"):
                     continue
             else:
                 if len(item["missingCore"]) > 7 or item["recipe"].category in ("drink", "condiment"):
