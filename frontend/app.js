@@ -238,6 +238,36 @@ function saveStats() {
 }
 
 // ============================================
+// 收藏菜谱管理
+// ============================================
+function getFavoriteRecipeIds() {
+  return (window.userStats && Array.isArray(window.userStats.favorites)) ? window.userStats.favorites : [];
+}
+
+function isFavorite(recipeId) {
+  return getFavoriteRecipeIds().includes(recipeId);
+}
+
+function toggleFavorite(recipeId) {
+  const favs = getFavoriteRecipeIds();
+  const idx = favs.indexOf(recipeId);
+  if (idx === -1) {
+    favs.push(recipeId);
+    showToast("已收藏");
+  } else {
+    favs.splice(idx, 1);
+    showToast("已取消收藏");
+  }
+  window.userStats.favorites = favs;
+  saveStats();
+}
+
+function getFavoriteRecipes() {
+  const ids = getFavoriteRecipeIds();
+  return ids.map(id => allRecipes.find(r => r.id === id)).filter(r => r);
+}
+
+// ============================================
 // 饮食偏好 & 过敏源
 // ============================================
 function loadDietPrefs() {
@@ -2355,7 +2385,12 @@ function showRecipeDetail(rec) {
       </div>
 
       <div class="recipe-detail-body">
-        <h1 class="recipe-detail-title">${recipe.title}</h1>
+        <div class="recipe-detail-title-row">
+          <h1 class="recipe-detail-title">${recipe.title}</h1>
+          <button class="recipe-fav-btn-large ${isFavorite(recipe.id) ? 'active' : ''}" onclick="toggleFavoriteDetail('${recipe.id}')" title="${isFavorite(recipe.id) ? '取消收藏' : '收藏'}">
+            ${isFavorite(recipe.id) ? '❤️' : '🤍'}
+          </button>
+        </div>
         <div class="recipe-detail-meta">
           ${recipe.timeMinutes ? `<div class="recipe-detail-meta-item">⏱ ${recipe.timeMinutes}分钟</div>` : ""}
           ${recipe.calories ? `<div class="recipe-detail-meta-item">🔥 ${recipe.calories}卡</div>` : ""}
@@ -2851,6 +2886,7 @@ function renderRecipeListCard(recipe) {
     : null;
   const emoji = getRecipeEmoji(recipe);
   const conflictLabels = getRecipeConflictLabels(recipe);
+  const fav = isFavorite(recipe.id);
 
   return `
     <div class="recipe-list-card" onclick="showRecipeDetailDirect('${recipe.id}')">
@@ -2859,6 +2895,9 @@ function renderRecipeListCard(recipe) {
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
+      <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
+        ${fav ? '❤️' : '🤍'}
+      </button>
       ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
         <div class="recipe-list-title">${recipe.title}</div>
@@ -2870,6 +2909,30 @@ function renderRecipeListCard(recipe) {
       </div>
     </div>
   `;
+}
+
+function toggleFavoriteAndUpdate(recipeId) {
+  toggleFavorite(recipeId);
+  // 刷新当前页面
+  const activeNav = document.querySelector(".nav-btn.active");
+  const activePage = activeNav ? activeNav.dataset.page : null;
+  if (activePage === "me" && document.querySelector(".favorites-page")) {
+    showFavoriteRecipes();
+  } else if (activePage) {
+    renderPage(activePage);
+  }
+}
+
+function toggleFavoriteDetail(recipeId) {
+  toggleFavorite(recipeId);
+  // 更新按钮状态（不重新渲染整个页面，避免丢失滚动位置）
+  const btn = document.querySelector(".recipe-fav-btn-large");
+  if (btn) {
+    const fav = isFavorite(recipeId);
+    btn.textContent = fav ? '❤️' : '🤍';
+    btn.classList.toggle('active', fav);
+    btn.title = fav ? '取消收藏' : '收藏';
+  }
 }
 
 let currentDiscoverCategory = null; // 当前在发现页查看的分类（null 表示分类总览）
@@ -3288,9 +3351,9 @@ function renderMe() {
           <div class="me-stat-num">${stats.saved}</div>
           <div class="me-stat-label">消耗食材</div>
         </div>
-        <div class="me-stat-card clickable" onclick="renderPage('home')">
-          <div class="me-stat-num">${fridge.length}</div>
-          <div class="me-stat-label">冰箱库存</div>
+        <div class="me-stat-card clickable" onclick="showFavoriteRecipes()">
+          <div class="me-stat-num">${getFavoriteRecipeIds().length}</div>
+          <div class="me-stat-label">收藏菜谱</div>
         </div>
       </div>
 
@@ -4284,6 +4347,38 @@ function savePrefsAndBack(type) {
 // ============================================
 // 已做菜谱页面
 // ============================================
+function showFavoriteRecipes() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  const favorites = getFavoriteRecipes();
+
+  app.innerHTML = `
+    <div class="page detail-list-page favorites-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">收藏菜谱</div>
+        <div style="width:50px"></div>
+      </div>
+
+      ${favorites.length === 0 ? `
+        <div class="detail-empty">
+          <div style="font-size:48px;margin-bottom:12px">🤍</div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有收藏菜谱</div>
+          <div style="font-size:13px;color:var(--text-muted)">在菜谱列表或详情页点击 🤍 即可收藏</div>
+        </div>
+      ` : `
+        <div class="recipe-list">
+          ${favorites.map((r) => renderRecipeListCard(r)).join("")}
+        </div>
+      `}
+    </div>
+  `;
+}
+
 function showCookedRecipes() {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
