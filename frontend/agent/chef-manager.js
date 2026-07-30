@@ -220,7 +220,7 @@ const ChefManager = {
     return note ? note.summary : null;
   },
 
-  // 获取所有启用厨师对某菜谱的笔记列表 [{chef, note}]
+  // 获取所有启用厨师对某菜谱的笔记列表 [{chef, note}]（最多3条，按优先级排序）
   getEnabledChefNotesForRecipe(recipeTitle) {
     this.init();
     const result = [];
@@ -231,10 +231,10 @@ const ChefManager = {
         result.push({ chef, note });
       }
     }
-    return result;
+    return result.slice(0, 3);
   },
 
-  // 获取所有启用厨师对某菜谱的总结列表 [{chef, summary}]
+  // 获取所有启用厨师对某菜谱的总结列表 [{chef, summary}]（最多3条，按优先级排序）
   getEnabledChefSummariesForRecipe(recipeTitle) {
     this.init();
     const result = [];
@@ -245,7 +245,7 @@ const ChefManager = {
         result.push({ chef, summary: note.summary });
       }
     }
-    return result;
+    return result.slice(0, 3);
   },
 
   // 检查厨师是否启用
@@ -253,6 +253,32 @@ const ChefManager = {
     this.init();
     const chef = this._chefs.find(c => c.id === id);
     return chef ? chef.enabled : false;
+  },
+
+  // 移动厨师顺序（上移/下移）
+  moveChef(id, direction) {
+    this.init();
+    const idx = this._chefs.findIndex(c => c.id === id);
+    if (idx < 0) return;
+    if (direction === "up" && idx > 0) {
+      [this._chefs[idx - 1], this._chefs[idx]] = [this._chefs[idx], this._chefs[idx - 1]];
+    } else if (direction === "down" && idx < this._chefs.length - 1) {
+      [this._chefs[idx + 1], this._chefs[idx]] = [this._chefs[idx], this._chefs[idx + 1]];
+    }
+    this._save();
+  },
+
+  // 设置厨师排序（传入有序ID数组）
+  reorder(orderIds) {
+    this.init();
+    const map = new Map(this._chefs.map(c => [c.id, c]));
+    const newOrder = orderIds.map(id => map.get(id)).filter(c => c);
+    // 补上未包含在orderIds中的厨师
+    for (const chef of this._chefs) {
+      if (!orderIds.includes(chef.id)) newOrder.push(chef);
+    }
+    this._chefs = newOrder;
+    this._save();
   },
 };
 

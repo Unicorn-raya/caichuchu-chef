@@ -1562,6 +1562,12 @@ body {
 .category-card-2 { background: linear-gradient(135deg, #fce8d5, #f8d5b8); }
 .category-card-3 { background: linear-gradient(135deg, #e8e0f0, #d5c8e8); }
 .category-card-4 { background: linear-gradient(135deg, #f0e8e0, #e8d5c8); }
+.category-card-ai { background: linear-gradient(135deg, #e3f2fd, #bbdefb); }
+
+.recipe-conflict-flag.flag-ai {
+  background: var(--carrot);
+  color: white;
+}
 
 .category-card-title {
   font-family: var(--font-display);
@@ -4827,8 +4833,38 @@ u.cg-underline {
 .chef-card-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   flex-shrink: 0;
+}
+
+/* 厨师排序按钮 */
+.chef-reorder-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chef-reorder-btn {
+  width: 24px;
+  height: 18px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 9px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+  line-height: 1;
+}
+
+.chef-reorder-btn:active {
+  background: var(--carrot);
+  color: white;
+  border-color: var(--carrot);
 }
 
 .chef-card-toggle {

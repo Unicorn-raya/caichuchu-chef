@@ -1656,7 +1656,7 @@ async function generateAIRecommendedMenu() {
 4. 尽量使用用户已有的食材，减少需要购买的食材
 
 请以JSON格式返回，格式如下：
-{"dish1": "菜名1", "dish2": "菜名2", "reason": "推荐理由（简短一句话）", "dish1_ingredients": ["食材1","食材2"], "dish2_ingredients": ["食材1","食材2"]}`;
+{"dish1": "菜名1", "dish2": "菜名2", "reason": "推荐理由（简短一句话）", "dish1_ingredients": ["食材1","食材2"], "dish2_ingredients": ["食材1","食材2"], "dish1_steps": ["步骤1详细描述","步骤2详细描述","步骤3详细描述"], "dish2_steps": ["步骤1详细描述","步骤2详细描述","步骤3详细描述"]}`;
 
     const aiResponse = await callAI(prompt, "recommend");
     FrontendLogger.info("menu", "AI推荐结果", { aiResponse });
@@ -1728,10 +1728,10 @@ async function generateAIRecommendedMenu() {
 
     // 如果本地匹配失败，构建虚拟菜谱
     if (!dish1Rec) {
-      dish1Rec = buildVirtualRecipe(aiResult.dish1, aiResult.dish1_ingredients || [], allIngredients);
+      dish1Rec = buildVirtualRecipe(aiResult.dish1, aiResult.dish1_ingredients || [], allIngredients, aiResult.dish1_steps || []);
     }
     if (!dish2Rec) {
-      dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients);
+      dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients, aiResult.dish2_steps || []);
     }
 
     const combo = buildCombo([dish1Rec, dish2Rec], "ai");
@@ -1749,32 +1749,37 @@ async function generateAIRecommendedMenu() {
 }
 
 // 构建虚拟菜谱（AI推荐的菜不在本地库中时）
-function buildVirtualRecipe(title, aiIngredients, userIngredients) {
+function buildVirtualRecipe(title, aiIngredients, userIngredients, aiSteps) {
   const ingSet = new Set(userIngredients);
   const existing = aiIngredients.filter(i => localItemMatches(ingSet, i));
   const missing = aiIngredients.filter(i => !localItemMatches(ingSet, i));
   const coverage = aiIngredients.length > 0 ? existing.length / aiIngredients.length : 0;
+  const recipeId = "ai_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  const steps = (aiSteps && Array.isArray(aiSteps) && aiSteps.length > 0) ? aiSteps : [];
+  const recipe = {
+    id: recipeId,
+    title,
+    category: "ai_recipe",
+    categoryLabel: "联网搜索",
+    sourcePath: "",
+    difficulty: 2,
+    calories: null,
+    timeMinutes: 30,
+    requiredIngredients: aiIngredients,
+    coreIngredients: aiIngredients,
+    seasonings: [],
+    optionalIngredients: [],
+    steps,
+    images: [],
+    tags: ["AI推荐"],
+    description: "AI大厨联网搜索推荐菜谱",
+    quantities: {},
+    tips: [],
+  };
+  // 保存到本地AI菜谱库
+  saveAIRecipe(recipe);
   return {
-    recipe: {
-      id: "ai_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
-      title,
-      category: "ai_recipe",
-      categoryLabel: "AI推荐",
-      sourcePath: "",
-      difficulty: 2,
-      calories: null,
-      timeMinutes: 30,
-      requiredIngredients: aiIngredients,
-      coreIngredients: aiIngredients,
-      seasonings: [],
-      optionalIngredients: [],
-      steps: [],
-      images: [],
-      tags: [],
-      description: "AI大厨推荐菜谱",
-      quantities: {},
-      tips: [],
-    },
+    recipe,
     score: coverage * 100,
     matchPercent: Math.round(coverage * 100),
     existing,
@@ -1785,6 +1790,32 @@ function buildVirtualRecipe(title, aiIngredients, userIngredients) {
     reason: "AI大厨推荐",
     homeRank: 0,
   };
+}
+
+// ============================================
+// AI联网搜索菜谱本地存储
+// ============================================
+const AI_RECIPES_KEY = "ccc_ai_recipes";
+
+function getAIRecipes() {
+  try {
+    return JSON.parse(localStorage.getItem(AI_RECIPES_KEY) || "[]");
+  } catch { return []; }
+}
+
+function saveAIRecipe(recipe) {
+  const list = getAIRecipes();
+  // 同名菜谱不重复保存
+  if (!list.find(r => r.title === recipe.title)) {
+    list.unshift(recipe);
+    if (list.length > 50) list.length = 50;
+    localStorage.setItem(AI_RECIPES_KEY, JSON.stringify(list));
+  }
+}
+
+function deleteAIRecipe(recipeId) {
+  const list = getAIRecipes().filter(r => r.id !== recipeId);
+  localStorage.setItem(AI_RECIPES_KEY, JSON.stringify(list));
 }
 
 async function generateMenu() {
@@ -2647,6 +2678,10 @@ function renderDiscover() {
               <div class="category-card-count">${cat.count} 道菜</div>
             </div>
           `).join("")}
+          <div class="category-card category-card-ai" onclick="showAIRecipeCategory()">
+            <div class="category-card-title">🌐 联网搜索</div>
+            <div class="category-card-count">${getAIRecipes().length} 道菜</div>
+          </div>
         </div>
 
         <div class="recipe-section-title" style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
@@ -2943,6 +2978,154 @@ function toggleFavoriteDetail(recipeId) {
 }
 
 let currentDiscoverCategory = null; // 当前在发现页查看的分类（null 表示分类总览）
+
+// 联网搜索菜谱分类页
+function showAIRecipeCategory() {
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  const aiRecipes = getAIRecipes();
+
+  app.innerHTML = `
+    <div class="page discover-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('discover')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">🌐 联网搜索</div>
+        <div style="width:50px"></div>
+      </div>
+      <div class="recipe-list" style="padding:20px" id="aiRecipeList">
+        ${aiRecipes.length === 0 ? `
+          <div style="text-align:center;padding:32px;color:var(--text-muted)">
+            <div style="font-size:36px;margin-bottom:8px">🌐</div>
+            <div>还没有联网搜索菜谱</div>
+            <div style="font-size:13px;margin-top:4px">在推荐页点击大厨按钮 → AI推荐即可联网搜索</div>
+          </div>
+        ` : aiRecipes.map((r) => renderAIRecipeCard(r)).join("")}
+      </div>
+    </div>
+  `;
+  // 设置长按删除监听
+  setupAIRecipeLongPress();
+}
+
+// 渲染AI菜谱卡片（支持长按删除）
+function renderAIRecipeCard(recipe) {
+  const emoji = "🌐";
+  const fav = isFavorite(recipe.id);
+
+  return `
+    <div class="recipe-list-card ai-recipe-card" onclick="showAIRecipeDetail('${recipe.id}')" oncontextmenu="return false;" data-ai-id="${recipe.id}">
+      <div class="recipe-list-thumb-placeholder">${emoji}</div>
+      <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
+        ${fav ? '❤️' : '🤍'}
+      </button>
+      <div class="recipe-conflict-flags"><span class="recipe-conflict-flag flag-ai">AI</span></div>
+      <div class="recipe-list-info">
+        <div class="recipe-list-title">${recipe.title}</div>
+        <div class="recipe-list-meta">
+          ${recipe.steps && recipe.steps.length ? `<span>📋${recipe.steps.length}步</span>` : ""}
+          ${recipe.requiredIngredients && recipe.requiredIngredients.length ? `<span>🥘${recipe.requiredIngredients.length}种食材</span>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// 长按删除AI菜谱
+let _aiRecipeLongPressTimer = null;
+function setupAIRecipeLongPress() {
+  document.querySelectorAll('.ai-recipe-card').forEach(card => {
+    const id = card.getAttribute('data-ai-id');
+    card.addEventListener('touchstart', (e) => {
+      _aiRecipeLongPressTimer = setTimeout(() => {
+        _aiRecipeLongPressTimer = null;
+        if (confirm('删除这道联网搜索菜谱？')) {
+          deleteAIRecipe(id);
+          showAIRecipeCategory();
+        }
+      }, 600);
+    }, { passive: true });
+    card.addEventListener('touchend', () => { if (_aiRecipeLongPressTimer) { clearTimeout(_aiRecipeLongPressTimer); _aiRecipeLongPressTimer = null; } });
+    card.addEventListener('touchmove', () => { if (_aiRecipeLongPressTimer) { clearTimeout(_aiRecipeLongPressTimer); _aiRecipeLongPressTimer = null; } });
+    // 右键长按（桌面端）
+    card.addEventListener('mousedown', (e) => {
+      _aiRecipeLongPressTimer = setTimeout(() => {
+        _aiRecipeLongPressTimer = null;
+        if (confirm('删除这道联网搜索菜谱？')) {
+          deleteAIRecipe(id);
+          showAIRecipeCategory();
+        }
+      }, 600);
+    });
+    card.addEventListener('mouseup', () => { if (_aiRecipeLongPressTimer) { clearTimeout(_aiRecipeLongPressTimer); _aiRecipeLongPressTimer = null; } });
+    card.addEventListener('mouseleave', () => { if (_aiRecipeLongPressTimer) { clearTimeout(_aiRecipeLongPressTimer); _aiRecipeLongPressTimer = null; } });
+  });
+}
+
+// 查看AI菜谱详情
+function showAIRecipeDetail(recipeId) {
+  const recipe = getAIRecipes().find(r => r.id === recipeId);
+  if (!recipe) return;
+  addRecentlyViewed(recipeId);
+  document.getElementById("bottomNav").style.display = "none";
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showAIRecipeCategory()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">菜谱详情</div>
+        <div style="width:50px"></div>
+      </div>
+      <div class="recipe-detail-body" style="padding:16px">
+        <div class="recipe-detail-title-row">
+          <h1 class="recipe-detail-title">${recipe.title}</h1>
+          <button class="recipe-fav-btn-large ${isFavorite(recipe.id) ? 'active' : ''}" onclick="toggleFavoriteDetail('${recipe.id}')" title="${isFavorite(recipe.id) ? '取消收藏' : '收藏'}">
+            ${isFavorite(recipe.id) ? '❤️' : '🤍'}
+          </button>
+        </div>
+        <div class="recipe-detail-tags">
+          <span class="recipe-tag" style="background:var(--carrot-light);color:var(--carrot)">🌐 联网搜索</span>
+        </div>
+
+        <div class="recipe-detail-section">
+          <div class="recipe-detail-section-title">🥘 食材清单</div>
+          <div class="ingredient-chips">
+            ${(recipe.requiredIngredients || []).map(ing => `<div class="ingredient-chip">${ing}</div>`).join("")}
+          </div>
+        </div>
+
+        ${recipe.steps && recipe.steps.length > 0 ? `
+        <div class="recipe-detail-section">
+          <div class="recipe-detail-section-title">📋 烹饪步骤</div>
+          <div class="recipe-steps">
+            ${recipe.steps.map((step, i) => `
+              <div class="recipe-step">
+                <div class="recipe-step-num">${i + 1}</div>
+                <div class="recipe-step-text">${step}</div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+        ` : ''}
+
+        ${recipe.tips && recipe.tips.length > 0 ? `
+        <div class="recipe-detail-section">
+          <div class="recipe-detail-section-title">💡 小贴士</div>
+          <ul class="recipe-tips-list">
+            ${recipe.tips.map(tip => `<li>${tip}</li>`).join("")}
+          </ul>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
 
 function showCategory(category) {
   FrontendLogger.info("discover", "查看分类", { category });
@@ -3433,7 +3616,7 @@ function showChefs() {
         <div style="width:60px"></div>
       </div>
       <div class="chef-list">
-        ${chefs.map((chef) => renderChefCard(chef)).join("")}
+        ${chefs.map((chef, i) => renderChefCard(chef, i)).join("")}
       </div>
       <div class="chef-add-section">
         <button class="chef-add-btn" onclick="showAddChefForm()">
@@ -3810,7 +3993,7 @@ async function copyDefaultChefNote(file) {
   }
 }
 
-function renderChefCard(chef) {
+function renderChefCard(chef, index) {
   const isDefault = chef.isDefault;
   const enabled = chef.enabled;
   const avatarHtml = chef.avatar
@@ -3830,9 +4013,13 @@ function renderChefCard(chef) {
       </div>
       <div class="chef-card-info" onclick="${isDefault ? `showDefaultChefNotes()` : `editChef('${chef.id}')`}">
         <div class="chef-card-name">${chef.name}</div>
-        <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${noteCount}</div>
+        <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${noteCount} · 优先级 ${index + 1}</div>
       </div>
       <div class="chef-card-actions">
+        <div class="chef-reorder-btns">
+          <button class="chef-reorder-btn" onclick="event.stopPropagation(); moveChefOrder('${chef.id}', 'up')" title="上移">▲</button>
+          <button class="chef-reorder-btn" onclick="event.stopPropagation(); moveChefOrder('${chef.id}', 'down')" title="下移">▼</button>
+        </div>
         ${isDefault
           ? `<button class="chef-card-view-btn" onclick="event.stopPropagation(); showDefaultChefNotes()" title="查看笔记">📖</button>`
           : `<button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>`
@@ -3851,6 +4038,12 @@ function toggleChefEnabled(chefId) {
   showChefs();
   // 更新FAB状态
   updateChefFabState();
+}
+
+// 移动厨师顺序
+function moveChefOrder(chefId, direction) {
+  ChefManager.moveChef(chefId, direction);
+  showChefs();
 }
 
 // 颜色选择弹窗
