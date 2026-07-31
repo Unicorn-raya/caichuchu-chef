@@ -3040,8 +3040,8 @@ function renderRecipeListCard(recipe) {
       ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
         <div class="recipe-list-title-row">
-          ${chefTag}
           <div class="recipe-list-title">${recipe.title}</div>
+          ${chefTag}
         </div>
         <div class="recipe-list-meta">
           ${recipe.timeMinutes ? `<span>⏱${recipe.timeMinutes}分</span>` : ""}
