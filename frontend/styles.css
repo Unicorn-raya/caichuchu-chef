@@ -1684,6 +1684,30 @@ body {
   background: var(--carrot);
 }
 
+/* 大厨推荐标签（冰箱能做/学道新菜/随便看看） */
+.chef-rec-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  border-radius: 20px;
+  z-index: 3;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.chef-rec-tag.tag-fridge {
+  background: linear-gradient(135deg, #4caf50, #66bb6a);
+}
+.chef-rec-tag.tag-new {
+  background: linear-gradient(135deg, #7c4dff, #9575cd);
+}
+.chef-rec-tag.tag-random {
+  background: linear-gradient(135deg, #ff7043, #ff8a65);
+}
+
 .recipe-list-thumb {
   width: 100px;
   height: 100px;

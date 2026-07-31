@@ -2901,23 +2901,86 @@ function refreshCuratedRecipes() {
 // 随机抽一道菜（大厨按钮在发现页的行为）
 function pickRandomRecipe() {
   if (allRecipes.length === 0) return;
-  FrontendLogger.info("discover", "随机推荐3道菜");
-  // 三组类别各选一道：肉/水产/早餐 + 甜品/饮品/半成品/汤粥 + 主食/素菜蛋奶
-  const group1 = ["aquatic", "breakfast", "meat_dish"];
-  const group2 = ["dessert", "drink", "semi-finished", "soup"];
-  const group3 = ["staple", "vegetable_dish"];
-  const pickFromGroup = (cats) => {
-    const pool = allRecipes.filter((r) => cats.includes(r.category));
-    if (pool.length === 0) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
-  };
-  const picked = [pickFromGroup(group1), pickFromGroup(group2), pickFromGroup(group3)].filter(Boolean);
+  FrontendLogger.info("discover", "大厨推荐3道菜（冰箱菜/新菜/随机）");
+
+  const used = new Set();
+  const picked = [];
+
+  // 从池中随机选一个不重复的
+  function pickOne(pool) {
+    const available = pool.filter((r) => !used.has(r.id));
+    if (available.length === 0) return null;
+    const r = available[Math.floor(Math.random() * available.length)];
+    used.add(r.id);
+    return r;
+  }
+
+  // ===== 第1道菜：冰箱能做的菜 =====
+  var fridgePool = [];
+  if (fridge.length > 0) {
+    for (const r of allRecipes) {
+      var match = computeExistingMissing(r);
+      if (match.missingCore.length === 0 && r.coreIngredients && r.coreIngredients.length > 0) {
+        fridgePool.push({ recipe: r, matchPercent: match.matchPercent });
+      }
+    }
+  }
+  if (fridgePool.length > 0) {
+    // 按匹配度从高到低排序，取前50%中随机
+    fridgePool.sort((a, b) => b.matchPercent - a.matchPercent);
+    var topN = Math.max(1, Math.floor(fridgePool.length / 2));
+    var topFridge = fridgePool.slice(0, topN);
+    var picked1 = topFridge[Math.floor(Math.random() * topFridge.length)].recipe;
+    picked1._chefTag = "冰箱能做";
+    picked1._chefTagCls = "tag-fridge";
+    used.add(picked1.id);
+    picked.push(picked1);
+  } else {
+    // 冰箱做不了任何菜，随机一个
+    var r1 = pickOne(allRecipes);
+    if (r1) {
+      r1._chefTag = "冰箱能做";
+      r1._chefTagCls = "tag-fridge";
+      picked.push(r1);
+    }
+  }
+
+  // ===== 第2道菜：学一道新菜（做菜日历中没做过的） =====
+  var cookedIds = new Set();
+  if (window.userStats && window.userStats.cookedRecipes) {
+    cookedIds = new Set(Object.keys(window.userStats.cookedRecipes));
+  }
+  var newPool = allRecipes.filter((r) => !cookedIds.has(r.id) && !used.has(r.id));
+  if (newPool.length > 0 && cookedIds.size > 0) {
+    var r2 = newPool[Math.floor(Math.random() * newPool.length)];
+    r2._chefTag = "学道新菜";
+    r2._chefTagCls = "tag-new";
+    used.add(r2.id);
+    picked.push(r2);
+  } else {
+    // 都做过了或日历为空，随机一个
+    var r2b = pickOne(allRecipes);
+    if (r2b) {
+      r2b._chefTag = "学道新菜";
+      r2b._chefTagCls = "tag-new";
+      picked.push(r2b);
+    }
+  }
+
+  // ===== 第3道菜：随便看看（完全随机） =====
+  var r3 = pickOne(allRecipes);
+  if (r3) {
+    r3._chefTag = "随便看看";
+    r3._chefTagCls = "tag-random";
+    picked.push(r3);
+  }
+
   if (picked.length === 0) return;
   const content = document.getElementById("discoverContent");
   if (!content) return;
   content.innerHTML = `
     <div class="discover-search-result">
-      <div class="discover-search-count">🎲 大厨为你随机推荐 ${picked.length} 道菜</div>
+      <div class="discover-search-count">🎲 大厨为你推荐 ${picked.length} 道菜</div>
       <div class="recipe-list">
         ${picked.map((r) => renderRecipeListCard(r)).join("")}
       </div>
@@ -2960,6 +3023,9 @@ function renderRecipeListCard(recipe) {
   const emoji = getRecipeEmoji(recipe);
   const conflictLabels = getRecipeConflictLabels(recipe);
   const fav = isFavorite(recipe.id);
+  const chefTag = recipe._chefTag
+    ? `<span class="chef-rec-tag ${recipe._chefTagCls}">${recipe._chefTag}</span>`
+    : "";
 
   return `
     <div class="recipe-list-card" onclick="showRecipeDetailDirect('${recipe.id}')">
@@ -2968,6 +3034,7 @@ function renderRecipeListCard(recipe) {
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
+      ${chefTag}
       <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
         ${fav ? '❤️' : '🤍'}
       </button>
