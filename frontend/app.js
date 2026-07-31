@@ -3584,6 +3584,8 @@ function restoreAllDemoData() {
 
 // 冰箱演示：新增西红柿、鸡蛋
 function toggleFridgeDemo() {
+  alert("DEBUG: toggleFridgeDemo被调用, _fridgeDemoActive=" + _fridgeDemoActive + ", fridge.length=" + fridge.length);
+  try {
   if (_fridgeDemoActive) {
     // 恢复
     if (_fridgeBackup !== null) {
@@ -3612,6 +3614,9 @@ function toggleFridgeDemo() {
     showToast("已添加演示食材：西红柿、鸡蛋");
   }
   renderPage("home");
+  } catch(e) {
+    alert("DEBUG ERROR: " + e.message);
+  }
 }
 
 // 日历演示：加载/恢复
