@@ -840,7 +840,7 @@ function renderHome() {
         <div class="home-greeting">${greeting}</div>
         <div class="home-title-row">
           <h1 class="home-title">我的冰箱</h1>
-          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isFridgeDemoActive() ? 'demo-active' : ''}" onclick="DemoData.toggleFridgeDemo()">${DemoData.isFridgeDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isFridgeDemoActive() ? 'demo-active' : ''}" onclick="toggleFridgeDemo()">${DemoData.isFridgeDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
         </div>
         <button class="cta-generate" onclick="generateMenu()" ${!hasItems ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3551,7 +3551,7 @@ const CreatorMode = {
     if (this._aboutClickTimer) clearTimeout(this._aboutClickTimer);
     this._aboutClickTimer = setTimeout(() => {
       this._aboutClickCount = 0;
-    }, 2000);
+    }, 3000);
 
     if (this._aboutClickCount >= 5) {
       this._aboutClickCount = 0;
@@ -3702,6 +3702,14 @@ function handleAboutClick() {
   CreatorMode.handleAboutClick();
 }
 
+function toggleFridgeDemo() {
+  DemoData.toggleFridgeDemo();
+}
+
+function toggleChefsDemo() {
+  DemoData.toggleChefsDemo();
+}
+
 function renderMe() {
   const stats = window.userStats || { cooked: 0, saved: 0, favorites: [] };
   return `
@@ -3789,7 +3797,7 @@ function showChefs() {
         </button>
         <div class="swipe-header-title">厨师管理</div>
         <div style="width:60px;display:flex;align-items:center;justify-content:flex-end;">
-          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isChefsDemoActive() ? 'demo-active' : ''}" onclick="DemoData.toggleChefsDemo()" style="margin-right:4px;">${DemoData.isChefsDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isChefsDemoActive() ? 'demo-active' : ''}" onclick="toggleChefsDemo()" style="margin-right:4px;">${DemoData.isChefsDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
         </div>
       </div>
       <div class="chef-list">
