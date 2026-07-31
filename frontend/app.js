@@ -840,7 +840,7 @@ function renderHome() {
         <div class="home-greeting">${greeting}</div>
         <div class="home-title-row">
           <h1 class="home-title">我的冰箱</h1>
-          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isFridgeDemoActive() ? 'demo-active' : ''}" onclick="toggleFridgeDemo()">${DemoData.isFridgeDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${_creatorMode ? `<button class="cal-demo-btn ${_fridgeDemoActive ? 'demo-active' : ''}" onclick="toggleFridgeDemo()">${_fridgeDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
         </div>
         <button class="cta-generate" onclick="generateMenu()" ${!hasItems ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3333,7 +3333,7 @@ function renderCalendarPage() {
     <div class="page calendar-page">
       <div class="calendar-page-header">
         <h1 class="calendar-page-title">做菜日历</h1>
-        ${CreatorMode.isActive() ? `<button class="cal-demo-btn" onclick="loadDemoCalendarData()" title="加载演示数据">✨ 演示</button>` : ''}
+        ${_creatorMode ? `<button class="cal-demo-btn ${_calendarDemoActive ? 'demo-active' : ''}" onclick="toggleCalendarDemo()" title="演示数据">${_calendarDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
       </div>
 
       <div class="calendar-tabs">
@@ -3523,143 +3523,161 @@ function renderTimelineMode() {
 }
 
 // ============================================
-// 创作者模式
+// 创作者模式 & 演示数据（全局变量+函数，确保内联onclick可访问）
 // ============================================
-const CreatorMode = {
-  _aboutClickCount: 0,
-  _aboutClickTimer: null,
-  _active: false,  // 内存状态，刷新即重置
+var _creatorMode = false;
+var _aboutClickCount = 0;
+var _aboutClickTimer = null;
 
-  isActive() {
-    return this._active;
-  },
+var _fridgeDemoActive = false;
+var _fridgeBackup = null;
 
-  toggle() {
-    this._active = !this._active;
-    if (this._active) {
+var _chefsDemoActive = false;
+var _chefsBackup = null;
+
+var _calendarDemoActive = false;
+var _calendarBackup = null;
+
+function handleAboutClick() {
+  _aboutClickCount++;
+  if (_aboutClickTimer) clearTimeout(_aboutClickTimer);
+  _aboutClickTimer = setTimeout(function() { _aboutClickCount = 0; }, 3000);
+
+  if (_aboutClickCount >= 5) {
+    _aboutClickCount = 0;
+    _creatorMode = !_creatorMode;
+    if (_creatorMode) {
       showToast("已进入创作者模式");
     } else {
-      // 退出时恢复所有演示数据
-      DemoData.restoreAll();
+      restoreAllDemoData();
       showToast("已退出创作者模式");
     }
     renderPage("me");
-  },
+  } else {
+    showToast("菜厨厨 v1.0 — 基于RAG的智能菜谱推荐");
+  }
+}
 
-  handleAboutClick() {
-    this._aboutClickCount++;
-    if (this._aboutClickTimer) clearTimeout(this._aboutClickTimer);
-    this._aboutClickTimer = setTimeout(() => {
-      this._aboutClickCount = 0;
-    }, 3000);
+function restoreAllDemoData() {
+  // 恢复冰箱
+  if (_fridgeDemoActive && _fridgeBackup !== null) {
+    fridge = _fridgeBackup;
+    saveFridge();
+    _fridgeBackup = null;
+    _fridgeDemoActive = false;
+  }
+  // 恢复厨师
+  if (_chefsDemoActive && _chefsBackup !== null) {
+    localStorage.setItem("ccc_chefs", JSON.stringify(_chefsBackup));
+    ChefManager._chefs = JSON.parse(JSON.stringify(_chefsBackup));
+    _chefsBackup = null;
+    _chefsDemoActive = false;
+  }
+  // 恢复日历
+  if (_calendarDemoActive && _calendarBackup !== null) {
+    window.userStats = _calendarBackup;
+    saveStats();
+    _calendarBackup = null;
+    _calendarDemoActive = false;
+  }
+}
 
-    if (this._aboutClickCount >= 5) {
-      this._aboutClickCount = 0;
-      this.toggle();
-    } else {
-      showToast("菜厨厨 v1.0 — 基于RAG的智能菜谱推荐");
-    }
-  },
-};
-
-// 演示数据管理（用于创作者模式下的演示按钮）
-const DemoData = {
-  _fridgeBackup: null,
-  _chefsBackup: null,
-  _fridgeDemoActive: false,
-  _chefsDemoActive: false,
-
-  // 冰箱演示：新增西红柿、鸡蛋
-  toggleFridgeDemo() {
-    if (this._fridgeDemoActive) {
-      // 恢复
-      if (this._fridgeBackup !== null) {
-        fridge = this._fridgeBackup;
-        saveFridge();
-        this._fridgeBackup = null;
-      }
-      this._fridgeDemoActive = false;
-      showToast("已恢复冰箱数据");
-    } else {
-      // 备份并添加
-      this._fridgeBackup = JSON.parse(JSON.stringify(fridge));
-      const demoItems = [
-        { name: "西红柿", addedAt: Date.now() },
-        { name: "鸡蛋", addedAt: Date.now() },
-      ];
-      const existingNames = new Set(fridge.map(i => i.name));
-      demoItems.forEach(item => {
-        if (!existingNames.has(item.name)) {
-          fridge.push(item);
-        }
-      });
+// 冰箱演示：新增西红柿、鸡蛋
+function toggleFridgeDemo() {
+  if (_fridgeDemoActive) {
+    // 恢复
+    if (_fridgeBackup !== null) {
+      fridge = _fridgeBackup;
       saveFridge();
-      this._fridgeDemoActive = true;
-      showToast("已添加演示食材：西红柿、鸡蛋");
+      _fridgeBackup = null;
     }
-    renderPage("home");
-  },
-
-  isFridgeDemoActive() {
-    return this._fridgeDemoActive;
-  },
-
-  // 厨师演示：新增4个厨师，咖喱炒蟹笔记
-  toggleChefsDemo() {
-    if (this._chefsDemoActive) {
-      // 恢复
-      if (this._chefsBackup !== null) {
-        localStorage.setItem("ccc_chefs", JSON.stringify(this._chefsBackup));
-        ChefManager._chefs = JSON.parse(JSON.stringify(this._chefsBackup));
-        this._chefsBackup = null;
+    _fridgeDemoActive = false;
+    showToast("已恢复冰箱数据");
+  } else {
+    // 备份并添加
+    _fridgeBackup = JSON.parse(JSON.stringify(fridge));
+    var demoItems = [
+      { name: "西红柿", addedAt: Date.now() },
+      { name: "鸡蛋", addedAt: Date.now() },
+    ];
+    var existingNames = {};
+    fridge.forEach(function(i) { existingNames[i.name] = true; });
+    demoItems.forEach(function(item) {
+      if (!existingNames[item.name]) {
+        fridge.push(item);
       }
-      this._chefsDemoActive = false;
-      showToast("已恢复厨师数据");
-    } else {
-      // 备份
-      this._chefsBackup = JSON.parse(JSON.stringify(ChefManager.getAll()));
-      // 添加4个演示厨师
-      this._addDemoChefs();
-      this._chefsDemoActive = true;
-      showToast("已添加4个演示厨师");
+    });
+    saveFridge();
+    _fridgeDemoActive = true;
+    showToast("已添加演示食材：西红柿、鸡蛋");
+  }
+  renderPage("home");
+}
+
+// 日历演示：加载/恢复
+function toggleCalendarDemo() {
+  if (_calendarDemoActive) {
+    // 恢复
+    if (_calendarBackup !== null) {
+      window.userStats = _calendarBackup;
+      saveStats();
+      _calendarBackup = null;
     }
-    showChefs();
-  },
+    _calendarDemoActive = false;
+    renderCalendarPage();
+    showToast("已恢复做菜记录");
+  } else {
+    // 备份并加载演示数据
+    _calendarBackup = JSON.parse(JSON.stringify(window.userStats || {}));
+    _calendarDemoActive = true;
+    loadDemoCalendarData();
+  }
+}
 
-  isChefsDemoActive() {
-    return this._chefsDemoActive;
-  },
-
-  _addDemoChefs() {
-    const recipeTitle = "咖喱炒蟹";
-    const demoChefs = [
+// 厨师演示：新增4个厨师
+function toggleChefsDemo() {
+  if (_chefsDemoActive) {
+    // 恢复
+    if (_chefsBackup !== null) {
+      localStorage.setItem("ccc_chefs", JSON.stringify(_chefsBackup));
+      ChefManager._chefs = JSON.parse(JSON.stringify(_chefsBackup));
+      _chefsBackup = null;
+    }
+    _chefsDemoActive = false;
+    showToast("已恢复厨师数据");
+  } else {
+    // 备份
+    _chefsBackup = JSON.parse(JSON.stringify(ChefManager.getAll()));
+    // 添加4个演示厨师
+    var recipeTitle = "咖喱炒蟹";
+    var demoChefs = [
       {
         name: "粤菜师傅",
         color: "#ff6b6b",
-        content: `## 食材准备\n螃蟹洗净斩件，去除蟹腮和蟹胃。咖喱粉、咖喱叶、椰浆备好。姜切片，蒜拍碎，葱切段。\n## 详细做法\n热锅下油，爆香姜片蒜蓉，下螃蟹大火翻炒至变色。加入咖喱粉炒出红油，倒入椰浆调匀。加盖中火焖煮5分钟，开盖收汁，撒葱花出锅。\n## 关键技巧\n螃蟹要先高温快炒锁住鲜味，咖喱粉需小火炒出红油但不可炒糊，椰浆的量要刚好没过蟹块。`,
-        summary: `## 食材处理\n蟹要选鲜活膏蟹或肉蟹，斩件后蟹钳拍裂便于入味。咖喱粉用印度黄咖喱粉最佳。\n## 烹饪技法\n大火爆炒锁鲜 → 中火焖煮入味 → 大火收汁挂芡，三段火候缺一不可。\n## 通用要点\n咖喱蟹的灵魂在于椰浆与咖喱的平衡，椰浆过多则寡淡，过少则辛辣呛喉。`,
+        content: "## 食材准备\n螃蟹洗净斩件，去除蟹腮和蟹胃。咖喱粉、咖喱叶、椰浆备好。姜切片，蒜拍碎，葱切段。\n## 详细做法\n热锅下油，爆香姜片蒜蓉，下螃蟹大火翻炒至变色。加入咖喱粉炒出红油，倒入椰浆调匀。加盖中火焖煮5分钟，开盖收汁，撒葱花出锅。\n## 关键技巧\n螃蟹要先高温快炒锁住鲜味，咖喱粉需小火炒出红油但不可炒糊，椰浆的量要刚好没过蟹块。",
+        summary: "## 食材处理\n蟹要选鲜活膏蟹或肉蟹，斩件后蟹钳拍裂便于入味。咖喱粉用印度黄咖喱粉最佳。\n## 烹饪技法\n大火爆炒锁鲜 → 中火焖煮入味 → 大火收汁挂芡，三段火候缺一不可。\n## 通用要点\n咖喱蟹的灵魂在于椰浆与咖喱的平衡，椰浆过多则寡淡，过少则辛辣呛喉。",
       },
       {
         name: "东南亚料理师",
         color: "#4ecdc4",
-        content: `## 食材准备\n青蟹2只约500g，咖喱叶10g，香茅1根拍扁，南姜3片。咖喱酱3大勺，鱼露1勺，椰奶200ml。\n## 详细做法\n螃蟹刷净斩块，蟹钳拍裂。锅中热油，下香茅南姜咖喱叶爆香，加咖喱酱炒散。倒入螃蟹翻炒裹酱，淋鱼露，加椰奶半碗水煮开。中火烧8分钟收浓汤汁。\n## 关键技巧\n香茅和南姜是东南亚风味的灵魂，不可省略。咖喱酱要比咖喱粉更浓稠，挂汁更好。`,
-        summary: `## 食材处理\n选用东南亚青蟹，肉质清甜。香茅只取根部白色部分，外层老皮去除。\n## 烹饪技法\n南洋风格讲究香料层叠爆香，先下硬香料（南姜），再下软香料（香茅），最后下咖喱叶。\n## 通用要点\n鱼露替代盐，椰奶替代水，是东南亚咖喱蟹与粤式咖喱蟹的本质区别。`,
+        content: "## 食材准备\n青蟹2只约500g，咖喱叶10g，香茅1根拍扁，南姜3片。咖喱酱3大勺，鱼露1勺，椰奶200ml。\n## 详细做法\n螃蟹刷净斩块，蟹钳拍裂。锅中热油，下香茅南姜咖喱叶爆香，加咖喱酱炒散。倒入螃蟹翻炒裹酱，淋鱼露，加椰奶半碗水煮开。中火烧8分钟收浓汤汁。\n## 关键技巧\n香茅和南姜是东南亚风味的灵魂，不可省略。咖喱酱要比咖喱粉更浓稠，挂汁更好。",
+        summary: "## 食材处理\n选用东南亚青蟹，肉质清甜。香茅只取根部白色部分，外层老皮去除。\n## 烹饪技法\n南洋风格讲究香料层叠爆香，先下硬香料（南姜），再下软香料（香茅），最后下咖喱叶。\n## 通用要点\n鱼露替代盐，椰奶替代水，是东南亚咖喱蟹与粤式咖喱蟹的本质区别。",
       },
       {
         name: "海鲜专家",
         color: "#45b7d1",
-        content: `## 食材准备\n梭子蟹1只约800g，日式咖喱块2块，洋葱半个切丁，黄油20g。白葡萄酒50ml，淡奶油50ml。\n## 详细做法\n螃蟹蒸5分钟至半熟后斩件。黄油融化炒洋葱至透明，加咖喱块炒化。下蟹块裹酱，淋白葡萄酒去腥，加淡奶油和少量水。中小火煮6分钟至酱汁浓稠。\n## 关键技巧\n先蒸后炒可以保持蟹肉完整不散，黄油炒洋葱的甜味能中和咖喱的辛辣。`,
-        summary: `## 食材处理\n大只梭子蟹先蒸5分钟定型，避免直接炒导致蟹脚脱落。洋葱切小丁更易融化进酱汁。\n## 烹饪技法\n日式融合做法：黄油打底 + 白葡萄酒去腥 + 淡奶油增稠，口感柔和。\n## 通用要点\n日式咖喱块已含面粉，无需额外勾芡，收汁时注意火候防止糊底。`,
+        content: "## 食材准备\n梭子蟹1只约800g，日式咖喱块2块，洋葱半个切丁，黄油20g。白葡萄酒50ml，淡奶油50ml。\n## 详细做法\n螃蟹蒸5分钟至半熟后斩件。黄油融化炒洋葱至透明，加咖喱块炒化。下蟹块裹酱，淋白葡萄酒去腥，加淡奶油和少量水。中小火煮6分钟至酱汁浓稠。\n## 关键技巧\n先蒸后炒可以保持蟹肉完整不散，黄油炒洋葱的甜味能中和咖喱的辛辣。",
+        summary: "## 食材处理\n大只梭子蟹先蒸5分钟定型，避免直接炒导致蟹脚脱落。洋葱切小丁更易融化进酱汁。\n## 烹饪技法\n日式融合做法：黄油打底 + 白葡萄酒去腥 + 淡奶油增稠，口感柔和。\n## 通用要点\n日式咖喱块已含面粉，无需额外勾芡，收汁时注意火候防止糊底。",
       },
       {
         name: "家常厨娘",
         color: "#feca57",
-        content: `## 食材准备\n大闸蟹4只，咖喱粉2勺，土豆1个切块，洋葱半个切丝。蒜末、姜末适量，牛奶100ml。\n## 详细做法\n螃蟹洗净对半切，拍裂蟹钳。热油爆香蒜末姜末，下洋葱炒软。加咖喱粉小火炒香，放蟹块翻炒上色。加土豆块和水没过食材，大火煮开转小火10分钟。最后倒牛奶拌匀煮2分钟。\n## 关键技巧\n土豆切块一起煮可以增加汤汁浓稠度，牛奶替代椰浆更适合家常口味。`,
-        summary: `## 食材处理\n大闸蟹个小肉鲜，对半切更易入味。土豆选粉质品种，炖煮后自然收汁。\n## 烹饪技法\n家常简化版：咖喱粉直接炒 → 加水炖煮 → 牛奶增香，步骤简单易上手。\n## 通用要点\n没有椰浆用牛奶代替，没有咖喱酱用咖喱粉代替，做菜灵活变通比照本宣科更重要。`,
+        content: "## 食材准备\n大闸蟹4只，咖喱粉2勺，土豆1个切块，洋葱半个切丝。蒜末、姜末适量，牛奶100ml。\n## 详细做法\n螃蟹洗净对半切，拍裂蟹钳。热油爆香蒜末姜末，下洋葱炒软。加咖喱粉小火炒香，放蟹块翻炒上色。加土豆块和水没过食材，大火煮开转小火10分钟。最后倒牛奶拌匀煮2分钟。\n## 关键技巧\n土豆切块一起煮可以增加汤汁浓稠度，牛奶替代椰浆更适合家常口味。",
+        summary: "## 食材处理\n大闸蟹个小肉鲜，对半切更易入味。土豆选粉质品种，炖煮后自然收汁。\n## 烹饪技法\n家常简化版：咖喱粉直接炒 → 加水炖煮 → 牛奶增香，步骤简单易上手。\n## 通用要点\n没有椰浆用牛奶代替，没有咖喱酱用咖喱粉代替，做菜灵活变通比照本宣科更重要。",
       },
     ];
 
-    demoChefs.forEach(config => {
+    demoChefs.forEach(function(config) {
       ChefManager.addChef({
         name: config.name,
         color: config.color,
@@ -3672,44 +3690,15 @@ const DemoData = {
         }],
       });
     });
-  },
-
-  // 退出创作者模式时恢复所有演示数据
-  restoreAll() {
-    if (this._fridgeDemoActive) {
-      if (this._fridgeBackup !== null) {
-        fridge = this._fridgeBackup;
-        saveFridge();
-        this._fridgeBackup = null;
-      }
-      this._fridgeDemoActive = false;
-    }
-    if (this._chefsDemoActive) {
-      if (this._chefsBackup !== null) {
-        localStorage.setItem("ccc_chefs", JSON.stringify(this._chefsBackup));
-        ChefManager._chefs = JSON.parse(JSON.stringify(this._chefsBackup));
-        this._chefsBackup = null;
-      }
-      this._chefsDemoActive = false;
-    }
-  },
-};
+    _chefsDemoActive = true;
+    showToast("已添加4个演示厨师");
+  }
+  showChefs();
+}
 
 // ============================================
 // 我的页
 // ============================================
-function handleAboutClick() {
-  CreatorMode.handleAboutClick();
-}
-
-function toggleFridgeDemo() {
-  DemoData.toggleFridgeDemo();
-}
-
-function toggleChefsDemo() {
-  DemoData.toggleChefsDemo();
-}
-
 function renderMe() {
   const stats = window.userStats || { cooked: 0, saved: 0, favorites: [] };
   return `
@@ -3774,7 +3763,7 @@ function renderMe() {
         <div class="me-option-card" onclick="handleAboutClick()">
           <div class="me-option-icon">ℹ️</div>
           <div class="me-option-label">关于</div>
-          <div class="me-option-sub">${CreatorMode.isActive() ? "创作者模式" : "v1.0"}</div>
+          <div class="me-option-sub">${_creatorMode ? "创作者模式" : "v1.0"}</div>
         </div>
       </div>
     </div>
@@ -3797,7 +3786,7 @@ function showChefs() {
         </button>
         <div class="swipe-header-title">厨师管理</div>
         <div style="width:60px;display:flex;align-items:center;justify-content:flex-end;">
-          ${CreatorMode.isActive() ? `<button class="cal-demo-btn ${DemoData.isChefsDemoActive() ? 'demo-active' : ''}" onclick="toggleChefsDemo()" style="margin-right:4px;">${DemoData.isChefsDemoActive() ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${_creatorMode ? `<button class="cal-demo-btn ${_chefsDemoActive ? 'demo-active' : ''}" onclick="toggleChefsDemo()" style="margin-right:4px;">${_chefsDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
         </div>
       </div>
       <div class="chef-list">
