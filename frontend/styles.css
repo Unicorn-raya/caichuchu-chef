@@ -3299,6 +3299,18 @@ body {
   transform: scale(0.95);
 }
 
+.cal-demo-btn.demo-active {
+  background: var(--carrot);
+  color: white;
+}
+
+.home-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .calendar-tabs {
   display: flex;
   gap: 8px;
