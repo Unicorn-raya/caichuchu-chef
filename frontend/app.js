@@ -3034,13 +3034,15 @@ function renderRecipeListCard(recipe) {
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
-      ${chefTag}
       <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
         ${fav ? '❤️' : '🤍'}
       </button>
       ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
-        <div class="recipe-list-title">${recipe.title}</div>
+        <div class="recipe-list-title-row">
+          ${chefTag}
+          <div class="recipe-list-title">${recipe.title}</div>
+        </div>
         <div class="recipe-list-meta">
           ${recipe.timeMinutes ? `<span>⏱${recipe.timeMinutes}分</span>` : ""}
           ${recipe.calories ? `<span>🔥${recipe.calories}卡</span>` : ""}

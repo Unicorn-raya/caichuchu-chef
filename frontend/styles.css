@@ -1685,18 +1685,20 @@ body {
 }
 
 /* 大厨推荐标签（冰箱能做/学道新菜/随便看看） */
+.recipe-list-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
 .chef-rec-tag {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 3px 10px;
-  font-size: 11px;
+  padding: 2px 8px;
+  font-size: 10px;
   font-weight: 600;
   color: white;
-  border-radius: 20px;
-  z-index: 3;
+  border-radius: 10px;
   white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  flex-shrink: 0;
 }
 .chef-rec-tag.tag-fridge {
   background: linear-gradient(135deg, #4caf50, #66bb6a);
