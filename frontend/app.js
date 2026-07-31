@@ -828,12 +828,30 @@ function renderPage(page) {
   switch (page) {
     case "home":
       app.innerHTML = renderHome();
+      // 绑定演示按钮事件
+      var fDemoBtn = document.querySelector('[data-action="fridge-demo"]');
+      if (fDemoBtn) {
+        fDemoBtn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleFridgeDemo();
+        });
+      }
       break;
     case "discover":
       app.innerHTML = renderDiscover();
       break;
     case "calendar":
       renderCalendarPage();
+      // 绑定日历演示按钮
+      var cDemoBtn = document.querySelector('[data-action="calendar-demo"]');
+      if (cDemoBtn) {
+        cDemoBtn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleCalendarDemo();
+        });
+      }
       break;
     case "me":
       app.innerHTML = renderMe();
@@ -3580,7 +3598,7 @@ function handleAboutClick() {
     }
     renderPage("me");
   } else {
-    showToast("菜厨厨 v1.0 — 基于RAG的智能菜谱推荐");
+    showToast("菜厨厨 v1.0 (build-2024) — 点击5次进入创作者模式");
   }
 }
 
