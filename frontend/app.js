@@ -789,6 +789,25 @@ function initClickTracking() {
   });
 }
 
+// ============================================
+// 演示按钮事件委托（避免内联onclick问题）
+// ============================================
+document.addEventListener("click", function(e) {
+  var btn = e.target.closest("[data-action]");
+  if (!btn) return;
+  var action = btn.dataset.action;
+  if (action === "fridge-demo") {
+    e.stopPropagation();
+    toggleFridgeDemo();
+  } else if (action === "calendar-demo") {
+    e.stopPropagation();
+    toggleCalendarDemo();
+  } else if (action === "chefs-demo") {
+    e.stopPropagation();
+    toggleChefsDemo();
+  }
+});
+
 function renderPage(page) {
   FrontendLogger.info("page", `切换到页面: ${page}`);
   currentPage = page;
@@ -834,13 +853,20 @@ function renderHome() {
   const greeting = getGreeting();
   const hasItems = fridge.length > 0;
 
+  var demoBtnHtml = "";
+  if (_creatorMode) {
+    var demoClass = "cal-demo-btn" + (_fridgeDemoActive ? " demo-active" : "");
+    var demoText = _fridgeDemoActive ? "↩️ 恢复" : "✨ 演示";
+    demoBtnHtml = '<button class="' + demoClass + '" data-action="fridge-demo">' + demoText + '</button>';
+  }
+
   return `
     <div class="page">
       <div class="home-hero">
         <div class="home-greeting">${greeting}</div>
         <div class="home-title-row">
           <h1 class="home-title">我的冰箱</h1>
-          ${_creatorMode ? `<button class="cal-demo-btn ${_fridgeDemoActive ? 'demo-active' : ''}" onclick="toggleFridgeDemo()">${_fridgeDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${demoBtnHtml}
         </div>
         <button class="cta-generate" onclick="generateMenu()" ${!hasItems ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3333,7 +3359,7 @@ function renderCalendarPage() {
     <div class="page calendar-page">
       <div class="calendar-page-header">
         <h1 class="calendar-page-title">做菜日历</h1>
-        ${_creatorMode ? `<button class="cal-demo-btn ${_calendarDemoActive ? 'demo-active' : ''}" onclick="toggleCalendarDemo()" title="演示数据">${_calendarDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+        ${_creatorMode ? '<button class="cal-demo-btn' + (_calendarDemoActive ? ' demo-active' : '') + '" data-action="calendar-demo" title="演示数据">' + (_calendarDemoActive ? '↩️ 恢复' : '✨ 演示') + '</button>' : ''}
       </div>
 
       <div class="calendar-tabs">
@@ -3584,8 +3610,6 @@ function restoreAllDemoData() {
 
 // 冰箱演示：新增西红柿、鸡蛋
 function toggleFridgeDemo() {
-  alert("DEBUG: toggleFridgeDemo被调用, _fridgeDemoActive=" + _fridgeDemoActive + ", fridge.length=" + fridge.length);
-  try {
   if (_fridgeDemoActive) {
     // 恢复
     if (_fridgeBackup !== null) {
@@ -3614,9 +3638,6 @@ function toggleFridgeDemo() {
     showToast("已添加演示食材：西红柿、鸡蛋");
   }
   renderPage("home");
-  } catch(e) {
-    alert("DEBUG ERROR: " + e.message);
-  }
 }
 
 // 日历演示：加载/恢复
@@ -3791,7 +3812,7 @@ function showChefs() {
         </button>
         <div class="swipe-header-title">厨师管理</div>
         <div style="width:60px;display:flex;align-items:center;justify-content:flex-end;">
-          ${_creatorMode ? `<button class="cal-demo-btn ${_chefsDemoActive ? 'demo-active' : ''}" onclick="toggleChefsDemo()" style="margin-right:4px;">${_chefsDemoActive ? '↩️ 恢复' : '✨ 演示'}</button>` : ''}
+          ${_creatorMode ? '<button class="cal-demo-btn' + (_chefsDemoActive ? ' demo-active' : '') + '" data-action="chefs-demo" style="margin-right:4px;">' + (_chefsDemoActive ? '↩️ 恢复' : '✨ 演示') + '</button>' : ''}
         </div>
       </div>
       <div class="chef-list">
