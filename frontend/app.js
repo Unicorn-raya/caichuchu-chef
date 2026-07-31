@@ -789,25 +789,6 @@ function initClickTracking() {
   });
 }
 
-// ============================================
-// 演示按钮事件委托（避免内联onclick问题）
-// ============================================
-document.addEventListener("click", function(e) {
-  var btn = e.target.closest("[data-action]");
-  if (!btn) return;
-  var action = btn.dataset.action;
-  if (action === "fridge-demo") {
-    e.stopPropagation();
-    toggleFridgeDemo();
-  } else if (action === "calendar-demo") {
-    e.stopPropagation();
-    toggleCalendarDemo();
-  } else if (action === "chefs-demo") {
-    e.stopPropagation();
-    toggleChefsDemo();
-  }
-});
-
 function renderPage(page) {
   FrontendLogger.info("page", `切换到页面: ${page}`);
   currentPage = page;
@@ -828,14 +809,22 @@ function renderPage(page) {
   switch (page) {
     case "home":
       app.innerHTML = renderHome();
-      // 绑定演示按钮事件
-      var fDemoBtn = document.querySelector('[data-action="fridge-demo"]');
-      if (fDemoBtn) {
-        fDemoBtn.addEventListener("click", function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleFridgeDemo();
-        });
+      // 创作者模式：通过DOM插入冰箱演示按钮
+      if (_creatorMode) {
+        var titleRow = document.getElementById("homeTitleRow");
+        if (titleRow) {
+          var btn = document.createElement("button");
+          btn.className = "cal-demo-btn" + (_fridgeDemoActive ? " demo-active" : "");
+          btn.textContent = _fridgeDemoActive ? "↩️ 恢复" : "✨ 演示";
+          btn.style.pointerEvents = "auto";
+          btn.style.zIndex = "9999";
+          btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleFridgeDemo();
+          });
+          titleRow.appendChild(btn);
+        }
       }
       break;
     case "discover":
@@ -843,14 +832,24 @@ function renderPage(page) {
       break;
     case "calendar":
       renderCalendarPage();
-      // 绑定日历演示按钮
-      var cDemoBtn = document.querySelector('[data-action="calendar-demo"]');
-      if (cDemoBtn) {
-        cDemoBtn.addEventListener("click", function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleCalendarDemo();
-        });
+      // 创作者模式：通过DOM插入日历演示按钮
+      if (_creatorMode) {
+        var calHeader = document.querySelector(".calendar-page-header");
+        if (calHeader) {
+          var existingBtn = calHeader.querySelector("[data-demo-cal]");
+          if (!existingBtn) {
+            var cbtn = document.createElement("button");
+            cbtn.className = "cal-demo-btn" + (_calendarDemoActive ? " demo-active" : "");
+            cbtn.textContent = _calendarDemoActive ? "↩️ 恢复" : "✨ 演示";
+            cbtn.setAttribute("data-demo-cal", "1");
+            cbtn.addEventListener("click", function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleCalendarDemo();
+            });
+            calHeader.appendChild(cbtn);
+          }
+        }
       }
       break;
     case "me":
@@ -871,20 +870,12 @@ function renderHome() {
   const greeting = getGreeting();
   const hasItems = fridge.length > 0;
 
-  var demoBtnHtml = "";
-  if (_creatorMode) {
-    var demoClass = "cal-demo-btn" + (_fridgeDemoActive ? " demo-active" : "");
-    var demoText = _fridgeDemoActive ? "↩️ 恢复" : "✨ 演示";
-    demoBtnHtml = '<button class="' + demoClass + '" data-action="fridge-demo">' + demoText + '</button>';
-  }
-
   return `
     <div class="page">
       <div class="home-hero">
         <div class="home-greeting">${greeting}</div>
-        <div class="home-title-row">
+        <div class="home-title-row" id="homeTitleRow">
           <h1 class="home-title">我的冰箱</h1>
-          ${demoBtnHtml}
         </div>
         <button class="cta-generate" onclick="generateMenu()" ${!hasItems ? "disabled" : ""}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3377,7 +3368,6 @@ function renderCalendarPage() {
     <div class="page calendar-page">
       <div class="calendar-page-header">
         <h1 class="calendar-page-title">做菜日历</h1>
-        ${_creatorMode ? '<button class="cal-demo-btn' + (_calendarDemoActive ? ' demo-active' : '') + '" data-action="calendar-demo" title="演示数据">' + (_calendarDemoActive ? '↩️ 恢复' : '✨ 演示') + '</button>' : ''}
       </div>
 
       <div class="calendar-tabs">
@@ -3829,8 +3819,7 @@ function showChefs() {
           返回
         </button>
         <div class="swipe-header-title">厨师管理</div>
-        <div style="width:60px;display:flex;align-items:center;justify-content:flex-end;">
-          ${_creatorMode ? '<button class="cal-demo-btn' + (_chefsDemoActive ? ' demo-active' : '') + '" data-action="chefs-demo" style="margin-right:4px;">' + (_chefsDemoActive ? '↩️ 恢复' : '✨ 演示') + '</button>' : ''}
+        <div id="chefDemoBtnContainer" style="width:60px;display:flex;align-items:center;justify-content:flex-end;">
         </div>
       </div>
       <div class="chef-list">
@@ -3844,6 +3833,22 @@ function showChefs() {
       </div>
     </div>
   `;
+  // 创作者模式：通过DOM插入厨师演示按钮
+  if (_creatorMode) {
+    var chefBtnContainer = document.getElementById("chefDemoBtnContainer");
+    if (chefBtnContainer) {
+      var chBtn = document.createElement("button");
+      chBtn.className = "cal-demo-btn" + (_chefsDemoActive ? " demo-active" : "");
+      chBtn.textContent = _chefsDemoActive ? "↩️ 恢复" : "✨ 演示";
+      chBtn.style.marginRight = "4px";
+      chBtn.addEventListener("click", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleChefsDemo();
+      });
+      chefBtnContainer.appendChild(chBtn);
+    }
+  }
   // 异步加载默认大厨笔记数量
   loadDefaultChefNoteCount();
 }
