@@ -3347,7 +3347,6 @@ function loadDemoCalendarData() {
   window.userStats.cookedRecipes = cookedRecipes;
   window.userStats.cooked = Object.keys(cookedRecipes).length;
   saveStats();
-  renderCalendarPage();
   showToast("已加载演示数据");
 }
 
@@ -3380,6 +3379,22 @@ function renderCalendarPage() {
       </div>
     </div>
   `;
+  // 创作者模式：在renderCalendarPage内部插入演示按钮（确保tab切换后也存在）
+  if (_creatorMode) {
+    var calHeader = document.querySelector(".calendar-page-header");
+    if (calHeader && !calHeader.querySelector("[data-demo-cal]")) {
+      var cbtn = document.createElement("button");
+      cbtn.className = "cal-demo-btn" + (_calendarDemoActive ? " demo-active" : "");
+      cbtn.textContent = _calendarDemoActive ? "↩️ 恢复" : "✨ 演示";
+      cbtn.setAttribute("data-demo-cal", "1");
+      cbtn.addEventListener("click", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleCalendarDemo();
+      });
+      calHeader.appendChild(cbtn);
+    }
+  }
 }
 
 function switchCalendarMode(mode) {
@@ -3658,7 +3673,6 @@ function toggleCalendarDemo() {
       _calendarBackup = null;
     }
     _calendarDemoActive = false;
-    renderCalendarPage();
     showToast("已恢复做菜记录");
   } else {
     // 备份并加载演示数据
@@ -3666,6 +3680,7 @@ function toggleCalendarDemo() {
     _calendarDemoActive = true;
     loadDemoCalendarData();
   }
+  renderPage("calendar");
 }
 
 // 厨师演示：新增4个厨师
