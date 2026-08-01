@@ -5598,3 +5598,144 @@ u.cg-underline {
   background: color-mix(in srgb, var(--cg-color, #ff6b6b) 12%, white);
   color: var(--cg-color, #c92a2a);
 }
+
+/* ============================================
+   购物清单页面
+   ============================================ */
+.shopping-list-page {
+  padding-bottom: 100px;
+}
+
+.shopping-list-dish-info {
+  background: linear-gradient(135deg, #fff8e7, #fff3d6);
+  margin: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(232, 133, 58, 0.1);
+}
+
+.shopping-list-dish-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text, #2d2620);
+  margin-bottom: 6px;
+}
+
+.shopping-list-count {
+  font-size: 14px;
+  color: var(--text-muted, #8b7355);
+}
+
+.shopping-list-count strong {
+  color: var(--carrot, #e8853a);
+  font-size: 18px;
+}
+
+.shopping-list-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted, #8b7355);
+}
+
+.shopping-list-container {
+  padding: 0 16px;
+}
+
+.shopping-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: white;
+  border-radius: 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.shopping-item:active {
+  transform: scale(0.98);
+  background: #fafafa;
+}
+
+.shopping-item.checked {
+  opacity: 0.6;
+}
+
+.shopping-item.checked .shopping-item-name {
+  text-decoration: line-through;
+  color: var(--text-muted, #8b7355);
+}
+
+.shopping-item-checkbox {
+  font-size: 22px;
+  flex-shrink: 0;
+  line-height: 1;
+  padding-top: 1px;
+  user-select: none;
+}
+
+.shopping-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.shopping-item-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text, #2d2620);
+  margin-bottom: 4px;
+}
+
+.shopping-item-from {
+  font-size: 12px;
+  color: var(--text-muted, #a08060);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shopping-list-actions {
+  display: flex;
+  gap: 12px;
+  padding: 20px 16px;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, white 70%, transparent);
+  padding-top: 40px;
+}
+
+.shopping-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  border-radius: 14px;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.shopping-btn:active {
+  transform: scale(0.97);
+}
+
+.shopping-btn-copy {
+  background: linear-gradient(135deg, var(--avocado, #5a8a3a), #6ea048);
+  color: white;
+}
+
+.shopping-btn-clear {
+  background: white;
+  color: var(--text-secondary, #666);
+  border: 2px solid var(--border, #e8e0d8);
+}
