@@ -5067,13 +5067,13 @@ function showFavoriteRecipes() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
             返回
           </button>
-          <div class="swipe-header-title">❤️ 我的收藏</div>
+          <div class="swipe-header-title">📖 我的私房菜</div>
           <div style="width:50px"></div>
         </div>
-        <div class="fav-journal-empty">
-          <div class="fav-empty-icon">📖</div>
-          <div class="fav-empty-title">还没有收藏菜谱</div>
-          <div class="fav-empty-desc">看到喜欢的菜谱，点击 ❤️ 收藏起来<br>这里会变成你的专属美食手账哦</div>
+        <div class="cookbook-empty">
+          <div class="cookbook-empty-icon">📚</div>
+          <div class="cookbook-empty-title">还没有收藏菜谱</div>
+          <div class="cookbook-empty-desc">看到喜欢的菜谱，点击 ❤️ 收藏起来<br>打造属于你的专属私房菜谱本</div>
         </div>
       </div>
     `;
@@ -5086,174 +5086,127 @@ function showFavoriteRecipes() {
   const thisYear = now.getFullYear();
   let totalCount = favorites.length;
   let monthCount = 0;
-  const tagCount = {};
-  let recentFav = favorites[0];
+  let cookedCount = 0;
+  const cooked = window.userStats.cookedRecipes || {};
 
   favorites.forEach((r) => {
     const d = new Date(r._favoriteAddedAt);
     if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
       monthCount++;
     }
-    if (r.tags && r.tags.length > 0) {
-      r.tags.forEach((t) => {
-        tagCount[t] = (tagCount[t] || 0) + 1;
-      });
+    if (cooked[r.id]) {
+      cookedCount++;
     }
   });
 
-  let topTag = "—";
-  let topTagCount = 0;
-  Object.entries(tagCount).forEach(([tag, count]) => {
-    if (count > topTagCount) {
-      topTagCount = count;
-      topTag = tag;
-    }
-  });
-
-  // ===== 按日期分组 =====
-  const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  const grouped = {};
-  favorites.forEach((r) => {
-    const d = new Date(r._favoriteAddedAt);
-    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    if (!grouped[dateKey]) {
-      grouped[dateKey] = {
-        date: d,
-        dateKey,
-        weekday: weekNames[d.getDay()],
-        dayNum: d.getDate(),
-        month: d.getMonth() + 1,
-        items: [],
-        isToday: dateKey === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
-      };
-    }
-    grouped[dateKey].items.push(r);
-  });
-
-  // 按日期倒序排列
-  const sortedGroups = Object.values(grouped).sort((a, b) => b.date - a.date);
-
-  // ===== 按月份分隔 =====
-  const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
-  let lastMonthKey = "";
-  const sections = [];
-  sortedGroups.forEach((g) => {
-    const monthKey = `${g.date.getFullYear()}-${g.date.getMonth()}`;
-    if (monthKey !== lastMonthKey) {
-      sections.push({ type: "month", label: `${g.date.getFullYear()}年${monthNames[g.date.getMonth()]}`, monthKey });
-      lastMonthKey = monthKey;
-    }
-    sections.push({ type: "day", data: g });
-  });
-
-  // ===== 随机倾斜角度 =====
-  const getRandomTilt = (() => {
-    const tilts = [-1.5, -1, -0.5, 0.5, 1, 1.5];
+  // ===== 随机纸张纹理角度 =====
+  const getRandomRotation = (() => {
+    const rotations = [-0.8, -0.4, 0, 0.4, 0.8];
     let idx = 0;
     return () => {
-      const t = tilts[idx % tilts.length];
+      const r = rotations[idx % rotations.length];
       idx++;
-      return t;
+      return r;
     };
   })();
 
   // ===== 渲染HTML =====
-  const statsHtml = `
-    <div class="fav-journal-stats">
-      <div class="fav-stat">
-        <div class="fav-stat-num">${totalCount}</div>
-        <div class="fav-stat-label">收藏总数</div>
+  const headerHtml = `
+    <div class="cookbook-header">
+      <div class="cookbook-title-wrap">
+        <div class="cookbook-title">📖 我的私房菜</div>
+        <div class="cookbook-subtitle">My Private Recipe Book</div>
       </div>
-      <div class="fav-stat-divider"></div>
-      <div class="fav-stat">
-        <div class="fav-stat-num">${monthCount}</div>
-        <div class="fav-stat-label">本月收藏</div>
-      </div>
-      <div class="fav-stat-divider"></div>
-      <div class="fav-stat">
-        <div class="fav-stat-num fav-stat-tag" title="${topTag}">${topTag.length > 4 ? topTag.slice(0, 4) + "…" : topTag}</div>
-        <div class="fav-stat-label">最爱分类${topTagCount > 1 ? " ×" + topTagCount : ""}</div>
+      <div class="cookbook-stats">
+        <div class="cookbook-stat">
+          <div class="cookbook-stat-num">${totalCount}</div>
+          <div class="cookbook-stat-label">总收藏</div>
+        </div>
+        <div class="cookbook-stat-divider"></div>
+        <div class="cookbook-stat">
+          <div class="cookbook-stat-num">${cookedCount}</div>
+          <div class="cookbook-stat-label">已做过</div>
+        </div>
+        <div class="cookbook-stat-divider"></div>
+        <div class="cookbook-stat">
+          <div class="cookbook-stat-num">${totalCount - cookedCount}</div>
+          <div class="cookbook-stat-label">待尝试</div>
+        </div>
       </div>
     </div>
   `;
 
-  const timelineHtml = sections.map((sec) => {
-    if (sec.type === "month") {
-      return `<div class="fav-month-sticker">${sec.label}</div>`;
-    }
-    const g = sec.data;
-    const itemsHtml = g.items.map((r) => {
-      const emoji = getRecipeEmoji(r);
-      const image = r.images && r.images.length > 0 ? r.images[0] : null;
-      const timeMins = r.timeMinutes ? r.timeMinutes : null;
-      const calories = r.calories ? r.calories : null;
-      const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
-      const fav = isFavorite(r.id);
-      const tilt = getRandomTilt();
-      return `
-        <div class="fav-card" style="--tilt: ${tilt}deg" onclick="showRecipeDetailDirect('${r.id}')">
-          <div class="fav-corner fav-corner-tl"></div>
-          <div class="fav-corner fav-corner-tr"></div>
-          <div class="fav-corner fav-corner-bl"></div>
-          <div class="fav-corner fav-corner-br"></div>
-          <button class="fav-card-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
-            ${fav ? '❤️' : '🤍'}
-          </button>
-          ${image
-            ? `<img class="fav-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div class="fav-card-emoji" style="display:none">${emoji}</div>`
-            : `<div class="fav-card-emoji">${emoji}</div>`
-          }
-          <div class="fav-card-body">
-            <div class="fav-card-title-row">
-              <span class="fav-card-title">${r.title}</span>
-            </div>
-            <div class="fav-card-meta">
-              ${timeMins ? `<span>⏱ ${timeMins}分</span>` : ''}
-              ${calories ? `<span>🔥 ${calories}卡</span>` : ''}
-              ${tagText ? `<span class="fav-card-tag">${tagText}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
+  const cardsHtml = favorites.map((r) => {
+    const emoji = getRecipeEmoji(r);
+    const image = r.images && r.images.length > 0 ? r.images[0] : null;
+    const timeMins = r.timeMinutes ? r.timeMinutes : null;
+    const calories = r.calories ? r.calories : null;
+    const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
+    const fav = isFavorite(r.id);
+    const hasCooked = !!cooked[r.id];
+    const cookCount = hasCooked ? cooked[r.id].count : 0;
+    const addedDate = new Date(r._favoriteAddedAt);
+    const dateStr = `${addedDate.getFullYear()}.${String(addedDate.getMonth() + 1).padStart(2, '0')}.${String(addedDate.getDate()).padStart(2, '0')}`;
+    const rotation = getRandomRotation();
 
     return `
-      <div class="fav-day" id="fav-day-${g.dateKey}">
-        <div class="fav-day-marker">
-          <div class="fav-day-dot ${g.isToday ? 'is-today' : ''}"></div>
-          <div class="fav-day-date">
-            <div class="fav-day-num">${g.dayNum}</div>
-            <div class="fav-day-week">${g.weekday}${g.isToday ? ' · 今天' : ''}</div>
-          </div>
+      <div class="recipe-card-cookbook" style="--rotation: ${rotation}deg" onclick="showRecipeDetailDirect('${r.id}')">
+        <div class="cookbook-binding-holes">
+          <div class="binding-hole"></div>
+          <div class="binding-hole"></div>
+          <div class="binding-hole"></div>
         </div>
-        <div class="fav-day-cards">
-          ${itemsHtml}
+        <div class="cookbook-bookmark ${hasCooked ? 'cooked' : ''}">
+          ${hasCooked ? '✓' : '❤'}
+        </div>
+        <button class="cookbook-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
+          ${fav ? '❤️' : '🤍'}
+        </button>
+        <div class="cookbook-card-img-wrap">
+          ${image
+            ? `<img class="cookbook-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="cookbook-card-emoji" style="display:none">${emoji}</div>`
+            : `<div class="cookbook-card-emoji">${emoji}</div>`
+          }
+        </div>
+        <div class="cookbook-card-body">
+          <div class="cookbook-card-title-row">
+            <span class="cookbook-card-title">${r.title}</span>
+          </div>
+          <div class="cookbook-card-meta">
+            ${timeMins ? `<span class="cookbook-meta-item">⏱ ${timeMins}分</span>` : ''}
+            ${calories ? `<span class="cookbook-meta-item">🔥 ${calories}卡</span>` : ''}
+            ${tagText ? `<span class="cookbook-tag">${tagText}</span>` : ''}
+          </div>
+          <div class="cookbook-card-footer">
+            <span class="cookbook-date">📅 收藏于 ${dateStr}</span>
+            ${hasCooked ? `<span class="cookbook-cooked-badge">🍳 做过 ${cookCount}次</span>` : ''}
+          </div>
         </div>
       </div>
     `;
   }).join("");
 
   app.innerHTML = `
-    <div class="page detail-list-page favorites-page">
+    <div class="page detail-list-page favorites-page cookbook-page">
       <div class="swipe-header">
         <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
-        <div class="swipe-header-title">❤️ 我的收藏</div>
+        <div class="swipe-header-title">📖 我的私房菜</div>
         <div style="width:50px"></div>
       </div>
 
-      <div class="fav-journal-container">
-        ${statsHtml}
-        <div class="fav-journal-timeline">
-          <div class="fav-line"></div>
-          ${timelineHtml}
-          <div class="fav-end">
-            <div class="fav-end-dot"></div>
-            <div class="fav-end-text">收藏更多美食吧 🍽️</div>
-          </div>
+      <div class="cookbook-container">
+        ${headerHtml}
+        <div class="cookbook-grid">
+          ${cardsHtml}
+        </div>
+        <div class="cookbook-end">
+          <div class="cookbook-end-line"></div>
+          <span>— 未完待续 —</span>
+          <div class="cookbook-end-line"></div>
         </div>
       </div>
     </div>
