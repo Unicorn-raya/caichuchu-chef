@@ -5699,14 +5699,16 @@ u.cg-underline {
 
 .shopping-list-actions {
   display: flex;
-  gap: 12px;
-  padding: 20px 16px;
-  position: fixed;
+  gap: 10px;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  position: sticky;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, white 70%, transparent);
-  padding-top: 40px;
+  background: linear-gradient(to top, white 80%, rgba(255,255,255,0.95));
+  padding-top: 32px;
+  box-sizing: border-box;
 }
 
 .shopping-btn {
@@ -5714,15 +5716,15 @@ u.cg-underline {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 14px 20px;
-  border-radius: 14px;
+  gap: 6px;
+  padding: 12px 16px;
+  border-radius: 12px;
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 }
 
 .shopping-btn:active {
