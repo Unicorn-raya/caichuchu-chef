@@ -2769,6 +2769,8 @@ function exitCookingMode() {
   // 不强制跳页：底层页面（推荐页或详情页）仍在，用户可继续操作
   if (cookingStepIndex >= cookingSteps.length) {
     showToast("烹饪完成，冰箱已更新");
+    // 滚动回页面顶部
+    window.scrollTo({ top: 0, behavior: "smooth" });
     // 记录到 Agent memory
     if (window.ChefMemory && cookingRecipeId) {
       ChefMemory.recordCooked(cookingRecipeId, cookingRecipeTitle);
