@@ -3670,17 +3670,20 @@ function renderTimelineMode() {
   let monthDays = 0;
   let totalCount = 0;
   const recipeCount = {};
+  const monthDaySet = new Set();
 
   records.forEach((r) => {
     const d = new Date(r.timestamp);
     totalCount += r.count;
     if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-      monthDays++;
+      const mKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      monthDaySet.add(mKey);
     }
     if (!recipeCount[r.recipeId] || recipeCount[r.recipeId].count < r.count) {
       recipeCount[r.recipeId] = { title: r.title, count: r.count };
     }
   });
+  monthDays = monthDaySet.size;
 
   let mostCooked = "—";
   let mostCookedCount = 0;
