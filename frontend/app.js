@@ -3651,63 +3651,167 @@ function renderTimelineMode() {
 
   if (records.length === 0) {
     return `
-      <div class="timeline-empty">
-        <div style="font-size:48px;margin-bottom:12px">🐟</div>
-        <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有做菜记录</div>
-        <div style="font-size:13px;color:var(--text-muted)">完成一次烹饪后这里会显示鱼骨时间线</div>
+      <div class="journal-empty">
+        <div class="journal-empty-icon">🍳</div>
+        <div class="journal-empty-title">还没有做菜记录</div>
+        <div class="journal-empty-desc">完成一次烹饪后，你的美食手账就会开始记录啦</div>
+      </div>
+      <div class="calendar-chef-btn" onclick="analyzeCalendarWithAI()">
+        <span class="calendar-chef-avatar">👨‍🍳</span>
+        <span class="calendar-chef-text">大厨点评</span>
       </div>
     `;
   }
 
-  // 鱼骨图：左右交替的卡片
-  const bones = records.map((r, idx) => {
-    const side = idx % 2 === 0 ? "left" : "right";
-    const date = new Date(r.timestamp);
-    const dateStr = `${date.getMonth() + 1}月${date.getDate()}日`;
-    const timeStr = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    const isHighlighted = dateKey === timelineHighlightKey;
-    const recipe = allRecipes.find((x) => x.id === r.recipeId);
-    const emoji = recipe ? getRecipeEmoji(recipe) : "🍽️";
-    const image = recipe && recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+  // ===== 统计数据 =====
+  const now = new Date();
+  const thisMonth = now.getMonth();
+  const thisYear = now.getFullYear();
+  let monthDays = 0;
+  let totalCount = 0;
+  const recipeCount = {};
 
-    return `
-      <div class="fishbone-item side-${side} ${isHighlighted ? 'highlighted' : ''}" id="fishbone-item-${dateKey}">
-        <div class="fishbone-card" onclick="showRecipeDetailDirect('${r.recipeId}')">
+  records.forEach((r) => {
+    const d = new Date(r.timestamp);
+    totalCount += r.count;
+    if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
+      monthDays++;
+    }
+    if (!recipeCount[r.recipeId] || recipeCount[r.recipeId].count < r.count) {
+      recipeCount[r.recipeId] = { title: r.title, count: r.count };
+    }
+  });
+
+  let mostCooked = "—";
+  let mostCookedCount = 0;
+  Object.values(recipeCount).forEach((rc) => {
+    if (rc.count > mostCookedCount) {
+      mostCookedCount = rc.count;
+      mostCooked = rc.title;
+    }
+  });
+
+  // ===== 按日期分组 =====
+  const weekNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const grouped = {}; // dateKey -> { date, weekday, items: [] }
+  records.forEach((r) => {
+    const d = new Date(r.timestamp);
+    const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    if (!grouped[dateKey]) {
+      grouped[dateKey] = {
+        date: d,
+        dateKey,
+        weekday: weekNames[d.getDay()],
+        dayNum: d.getDate(),
+        month: d.getMonth() + 1,
+        items: [],
+        isToday: dateKey === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+      };
+    }
+    grouped[dateKey].items.push(r);
+  });
+
+  // 按日期倒序排列
+  const sortedGroups = Object.values(grouped).sort((a, b) => b.date - a.date);
+
+  // ===== 按月份分隔 =====
+  const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+  let lastMonthKey = "";
+  const sections = [];
+  sortedGroups.forEach((g) => {
+    const monthKey = `${g.date.getFullYear()}-${g.date.getMonth()}`;
+    if (monthKey !== lastMonthKey) {
+      sections.push({ type: "month", label: `${g.date.getFullYear()}年${monthNames[g.date.getMonth()]}`, monthKey });
+      lastMonthKey = monthKey;
+    }
+    sections.push({ type: "day", data: g });
+  });
+
+  // ===== 渲染HTML =====
+  const statsHtml = `
+    <div class="journal-stats">
+      <div class="journal-stat">
+        <div class="journal-stat-num">${monthDays}</div>
+        <div class="journal-stat-label">本月做菜</div>
+      </div>
+      <div class="journal-stat-divider"></div>
+      <div class="journal-stat">
+        <div class="journal-stat-num">${totalCount}</div>
+        <div class="journal-stat-label">累计道数</div>
+      </div>
+      <div class="journal-stat-divider"></div>
+      <div class="journal-stat">
+        <div class="journal-stat-num journal-stat-fav" title="${mostCooked}">${mostCooked.length > 5 ? mostCooked.slice(0, 5) + "…" : mostCooked}</div>
+        <div class="journal-stat-label">最常做${mostCookedCount > 1 ? " ×" + mostCookedCount : ""}</div>
+      </div>
+    </div>
+  `;
+
+  const timelineHtml = sections.map((sec) => {
+    if (sec.type === "month") {
+      return `<div class="journal-month-sticker">${sec.label}</div>`;
+    }
+    const g = sec.data;
+    const isHighlighted = g.dateKey === timelineHighlightKey;
+    const itemsHtml = g.items.map((r) => {
+      const recipe = allRecipes.find((x) => x.id === r.recipeId);
+      const emoji = recipe ? getRecipeEmoji(recipe) : "🍽️";
+      const image = recipe && recipe.images && recipe.images.length > 0 ? recipe.images[0] : null;
+      const timeStr = (() => {
+        const d = new Date(r.timestamp);
+        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      })();
+      const tagText = recipe && recipe.tags && recipe.tags.length > 0 ? recipe.tags[0] : "";
+      const timeMins = recipe && recipe.timeMinutes ? recipe.timeMinutes : null;
+      return `
+        <div class="journal-card ${isHighlighted ? 'journal-card-highlight' : ''}" onclick="showRecipeDetailDirect('${r.recipeId}')">
           ${image
-            ? `<img class="fishbone-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div class="fishbone-card-emoji" style="display:none">${emoji}</div>`
-            : `<div class="fishbone-card-emoji">${emoji}</div>`
+            ? `<img class="journal-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+               <div class="journal-card-emoji" style="display:none">${emoji}</div>`
+            : `<div class="journal-card-emoji">${emoji}</div>`
           }
-          <div class="fishbone-card-body">
-            <div class="fishbone-card-title">${r.title}</div>
-            <div class="fishbone-card-meta">
-              <span>${dateStr}</span>
-              <span>${timeStr}</span>
-              ${r.count > 1 ? `<span class="fishbone-count">×${r.count}</span>` : ''}
+          <div class="journal-card-body">
+            <div class="journal-card-title-row">
+              <span class="journal-card-title">${r.title}</span>
+              ${r.count > 1 ? `<span class="journal-card-count">×${r.count}</span>` : ''}
+            </div>
+            <div class="journal-card-meta">
+              <span class="journal-card-time">⏱ ${timeStr}</span>
+              ${timeMins ? `<span class="journal-card-dur">🕐 ${timeMins}分</span>` : ''}
+              ${tagText ? `<span class="journal-card-tag">${tagText}</span>` : ''}
             </div>
           </div>
         </div>
-        <div class="fishbone-bone side-${side}"></div>
+      `;
+    }).join("");
+
+    return `
+      <div class="journal-day ${isHighlighted ? 'journal-day-highlighted' : ''}" id="fishbone-item-${g.dateKey}">
+        <div class="journal-day-marker">
+          <div class="journal-day-dot ${g.isToday ? 'is-today' : ''}"></div>
+          <div class="journal-day-date">
+            <div class="journal-day-num">${g.dayNum}</div>
+            <div class="journal-day-week">${g.weekday}${g.isToday ? ' · 今天' : ''}</div>
+          </div>
+        </div>
+        <div class="journal-day-cards">
+          ${itemsHtml}
+        </div>
       </div>
     `;
   }).join("");
 
   return `
-    <div class="fishbone-timeline">
-      <div class="fishbone-head">🐟</div>
-      <div class="fishbone-spine"></div>
-      <div class="fishbone-items">
-        ${bones}
-      </div>
-      <div class="fishbone-tail">
-        <div class="fishbone-tail-line"></div>
-        <div class="fishbone-tail-fins">
-          <div class="fin fin-left"></div>
-          <div class="fin fin-right"></div>
+    <div class="journal-container">
+      ${statsHtml}
+      <div class="journal-timeline">
+        <div class="journal-line"></div>
+        ${timelineHtml}
+        <div class="journal-end">
+          <div class="journal-end-dot"></div>
+          <div class="journal-end-text">继续烹饪吧 🍳</div>
         </div>
       </div>
-      <div class="fishbone-tail-label">最早记录</div>
     </div>
     <div class="calendar-chef-btn" onclick="analyzeCalendarWithAI()">
       <span class="calendar-chef-avatar">👨‍🍳</span>
