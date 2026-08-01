@@ -6271,16 +6271,16 @@ function showShoppingList() {
       return;
     }
 
-    // 汇总当前推荐组合中所有缺失的食材（去重，排除基础调料）
+    // 汇总当前推荐组合中所有缺失的食材（去重，包括调料）
     const missingMap = new Map(); // name -> {from: [菜名列表], checked: false}
     combo.recipes.forEach(rec => {
       const recipe = rec.recipe || rec;
-      const missing = (rec.missingCore || rec.missing || []).filter(Boolean);
-      missing.forEach(ing => {
-        // 安全检查：ing必须是字符串
-        if (typeof ing !== 'string') return;
-        // 排除基础调料（如果函数存在）
-        if (typeof isLocalBasicSeasoning === 'function' && isLocalBasicSeasoning(ing)) return;
+      // 合并所有缺失食材：missingCore(核心食材) + missing(所有食材，含调料)
+      const allMissing = new Set();
+      (rec.missingCore || []).forEach(i => { if (typeof i === 'string') allMissing.add(i); });
+      (rec.missing || []).forEach(i => { if (typeof i === 'string') allMissing.add(i); });
+      // 不过滤基础调料，全部显示
+      allMissing.forEach(ing => {
         if (!missingMap.has(ing)) {
           missingMap.set(ing, { from: [], checked: false });
         }
