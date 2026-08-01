@@ -6217,11 +6217,6 @@ function closeChefRecommendMenu(immediate = false) {
 // 购物清单（当前推荐组合中缺失的食材汇总）
 function showShoppingList() {
   try {
-    // 确保在推荐页面
-    if (page !== "swipe") {
-      showToast("请在推荐页面使用购物清单");
-      return;
-    }
     const combo = searchResults[swipeIndex];
     if (!combo || !combo.recipes || combo.recipes.length === 0) {
       showToast("当前没有推荐菜谱，请先生成推荐");
