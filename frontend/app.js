@@ -2624,6 +2624,7 @@ function backToSwipe() {
 
 // 记录菜谱详情页的返回动作（不同入口返回到不同上级页面）
 let recipeDetailBackFn = null;
+let currentMeSubPage = null; // "我的"页面下的子页面：favorites/cooked/consumed/supplemented
 
 // ============================================
 // 沉浸式烹饪模式
@@ -3358,8 +3359,20 @@ function showRecipeDetailDirect(recipeId) {
   // 根据当前所在页面设置返回动作
   const activeNav = document.querySelector(".nav-btn.active");
   const activePage = activeNav ? activeNav.dataset.page : null;
-  FrontendLogger.info("recipe", "查看菜谱详情", { recipeId, title: recipe.title, from: activePage || "unknown" });
-  if (activePage === "discover") {
+  FrontendLogger.info("recipe", "查看菜谱详情", { recipeId, title: recipe.title, from: currentMeSubPage || activePage || "unknown" });
+  if (currentMeSubPage === "favorites") {
+    // 从收藏页进入：返回收藏页
+    recipeDetailBackFn = () => showFavoriteRecipes();
+  } else if (currentMeSubPage === "cooked") {
+    // 从已做页进入：返回已做页
+    recipeDetailBackFn = () => showCookedRecipes();
+  } else if (currentMeSubPage === "consumed") {
+    // 从消耗食材页进入
+    recipeDetailBackFn = () => showConsumedIngredients();
+  } else if (currentMeSubPage === "supplemented") {
+    // 从补充食材页进入
+    recipeDetailBackFn = () => showSupplementedIngredients();
+  } else if (activePage === "discover") {
     // 从发现页进入：如果在分类列表视图，返回分类列表；否则返回发现首页
     const cat = currentDiscoverCategory;
     if (cat) {
@@ -3375,6 +3388,7 @@ function showRecipeDetailDirect(recipeId) {
   } else if (activePage === "me") {
     recipeDetailBackFn = () => {
       document.getElementById("bottomNav").style.display = "";
+      currentMeSubPage = null;
       renderPage("me");
     };
   } else if (activePage === "home") {
@@ -5054,6 +5068,7 @@ function savePrefsAndBack(type) {
 // 已做菜谱页面
 // ============================================
 function showFavoriteRecipes() {
+  currentMeSubPage = "favorites";
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
@@ -5063,7 +5078,7 @@ function showFavoriteRecipes() {
     app.innerHTML = `
       <div class="page detail-list-page favorites-page">
         <div class="swipe-header">
-          <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+          <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
             返回
           </button>
@@ -5190,7 +5205,7 @@ function showFavoriteRecipes() {
   app.innerHTML = `
     <div class="page detail-list-page favorites-page cookbook-page">
       <div class="swipe-header">
-        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+        <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
@@ -5214,6 +5229,7 @@ function showFavoriteRecipes() {
 }
 
 function showCookedRecipes() {
+  currentMeSubPage = "cooked";
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
@@ -5223,7 +5239,7 @@ function showCookedRecipes() {
   app.innerHTML = `
     <div class="page detail-list-page">
       <div class="swipe-header">
-        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+        <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
@@ -5268,6 +5284,7 @@ function showCookedRecipes() {
 // 消耗食材页面
 // ============================================
 function showConsumedIngredients() {
+  currentMeSubPage = "consumed";
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
@@ -5282,7 +5299,7 @@ function showConsumedIngredients() {
   app.innerHTML = `
     <div class="page detail-list-page">
       <div class="swipe-header">
-        <button class="swipe-header-back" onclick="document.getElementById('bottomNav').style.display='';renderPage('me')">
+        <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
