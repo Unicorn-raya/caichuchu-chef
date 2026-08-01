@@ -5093,6 +5093,10 @@ function showFavoriteRecipes() {
             const emoji = getRecipeEmoji(r);
             const image = r.images && r.images.length > 0 ? r.images[0] : null;
             const fav = isFavorite(r.id);
+            const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
+            const timeMins = r.timeMinutes ? r.timeMinutes : null;
+            const addedDate = new Date(r._favoriteAddedAt);
+            const dateStr = `${addedDate.getMonth() + 1}月${addedDate.getDate()}日`;
             return `
               <div class="stamp-card" onclick="showRecipeDetailDirect('${r.id}')">
                 <button class="stamp-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
@@ -5104,7 +5108,12 @@ function showFavoriteRecipes() {
                        <div class="stamp-img-placeholder" style="display:none">${emoji}</div>`
                     : `<div class="stamp-img-placeholder">${emoji}</div>`
                   }
-                  <div class="stamp-title">${r.title}</div>
+                </div>
+                <div class="stamp-title">${r.title}</div>
+                <div class="stamp-subtitle">
+                  ${tagText ? `<span>${tagText}</span>` : ''}
+                  ${timeMins ? `<span>⏱${timeMins}分</span>` : ''}
+                  <span class="stamp-date">${dateStr}</span>
                 </div>
               </div>
             `;
@@ -5147,16 +5156,24 @@ function showCookedRecipes() {
             const image = recipe && recipe.images && recipe.images.length > 0
               ? recipe.images[0] : null;
             const emoji = recipe ? getRecipeEmoji(recipe) : "🍽️";
+            const tagText = recipe && recipe.tags && recipe.tags.length > 0 ? recipe.tags[0] : "";
+            const lastDate = new Date(info.lastCooked);
+            const dateStr = `${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
             return `
               <div class="stamp-card" onclick="${recipe ? `showRecipeDetailDirect('${recipeId}')` : ''}">
-                <div class="stamp-count-badge">${info.count}</div>
+                <div class="stamp-count-badge">×${info.count}</div>
                 <div class="stamp-inner">
                   ${image
                     ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${info.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                        <div class="stamp-img-placeholder" style="display:none">${emoji}</div>`
                     : `<div class="stamp-img-placeholder">${emoji}</div>`
                   }
-                  <div class="stamp-title">${info.title}</div>
+                </div>
+                <div class="stamp-title">${info.title}</div>
+                <div class="stamp-subtitle">
+                  ${tagText ? `<span>${tagText}</span>` : ''}
+                  <span class="stamp-cooked">🍳做过${info.count}次</span>
+                  <span class="stamp-date">${dateStr}</span>
                 </div>
               </div>
             `;
