@@ -3848,6 +3848,393 @@ body {
 }
 
 /* ============================================
+   收藏菜谱 - 美食手账风格
+   ============================================ */
+.fav-journal-container {
+  padding: 0 4px 100px;
+}
+
+/* 顶部统计卡片 */
+.fav-journal-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: linear-gradient(135deg, #fff0f5, #ffe4ec);
+  border-radius: 16px;
+  padding: 16px 12px;
+  margin: 0 12px 20px;
+  box-shadow: 0 2px 12px rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 182, 193, 0.3);
+}
+
+.fav-stat {
+  text-align: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.fav-stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  color: #e75480;
+  line-height: 1.2;
+  font-family: "Noto Serif SC", serif;
+}
+
+.fav-stat-tag {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 90px;
+  margin: 0 auto;
+}
+
+.fav-stat-label {
+  font-size: 11px;
+  color: #d4869a;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.fav-stat-divider {
+  width: 1px;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, #f4c2c2, transparent);
+  flex-shrink: 0;
+}
+
+/* 月份贴纸 */
+.fav-month-sticker {
+  position: relative;
+  text-align: center;
+  margin: 8px auto 16px;
+  display: inline-block;
+  left: 50%;
+  transform: translateX(-50%) rotate(1deg);
+  background: linear-gradient(135deg, #e75480, #ff6b9d);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 16px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(231, 84, 128, 0.3);
+  letter-spacing: 1px;
+}
+
+/* 时间线主体 */
+.fav-journal-timeline {
+  position: relative;
+  padding: 0 16px;
+}
+
+.fav-line {
+  position: absolute;
+  left: 50px;
+  top: 0;
+  bottom: 40px;
+  width: 3px;
+  background: linear-gradient(to bottom, #f4a8b8, #e88fa5, #d4869a);
+  border-radius: 2px;
+  z-index: 0;
+}
+
+/* 每一天 */
+.fav-day {
+  position: relative;
+  display: flex;
+  margin-bottom: 12px;
+  z-index: 1;
+}
+
+/* 日期标记 */
+.fav-day-marker {
+  width: 50px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 14px;
+  position: relative;
+}
+
+.fav-day-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid #e88fa5;
+  z-index: 2;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.fav-day-dot.is-today {
+  background: #e75480;
+  border-color: #e75480;
+  box-shadow: 0 0 0 4px rgba(231, 84, 128, 0.2);
+  animation: favTodayPulse 2s ease-in-out infinite;
+}
+
+@keyframes favTodayPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(231, 84, 128, 0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(231, 84, 128, 0.1); }
+}
+
+.fav-day-date {
+  text-align: center;
+  margin-top: 4px;
+}
+
+.fav-day-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: #c2185b;
+  line-height: 1;
+  font-family: "Noto Serif SC", serif;
+}
+
+.fav-day-week {
+  font-size: 10px;
+  color: #d4869a;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* 当天的卡片列表 */
+.fav-day-cards {
+  flex: 1;
+  padding-top: 6px;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 单张菜卡片 - 手账贴纸风格 */
+.fav-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 2px 12px rgba(194, 24, 91, 0.1), 0 1px 3px rgba(0,0,0,0.05);
+  border: 1px solid rgba(255, 182, 193, 0.4);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  transform: rotate(var(--tilt, 0deg));
+}
+
+.fav-card:hover {
+  transform: rotate(0deg) scale(1.02);
+  box-shadow: 0 4px 20px rgba(194, 24, 91, 0.15);
+  z-index: 10;
+}
+
+.fav-card:active {
+  transform: scale(0.98);
+}
+
+/* 照片角贴装饰 */
+.fav-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 182, 193, 0.5);
+  z-index: 1;
+}
+
+.fav-corner-tl {
+  top: 0;
+  left: 0;
+  border-radius: 0 0 16px 0;
+}
+
+.fav-corner-tr {
+  top: 0;
+  right: 0;
+  border-radius: 0 0 0 16px;
+}
+
+.fav-corner-bl {
+  bottom: 0;
+  left: 0;
+  border-radius: 0 16px 0 0;
+}
+
+.fav-corner-br {
+  bottom: 0;
+  right: 0;
+  border-radius: 16px 0 0 0;
+}
+
+.fav-card-img {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  object-fit: cover;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.fav-card-emoji {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff0f5, #ffe4ec);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(194, 24, 91, 0.08);
+}
+
+.fav-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.fav-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fav-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #4a2c3a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.fav-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.fav-card-meta > span {
+  font-size: 11px;
+  color: #b87a8c;
+}
+
+.fav-card-tag {
+  background: #fce4ec;
+  color: #c2185b;
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 10px !important;
+}
+
+/* 收藏按钮 */
+.fav-card-fav-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.9);
+  backdrop-filter: blur(4px);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  transition: transform 0.15s;
+  z-index: 5;
+}
+
+.fav-card-fav-btn:active {
+  transform: scale(0.9);
+}
+
+/* 时间线结尾 */
+.fav-end {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 16px;
+  margin-left: 50px;
+  transform: translateX(-50%);
+  position: relative;
+  z-index: 1;
+}
+
+.fav-end-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e88fa5;
+  margin-bottom: 6px;
+}
+
+.fav-end-text {
+  font-size: 11px;
+  color: #d4a0b0;
+  font-style: italic;
+}
+
+/* 空状态 */
+.fav-journal-empty {
+  text-align: center;
+  padding: 100px 20px;
+}
+
+.fav-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.fav-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #880e4f;
+  margin-bottom: 8px;
+}
+
+.fav-empty-desc {
+  font-size: 13px;
+  color: #c28498;
+  line-height: 1.8;
+}
+
+/* 响应式：小屏调整 */
+@media (max-width: 360px) {
+  .fav-journal-stats {
+    margin: 0 8px 16px;
+    padding: 12px 8px;
+  }
+  .fav-stat-num {
+    font-size: 18px;
+  }
+  .fav-card-img, .fav-card-emoji {
+    width: 56px;
+    height: 56px;
+    font-size: 28px;
+  }
+}
+
+/* ============================================
    厨师 Agent 浮动图标
    ============================================ */
 .chef-agent-fab {
