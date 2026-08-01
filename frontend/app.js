@@ -1656,6 +1656,7 @@ function buildMenuCombinations(results) {
 
 /**
  * 生成双菜组合推荐（大厨弹窗选择"两个菜组合"时调用）
+ * 规则：1荤1素搭配，返回多个组合支持左右切换浏览
  */
 function buildDualMenuCombinations(results) {
   if (!results || results.length === 0) return [];
@@ -1669,8 +1670,55 @@ function buildDualMenuCombinations(results) {
     return (b.matchPercent || 0) - (a.matchPercent || 0);
   });
 
-  const top2 = sorted.slice(0, 2);
-  return [buildCombo(top2, "top2")];
+  // 分离主菜（荤）和副菜（素）
+  const mainDishes = sorted.filter(r => isMainDish(r.recipe));
+  const sideDishes = sorted.filter(r => isSideDish(r.recipe));
+
+  // 如果分类后数量不足，尝试用全部结果补充
+  const allDishes = sorted;
+  const mains = mainDishes.length > 0 ? mainDishes : allDishes;
+  const sides = sideDishes.length > 0 ? sideDishes : allDishes;
+
+  // 生成组合：1荤1素，去重，限制最多取前M荤N素进行组合避免爆炸
+  const MAX_MAINS = Math.min(8, mains.length);
+  const MAX_SIDES = Math.min(8, sides.length);
+  const usedCombos = new Set();
+  const combos = [];
+
+  for (let i = 0; i < MAX_MAINS; i++) {
+    for (let j = 0; j < MAX_SIDES; j++) {
+      const main = mains[i];
+      const side = sides[j];
+      // 同一道菜不能自己和自己组合
+      if (main.recipe.id === side.recipe.id) continue;
+      // 去重：组合key按ID排序
+      const ids = [main.recipe.id, side.recipe.id].sort();
+      const key = ids.join("|");
+      if (usedCombos.has(key)) continue;
+      usedCombos.add(key);
+
+      // 组合评分：两菜平均得分 + 缺失食材总数惩罚
+      const avgScore = ((main.score || 0) + (side.score || 0)) / 2;
+      const totalMissing = ((main.missingCore || []).length + (side.missingCore || []).length);
+      const comboScore = avgScore - totalMissing * 0.3;
+
+      combos.push({
+        dishes: [main, side],
+        comboScore,
+        totalMissing
+      });
+    }
+  }
+
+  // 按组合评分排序
+  combos.sort((a, b) => {
+    if (Math.abs(b.comboScore - a.comboScore) > 0.01) return b.comboScore - a.comboScore;
+    return a.totalMissing - b.totalMissing;
+  });
+
+  // 返回最多12个组合，支持左右切换浏览
+  const topN = Math.min(12, combos.length);
+  return combos.slice(0, topN).map(c => buildCombo(c.dishes, "dual"));
 }
 
 /**
@@ -1896,7 +1944,7 @@ async function generateMenu() {
     // 获取临期食材，用于生成推荐理由
     const expiringItems = getExpiringIngredients();
     // 获取更多结果用于本地标签过滤 + 组合去重（去重需要较大菜谱池）
-    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 80, false, expiringItems);
+    const rawResults = await searchRecipes(allIngredients, "scrappy", [], 150, false, expiringItems);
     // 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
     const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
