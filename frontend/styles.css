@@ -970,6 +970,15 @@ body {
 
 .swipe-btn:active { transform: scale(0.9); }
 
+.swipe-page-indicator {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 .swipe-btn-prev {
   background: white;
   color: var(--text-secondary);

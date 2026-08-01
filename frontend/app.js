@@ -1616,7 +1616,7 @@ function buildCombo(recs, type) {
 /**
  * 根据搜索结果生成菜单推荐
  * 排序规则：按综合评分 score 降序（score已包含家常菜加分、覆盖率、缺失惩罚、难度、快手奖励等）
- * 默认只推荐最容易做的1道菜
+ * 默认返回排名前12的单菜，第1个是最容易做的，用户可左右切换浏览
  */
 function buildMenuCombinations(results) {
   if (!results || results.length === 0) return [];
@@ -1633,9 +1633,9 @@ function buildMenuCombinations(results) {
     return (b.matchPercent || 0) - (a.matchPercent || 0);
   });
 
-  // 默认只推荐最容易做的1道菜
-  const top1 = sorted.slice(0, 1);
-  return [buildCombo(top1, "single")];
+  // 返回前12个单菜推荐，支持左右切换浏览
+  const topN = Math.min(12, sorted.length);
+  return sorted.slice(0, topN).map((r) => buildCombo([r], "single"));
 }
 
 /**
@@ -1987,15 +1987,47 @@ function renderSwipePage() {
         <button class="swipe-btn swipe-btn-prev" onclick="swipePrev()" aria-label="上一个">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
         </button>
+        <span class="swipe-page-indicator" id="swipePageIndicator">${swipeIndex + 1}/${searchResults.length}</span>
         <button class="swipe-btn swipe-btn-next" onclick="swipeNext()" aria-label="下一个">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
         </button>
       </div>
-      <div class="swipe-indicator-hint">点击菜品开始做菜 · 点击卡片空白处切换</div>
+      <div class="swipe-indicator-hint">点击菜品查看详情 · 左右滑动切换 · 键盘←→切换</div>
     </div>
   `;
 
   setupCardSwipe();
+  setupSwipeKeyboard();
+}
+
+// 键盘左右箭头切换
+var _swipeKeyHandler = null;
+function setupSwipeKeyboard() {
+  // 先移除旧的监听
+  if (_swipeKeyHandler) {
+    document.removeEventListener("keydown", _swipeKeyHandler);
+  }
+  _swipeKeyHandler = function(e) {
+    // 只有在推荐页面才响应
+    if (page !== "swipe") return;
+    // 如果焦点在输入框中不响应
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      swipePrev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      swipeNext();
+    }
+  };
+  document.addEventListener("keydown", _swipeKeyHandler);
+}
+function removeSwipeKeyboard() {
+  if (_swipeKeyHandler) {
+    document.removeEventListener("keydown", _swipeKeyHandler);
+    _swipeKeyHandler = null;
+  }
 }
 
 function renderCardStack() {
@@ -2168,11 +2200,10 @@ function setupCardSwipe() {
   const card = document.querySelector(".swipe-card[data-idx='" + swipeIndex + "']");
   if (!card) return;
 
+  const SWIPE_THRESHOLD = 70; // 滑动触发阈值（像素）
+
   const onStart = (e) => {
-    // 阻止 touchend 后浏览器合成的 mousedown 重新创建 dragState
-    // （合成事件会在 touchend 后约 300ms 内触发，导致 click 误判）
     if (e.type === "mousedown" && Date.now() - _lastSwipeAt < 600) return;
-    // 动画过程中禁止新一次拖拽
     if (_swipeAnimating) return;
 
     const point = e.touches ? e.touches[0] : e;
@@ -2183,6 +2214,7 @@ function setupCardSwipe() {
       dx: 0,
       dy: 0,
       pointerType: e.touches ? "touch" : "mouse",
+      locked: false, // 是否锁定为水平滑动
     };
     card.classList.add("dragging");
   };
@@ -2190,38 +2222,52 @@ function setupCardSwipe() {
   let rafId = null;
   const onMove = (e) => {
     if (!dragState) return;
-    if (e.cancelable) e.preventDefault();
     const point = e.touches ? e.touches[0] : e;
     dragState.dx = point.clientX - dragState.startX;
     dragState.dy = point.clientY - dragState.startY;
+
+    // 判断是否锁定为水平滑动（防止垂直滚动时误触发）
+    if (!dragState.locked && Math.abs(dragState.dx) > 8 && Math.abs(dragState.dy) > 8) {
+      if (Math.abs(dragState.dx) > Math.abs(dragState.dy) * 1.2) {
+        dragState.locked = true;
+      } else {
+        // 垂直滚动为主，取消拖拽
+        dragState = null;
+        card.classList.remove("dragging");
+        card.style.transform = "";
+        return;
+      }
+    }
+
+    if (dragState.locked && e.cancelable) e.preventDefault();
+
     if (rafId) return;
     rafId = requestAnimationFrame(() => {
       rafId = null;
       if (!dragState) return;
       const rotation = dragState.dx * 0.1;
-      dragState.card.style.transform = `translate3d(${dragState.dx}px, ${dragState.dy}px, 0) rotate(${rotation}deg)`;
+      dragState.card.style.transform = `translate3d(${dragState.dx}px, ${dragState.locked ? 0 : dragState.dy}px, 0) rotate(${rotation}deg)`;
     });
   };
 
   const onEnd = (e) => {
     if (!dragState) return;
-    const { card, dx, dy } = dragState;
-    card.classList.remove("dragging");
+    const { card: c, dx, dy, locked } = dragState;
+    c.classList.remove("dragging");
     _lastSwipeAt = Date.now();
 
-    if (dx < -100) {
-      // 左滑：上一个
-      swipePrev();
-    } else if (dx > 100) {
-      // 右滑：下一个
+    if (locked && dx < -SWIPE_THRESHOLD) {
+      // 左滑：下一个（卡片向左飞出，显示右侧的下一张）
       swipeNext();
+    } else if (locked && dx > SWIPE_THRESHOLD) {
+      // 右滑：上一个（卡片向右飞出，显示左侧的上一张）
+      swipePrev();
     } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
       // 点击
       const combo = searchResults[swipeIndex];
       if (!combo) { dragState = null; return; }
 
       const targetEl = (e && (e.target || e.srcElement)) || null;
-      // 单菜兜底：点击进入菜谱详情页
       if (combo.type === "single") {
         const rec = combo.recipes[0];
         showRecipeDetailFromRecommend(rec);
@@ -2229,16 +2275,14 @@ function setupCardSwipe() {
         return;
       }
 
-      // 组合卡片：判断是否点中具体菜品
       const comboItem = targetEl ? targetEl.closest(".combo-item") : null;
       if (comboItem) {
         const idx = parseInt(comboItem.dataset.idx, 10);
         const rec = combo.recipes[idx];
         if (rec) showRecipeDetailFromRecommend(rec);
       } else {
-        // 点击卡片空白区域：根据点击位置左右切换上一个/下一个
         let clickX = 0;
-        const cardRect = card.getBoundingClientRect();
+        const cardRect = c.getBoundingClientRect();
         if (e.changedTouches && e.changedTouches[0]) {
           clickX = e.changedTouches[0].clientX - cardRect.left;
         } else if (e.clientX != null) {
@@ -2251,7 +2295,7 @@ function setupCardSwipe() {
         }
       }
     } else {
-      card.style.transform = "";
+      c.style.transform = "";
     }
     dragState = null;
   };
@@ -2261,7 +2305,6 @@ function setupCardSwipe() {
   card.addEventListener("touchend", onEnd);
   card.addEventListener("mousedown", onStart);
 
-  // document 级监听器先移除旧的再添加新的，避免累积
   if (_docMoveRef) {
     document.removeEventListener("mousemove", _docMoveRef);
     document.removeEventListener("mouseup", _docUpRef);
@@ -2270,6 +2313,31 @@ function setupCardSwipe() {
   _docUpRef = onEnd;
   document.addEventListener("mousemove", _docMoveRef);
   document.addEventListener("mouseup", _docUpRef);
+
+  // 更新按钮禁用状态
+  updateSwipeNavButtons();
+}
+
+// 更新左右导航按钮的禁用状态和页码
+function updateSwipeNavButtons() {
+  var prevBtn = document.querySelector(".swipe-btn-prev");
+  var nextBtn = document.querySelector(".swipe-btn-next");
+  var indicator = document.getElementById("swipePageIndicator");
+  if (prevBtn) {
+    var isFirst = swipeIndex <= 0;
+    prevBtn.disabled = isFirst;
+    prevBtn.style.opacity = isFirst ? "0.3" : "1";
+    prevBtn.style.pointerEvents = isFirst ? "none" : "auto";
+  }
+  if (nextBtn) {
+    var isLast = swipeIndex >= searchResults.length - 1;
+    nextBtn.disabled = isLast;
+    nextBtn.style.opacity = isLast ? "0.3" : "1";
+    nextBtn.style.pointerEvents = isLast ? "none" : "auto";
+  }
+  if (indicator) {
+    indicator.textContent = (swipeIndex + 1) + "/" + searchResults.length;
+  }
 }
 
 // 滑动切换：单卡片模式，新卡片从对应方向滑入
@@ -2406,6 +2474,14 @@ function toggleTagFilter(tag) {
 
 function backToHome() {
   document.getElementById("bottomNav").style.display = "";
+  removeSwipeKeyboard();
+  // 清理document级别的鼠标监听器
+  if (_docMoveRef) {
+    document.removeEventListener("mousemove", _docMoveRef);
+    document.removeEventListener("mouseup", _docUpRef);
+    _docMoveRef = null;
+    _docUpRef = null;
+  }
   renderPage("home");
 }
 
