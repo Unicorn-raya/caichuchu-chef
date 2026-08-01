@@ -2630,10 +2630,17 @@ let currentMeSubPage = null; // "我的"页面下的子页面：favorites/cooked
 // 沉浸式烹饪模式
 // ============================================
 async function startCooking(recipeId, missingIngredients) {
-  const recipe = allRecipes.find((r) => r.id === recipeId);
+  // 先从本地菜谱找，找不到再从AI联网搜索菜谱找
+  let recipe = allRecipes.find((r) => r.id === recipeId);
+  let isAIRecipe = false;
+  if (!recipe) {
+    const aiRecipes = getAIRecipes();
+    recipe = aiRecipes.find((r) => r.id === recipeId);
+    isAIRecipe = true;
+  }
   if (!recipe) return;
 
-  FrontendLogger.info("cooking", "开始做菜", { recipeId, title: recipe.title, missingCount: (missingIngredients || []).length });
+  FrontendLogger.info("cooking", "开始做菜", { recipeId, title: recipe.title, missingCount: (missingIngredients || []).length, isAIRecipe });
   cookingSteps = recipe.steps || [];
   cookingStepIndex = 0;
   cookingRecipeTitle = recipe.title;
@@ -3324,6 +3331,11 @@ function showAIRecipeDetail(recipeId) {
           </ul>
         </div>
         ` : ''}
+
+        <button class="btn-start-cooking" onclick="startCooking('${recipe.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          开始沉浸烹饪
+        </button>
       </div>
     </div>
   `;
