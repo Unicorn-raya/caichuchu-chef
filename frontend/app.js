@@ -6149,13 +6149,13 @@ function showChefRecommendMenu() {
   popup.id = "chefRecommendMenu";
   popup.className = "chef-home-menu";
   popup.innerHTML = `
-    <button class="chef-home-menu-circle" style="--delay: 0.05s" onclick="closeChefRecommendMenu(); setTimeout(showShoppingList, 250);" title="购物清单">
+    <button class="chef-home-menu-circle" style="--delay: 0.05s" onclick="event.stopPropagation();closeChefRecommendMenu(true);showShoppingList();" title="购物清单">
       <span>🛒</span>
     </button>
-    <button class="chef-home-menu-circle" style="--delay: 0.12s" onclick="closeChefRecommendMenu(); setTimeout(switchToDualMenu, 250);" title="两个菜组合">
+    <button class="chef-home-menu-circle" style="--delay: 0.12s" onclick="event.stopPropagation();closeChefRecommendMenu(true);switchToDualMenu();" title="两个菜组合">
       <span>🍱</span>
     </button>
-    <button class="chef-home-menu-circle" style="--delay: 0.2s" onclick="closeChefRecommendMenu(); setTimeout(generateAIRecommendedMenu, 250);" title="AI推荐">
+    <button class="chef-home-menu-circle" style="--delay: 0.2s" onclick="event.stopPropagation();closeChefRecommendMenu(true);generateAIRecommendedMenu();" title="AI推荐">
       <span>✨</span>
     </button>
   `;
@@ -6189,12 +6189,18 @@ function closeChefRecommendMenuOutside(e) {
   closeChefRecommendMenu();
 }
 
-function closeChefRecommendMenu() {
+function closeChefRecommendMenu(immediate = false) {
   document.removeEventListener("click", closeChefRecommendMenuOutside, true);
   document.removeEventListener("touchstart", closeChefRecommendMenuOutside, true);
   const popup = document.getElementById("chefRecommendMenu");
   const fab = document.getElementById("chefAgentFab");
   if (!popup) return;
+  // 立即关闭（点击按钮时使用，不需要退出动画）
+  if (immediate) {
+    popup.remove();
+    if (fab) updateChefFabState();
+    return;
+  }
   // 退出动画：逆向气泡下降
   const circles = popup.querySelectorAll(".chef-home-menu-circle");
   circles.forEach((c, i) => {
@@ -6210,93 +6216,106 @@ function closeChefRecommendMenu() {
 
 // 购物清单（当前推荐组合中缺失的食材汇总）
 function showShoppingList() {
-  const combo = searchResults[swipeIndex];
-  if (!combo || !combo.recipes || combo.recipes.length === 0) {
-    showToast("当前没有推荐菜谱");
-    return;
-  }
+  try {
+    // 确保在推荐页面
+    if (page !== "swipe") {
+      showToast("请在推荐页面使用购物清单");
+      return;
+    }
+    const combo = searchResults[swipeIndex];
+    if (!combo || !combo.recipes || combo.recipes.length === 0) {
+      showToast("当前没有推荐菜谱，请先生成推荐");
+      return;
+    }
 
-  // 汇总当前推荐组合中所有缺失的食材（去重，排除基础调料）
-  const missingMap = new Map(); // name -> {from: [菜名列表], checked: false}
-  combo.recipes.forEach(rec => {
-    const missing = rec.missingCore || rec.missing || [];
-    missing.forEach(ing => {
-      if (isLocalBasicSeasoning(ing)) return; // 排除基础调料
-      if (!missingMap.has(ing)) {
-        missingMap.set(ing, { from: [], checked: false });
-      }
-      if (!missingMap.get(ing).from.includes(rec.recipe.title)) {
-        missingMap.get(ing).from.push(rec.recipe.title);
-      }
+    // 汇总当前推荐组合中所有缺失的食材（去重，排除基础调料）
+    const missingMap = new Map(); // name -> {from: [菜名列表], checked: false}
+    combo.recipes.forEach(rec => {
+      const recipe = rec.recipe || rec;
+      const missing = (rec.missingCore || rec.missing || []).filter(Boolean);
+      missing.forEach(ing => {
+        // 安全检查：ing必须是字符串
+        if (typeof ing !== 'string') return;
+        // 排除基础调料（如果函数存在）
+        if (typeof isLocalBasicSeasoning === 'function' && isLocalBasicSeasoning(ing)) return;
+        if (!missingMap.has(ing)) {
+          missingMap.set(ing, { from: [], checked: false });
+        }
+        const title = recipe.title || "这道菜";
+        if (!missingMap.get(ing).from.includes(title)) {
+          missingMap.get(ing).from.push(title);
+        }
+      });
     });
-  });
 
-  const missingList = Array.from(missingMap.entries()).map(([name, data]) => ({
-    name,
-    from: data.from,
-    checked: false
-  }));
+    const missingList = Array.from(missingMap.entries()).map(([name, data]) => ({
+      name,
+      from: data.from,
+      checked: false
+    }));
 
-  // 保存勾选状态到window，方便后续更新
-  window._shoppingListItems = missingList;
+    // 保存勾选状态到window，方便后续更新
+    window._shoppingListItems = missingList;
 
-  const dishNames = combo.recipes.map(r => r.recipe.title).join(" + ");
+    const dishNames = combo.recipes.map(r => (r.recipe || r).title).join(" + ");
 
-  const app = document.getElementById("app");
-  // 保存当前页面以便关闭后返回
-  const savedPage = page;
-  document.getElementById("bottomNav").style.display = "none";
+    const app = document.getElementById("app");
+    document.getElementById("bottomNav").style.display = "none";
 
-  app.innerHTML = `
-    <div class="page shopping-list-page">
-      <div class="swipe-header">
-        <button class="swipe-header-back" onclick="closeShoppingList()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          返回
-        </button>
-        <div class="swipe-header-title">🛒 购物清单</div>
-        <div style="width:50px"></div>
-      </div>
-
-      <div class="shopping-list-dish-info">
-        <div class="shopping-list-dish-name">${dishNames}</div>
-        <div class="shopping-list-count">共需购买 <strong>${missingList.length}</strong> 种食材</div>
-      </div>
-
-      ${missingList.length === 0 ? `
-        <div class="shopping-list-empty">
-          <div style="font-size:48px;margin-bottom:12px">🎉</div>
-          <div style="font-size:16px;font-weight:600;color:var(--text)">食材已备齐！</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-top:6px">冰箱里的食材足够做这道菜了</div>
-        </div>
-      ` : `
-        <div class="shopping-list-container" id="shoppingListContainer">
-          ${missingList.map((item, idx) => `
-            <div class="shopping-item ${item.checked ? 'checked' : ''}" data-idx="${idx}" onclick="toggleShoppingItem(${idx})">
-              <div class="shopping-item-checkbox">
-                ${item.checked ? '✅' : '⬜'}
-              </div>
-              <div class="shopping-item-content">
-                <div class="shopping-item-name">${item.name}</div>
-                <div class="shopping-item-from">用于：${item.from.join("、")}</div>
-              </div>
-            </div>
-          `).join("")}
-        </div>
-
-        <div class="shopping-list-actions">
-          <button class="shopping-btn shopping-btn-copy" onclick="copyShoppingList()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-            复制清单
+    app.innerHTML = `
+      <div class="page shopping-list-page">
+        <div class="swipe-header">
+          <button class="swipe-header-back" onclick="closeShoppingList()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+            返回
           </button>
-          <button class="shopping-btn shopping-btn-clear" onclick="clearShoppingChecked()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-            清除已买
-          </button>
+          <div class="swipe-header-title">🛒 购物清单</div>
+          <div style="width:50px"></div>
         </div>
-      `}
-    </div>
-  `;
+
+        <div class="shopping-list-dish-info">
+          <div class="shopping-list-dish-name">${dishNames}</div>
+          <div class="shopping-list-count">共需购买 <strong>${missingList.length}</strong> 种食材</div>
+        </div>
+
+        ${missingList.length === 0 ? `
+          <div class="shopping-list-empty">
+            <div style="font-size:48px;margin-bottom:12px">🎉</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text)">食材已备齐！</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:6px">冰箱里的食材足够做这道菜了</div>
+          </div>
+        ` : `
+          <div class="shopping-list-container" id="shoppingListContainer">
+            ${missingList.map((item, idx) => `
+              <div class="shopping-item ${item.checked ? 'checked' : ''}" data-idx="${idx}" onclick="toggleShoppingItem(${idx})">
+                <div class="shopping-item-checkbox">
+                  ${item.checked ? '✅' : '⬜'}
+                </div>
+                <div class="shopping-item-content">
+                  <div class="shopping-item-name">${item.name}</div>
+                  <div class="shopping-item-from">用于：${item.from.join("、")}</div>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+
+          <div class="shopping-list-actions">
+            <button class="shopping-btn shopping-btn-copy" onclick="copyShoppingList()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+              复制清单
+            </button>
+            <button class="shopping-btn shopping-btn-clear" onclick="clearShoppingChecked()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              清除已买
+            </button>
+          </div>
+        `}
+      </div>
+    `;
+  } catch (e) {
+    console.error("购物清单出错：", e);
+    showToast("购物清单加载失败：" + e.message);
+  }
 }
 
 // 切换购物清单项勾选状态
