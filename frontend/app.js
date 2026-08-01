@@ -4041,10 +4041,6 @@ function renderMe() {
       </div>
 
       <div class="me-stats">
-        <div class="me-stat-card clickable" onclick="showCookedRecipes()">
-          <div class="me-stat-num">${stats.cooked}</div>
-          <div class="me-stat-label">已做菜谱</div>
-        </div>
         <div class="me-stat-card clickable" onclick="showConsumedIngredients()">
           <div class="me-stat-num">${stats.saved}</div>
           <div class="me-stat-label">消耗食材</div>
@@ -5074,156 +5070,47 @@ function showFavoriteRecipes() {
 
   const favorites = getFavoriteRecipes();
 
-  if (favorites.length === 0) {
-    app.innerHTML = `
-      <div class="page detail-list-page favorites-page">
-        <div class="swipe-header">
-          <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-            返回
-          </button>
-          <div class="swipe-header-title">📖 我的私房菜</div>
-          <div style="width:50px"></div>
-        </div>
-        <div class="cookbook-empty">
-          <div class="cookbook-empty-icon">📚</div>
-          <div class="cookbook-empty-title">还没有收藏菜谱</div>
-          <div class="cookbook-empty-desc">看到喜欢的菜谱，点击 ❤️ 收藏起来<br>打造属于你的专属私房菜谱本</div>
-        </div>
-      </div>
-    `;
-    return;
-  }
-
-  // ===== 统计数据 =====
-  const now = new Date();
-  const thisMonth = now.getMonth();
-  const thisYear = now.getFullYear();
-  let totalCount = favorites.length;
-  let monthCount = 0;
-  let cookedCount = 0;
-  const cooked = window.userStats.cookedRecipes || {};
-
-  favorites.forEach((r) => {
-    const d = new Date(r._favoriteAddedAt);
-    if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-      monthCount++;
-    }
-    if (cooked[r.id]) {
-      cookedCount++;
-    }
-  });
-
-  // ===== 随机纸张纹理角度 =====
-  const getRandomRotation = (() => {
-    const rotations = [-0.8, -0.4, 0, 0.4, 0.8];
-    let idx = 0;
-    return () => {
-      const r = rotations[idx % rotations.length];
-      idx++;
-      return r;
-    };
-  })();
-
-  // ===== 渲染HTML =====
-  const headerHtml = `
-    <div class="cookbook-header">
-      <div class="cookbook-title-wrap">
-        <div class="cookbook-title">📖 我的私房菜</div>
-        <div class="cookbook-subtitle">My Private Recipe Book</div>
-      </div>
-      <div class="cookbook-stats">
-        <div class="cookbook-stat">
-          <div class="cookbook-stat-num">${totalCount}</div>
-          <div class="cookbook-stat-label">总收藏</div>
-        </div>
-        <div class="cookbook-stat-divider"></div>
-        <div class="cookbook-stat">
-          <div class="cookbook-stat-num">${cookedCount}</div>
-          <div class="cookbook-stat-label">已做过</div>
-        </div>
-        <div class="cookbook-stat-divider"></div>
-        <div class="cookbook-stat">
-          <div class="cookbook-stat-num">${totalCount - cookedCount}</div>
-          <div class="cookbook-stat-label">待尝试</div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const cardsHtml = favorites.map((r) => {
-    const emoji = getRecipeEmoji(r);
-    const image = r.images && r.images.length > 0 ? r.images[0] : null;
-    const timeMins = r.timeMinutes ? r.timeMinutes : null;
-    const calories = r.calories ? r.calories : null;
-    const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
-    const fav = isFavorite(r.id);
-    const hasCooked = !!cooked[r.id];
-    const cookCount = hasCooked ? cooked[r.id].count : 0;
-    const addedDate = new Date(r._favoriteAddedAt);
-    const dateStr = `${addedDate.getFullYear()}.${String(addedDate.getMonth() + 1).padStart(2, '0')}.${String(addedDate.getDate()).padStart(2, '0')}`;
-    const rotation = getRandomRotation();
-
-    return `
-      <div class="recipe-card-cookbook" style="--rotation: ${rotation}deg" onclick="showRecipeDetailDirect('${r.id}')">
-        <div class="cookbook-binding-holes">
-          <div class="binding-hole"></div>
-          <div class="binding-hole"></div>
-          <div class="binding-hole"></div>
-        </div>
-        <div class="cookbook-bookmark ${hasCooked ? 'cooked' : ''}">
-          ${hasCooked ? '✓' : '❤'}
-        </div>
-        <button class="cookbook-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
-          ${fav ? '❤️' : '🤍'}
-        </button>
-        <div class="cookbook-card-img-wrap">
-          ${image
-            ? `<img class="cookbook-card-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div class="cookbook-card-emoji" style="display:none">${emoji}</div>`
-            : `<div class="cookbook-card-emoji">${emoji}</div>`
-          }
-        </div>
-        <div class="cookbook-card-body">
-          <div class="cookbook-card-title-row">
-            <span class="cookbook-card-title">${r.title}</span>
-          </div>
-          <div class="cookbook-card-meta">
-            ${timeMins ? `<span class="cookbook-meta-item">⏱ ${timeMins}分</span>` : ''}
-            ${calories ? `<span class="cookbook-meta-item">🔥 ${calories}卡</span>` : ''}
-            ${tagText ? `<span class="cookbook-tag">${tagText}</span>` : ''}
-          </div>
-          <div class="cookbook-card-footer">
-            <span class="cookbook-date">📅 收藏于 ${dateStr}</span>
-            ${hasCooked ? `<span class="cookbook-cooked-badge">🍳 做过 ${cookCount}次</span>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  }).join("");
-
   app.innerHTML = `
-    <div class="page detail-list-page favorites-page cookbook-page">
+    <div class="page detail-list-page">
       <div class="swipe-header">
         <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
-        <div class="swipe-header-title">📖 我的私房菜</div>
+        <div class="swipe-header-title">❤️ 收藏菜谱</div>
         <div style="width:50px"></div>
       </div>
 
-      <div class="cookbook-container">
-        ${headerHtml}
-        <div class="cookbook-grid">
-          ${cardsHtml}
+      ${favorites.length === 0 ? `
+        <div class="detail-empty">
+          <div style="font-size:48px;margin-bottom:12px">❤️</div>
+          <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有收藏菜谱</div>
+          <div style="font-size:13px;color:var(--text-muted)">看到喜欢的菜谱，点击 ❤️ 收藏起来</div>
         </div>
-        <div class="cookbook-end">
-          <div class="cookbook-end-line"></div>
-          <span>— 未完待续 —</span>
-          <div class="cookbook-end-line"></div>
+      ` : `
+        <div class="stamp-grid">
+          ${favorites.map((r) => {
+            const emoji = getRecipeEmoji(r);
+            const image = r.images && r.images.length > 0 ? r.images[0] : null;
+            const fav = isFavorite(r.id);
+            return `
+              <div class="stamp-card" onclick="showRecipeDetailDirect('${r.id}')">
+                <button class="stamp-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
+                  ${fav ? '❤️' : '🤍'}
+                </button>
+                <div class="stamp-inner">
+                  ${image
+                    ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                       <div class="stamp-img-placeholder" style="display:none">${emoji}</div>`
+                    : `<div class="stamp-img-placeholder">${emoji}</div>`
+                  }
+                  <div class="stamp-title">${r.title}</div>
+                </div>
+              </div>
+            `;
+          }).join("")}
         </div>
-      </div>
+      `}
     </div>
   `;
 }
