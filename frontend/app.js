@@ -4104,11 +4104,11 @@ function renderMe() {
 
       <div class="me-stats">
         <div class="me-stat-card clickable" onclick="showConsumedIngredients()">
-          <div class="me-stat-num">${stats.saved}</div>
+          <div class="me-stat-num">${Object.keys(window.userStats.consumedIngredients || {}).length}</div>
           <div class="me-stat-label">消耗食材</div>
         </div>
         <div class="me-stat-card clickable" onclick="showFavoriteRecipes()">
-          <div class="me-stat-num">${getFavoriteRecipeIds().length}</div>
+          <div class="me-stat-num">${getFavoriteRecipes().length}</div>
           <div class="me-stat-label">收藏菜谱</div>
         </div>
       </div>
