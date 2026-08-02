@@ -555,7 +555,7 @@ const ChefGuides = {
     return stepNotes;
   },
 
-  // 构建「大厨总结」面板 HTML（默认厨师通用技法 + 自定义厨师总结）
+  // 构建「大厨总结」面板 HTML（默认厨师AI总结 + 自定义厨师总结）
   async buildSummaryHTML(recipeTitle) {
     // 检查是否有启用的厨师
     const enabledChefs = ChefManager.getEnabled();
@@ -563,7 +563,6 @@ const ChefGuides = {
       return `<div class="chef-guide-empty">当前大厨功能还未启用</div>`;
     }
     try {
-      await Promise.all([this._loadGeneral(), this._loadIndex()]);
       const recipe =
         (typeof allRecipes !== "undefined" &&
           allRecipes.find((r) => r.title === recipeTitle)) ||
@@ -573,7 +572,7 @@ const ChefGuides = {
         <span class="cg-notebook-icon">📌</span>
         <div>
           <div class="cg-notebook-title">${recipe.title} · 大厨总结</div>
-          <div class="cg-notebook-sub">食材处理 + 烹饪技法 + 通用要点</div>
+          <div class="cg-notebook-sub">3个要点 + 2个坑 + 1个升级</div>
         </div>
       </div>`;
       if (window.ChefMemory) {
@@ -590,22 +589,74 @@ const ChefGuides = {
 
       let hasContent = false;
 
-      // 1. 默认大厨总结（通用技法）
+      // 1. 默认大厨总结：AI针对该菜谱生成（3+2+1格式），带缓存
       if (ChefManager.isEnabled(ChefManager.DEFAULT_CHEF_ID)) {
-        const sections = this._matchSections(recipe);
-        const ingredientSecs = sections.filter((s) => s.title.startsWith("食材处理"));
-        const techniqueSecs = sections.filter((s) => s.title.startsWith("技法"));
-        const generalSecs = sections.filter((s) => s.title.startsWith("通用"));
-        if (ingredientSecs.length || techniqueSecs.length || generalSecs.length) {
-          hasContent = true;
-          html += `<div class="cg-annotations">`;
-          for (const sec of ingredientSecs)
-            html += this._renderAnnotationCard("🥩", sec.title.replace("食材处理：", ""), sec.body, "ingredient");
-          for (const sec of techniqueSecs)
-            html += this._renderAnnotationCard("🔥", sec.title.replace("技法：", ""), sec.body, "technique");
-          for (const sec of generalSecs)
-            html += this._renderAnnotationCard("💧", sec.title.replace("通用：", ""), sec.body, "general");
-          html += `</div>`;
+        hasContent = true;
+        const cacheKey = `chef_summary_${recipe.id || recipe.title}`;
+        let cached = null;
+        try {
+          cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
+        } catch (e) { cached = null; }
+
+        if (cached && cached.text) {
+          html += `<div class="cg-ai-summary" style="border-left:3px solid #3cb371;padding-left:12px;margin-top:12px;">
+            <div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
+            <div class="cg-ai-summary-content">${this.renderMarkdown(cached.text)}</div>
+          </div>`;
+        } else {
+          // 显示加载中，同时触发异步生成
+          const loadingId = `ai_summary_loading_${Date.now()}`;
+          html += `<div class="cg-ai-summary" id="${loadingId}" style="border-left:3px solid #3cb371;padding-left:12px;margin-top:12px;">
+            <div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
+            <div style="color:var(--text-muted);font-size:14px;display:flex;align-items:center;gap:8px;">
+              <span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span>
+              大厨正在总结这道菜的要点...
+            </div>
+          </div>`;
+          // 异步生成AI总结
+          setTimeout(async () => {
+            try {
+              const ingredients = (recipe.coreIngredients || recipe.ingredients || []).join("、");
+              const steps = (recipe.steps || []).join("；");
+              const prompt = `你是一位经验丰富的中餐大厨，现在要给用户总结「${recipe.title}」这道菜的关键要点。
+
+这道菜的食材：${ingredients}
+这道菜的步骤：${steps}
+
+请严格按照以下格式输出总结，只针对这道菜，不要输出无关内容（不要提其他菜、不要提叶菜/土豆/勾芡/上浆等不相关技法，除非这道菜确实用到）：
+
+## 最重要的3个点
+1. （第一点，一句话说清楚核心关键）
+2. （第二点）
+3. （第三点）
+
+## 最容易失败的2个点
+1. （第一个坑，具体说是什么问题以及如何避免）
+2. （第二个坑）
+
+## 下次可以升级的1个点
+1. （具体可操作的一个改进方向，比如调味、火候、搭配等，不要泛泛而谈）
+
+要求：语言简洁接地气，像大厨说话，每点不要超过2行。`;
+              const aiText = await callAI(prompt, "chef_summary");
+              // 缓存结果
+              localStorage.setItem(cacheKey, JSON.stringify({ text: aiText, time: Date.now() }));
+              // 更新DOM
+              const el = document.getElementById(loadingId);
+              if (el) {
+                el.innerHTML = `<div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
+                <div class="cg-ai-summary-content">${this.renderMarkdown(aiText)}</div>`;
+              }
+            } catch (e) {
+              console.error("AI总结生成失败", e);
+              const el = document.getElementById(loadingId);
+              if (el) {
+                el.innerHTML = `<div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
+                <div style="color:#999;font-size:13px;">总结生成失败，请稍后重试</div>
+                <button onclick="this.parentElement.remove();ChefGuides.buildSummaryHTML('${recipeTitle}').then(html=>{this.closest('.chef-guide-section').querySelector('.chef-guide-content').innerHTML=html;})" style="margin-top:8px;padding:4px 12px;border:1px solid #3cb371;border-radius:8px;background:white;color:#3cb371;font-size:12px;cursor:pointer;">重试</button>`;
+              }
+            }
+          }, 100);
         }
       }
 

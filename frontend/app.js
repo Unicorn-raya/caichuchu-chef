@@ -5276,7 +5276,10 @@ function showConsumedIngredients() {
       <div class="ingredient-record-section">
         <div class="ingredient-record-title">
           <span>🥬 已消耗食材</span>
-          <span class="ingredient-record-count">${consumedList.length} 种</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="ingredient-record-count">${consumedList.length} 种</span>
+            ${consumedList.length > 0 ? `<button class="ingredient-record-clear" onclick="clearConsumedIngredients()">清空</button>` : ""}
+          </div>
         </div>
         ${consumedList.length === 0 ? `
           <div class="detail-empty-small">还没有消耗记录</div>
@@ -5296,7 +5299,10 @@ function showConsumedIngredients() {
       <div class="ingredient-record-section">
         <div class="ingredient-record-title">
           <span>🛒 经常补充的食材</span>
-          <span class="ingredient-record-count">${supplementedList.length} 种</span>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="ingredient-record-count">${supplementedList.length} 种</span>
+            ${supplementedList.length > 0 ? `<button class="ingredient-record-clear" onclick="clearSupplementedIngredients()">清空</button>` : ""}
+          </div>
         </div>
         <div class="ingredient-record-hint">推荐菜谱中需要采买的食材，建议下次购物时补充</div>
         ${supplementedList.length === 0 ? `
@@ -5315,6 +5321,24 @@ function showConsumedIngredients() {
       </div>
     </div>
   `;
+}
+
+function clearConsumedIngredients() {
+  if (confirm("确定清空所有已消耗食材记录吗？此操作不可恢复。")) {
+    window.userStats.consumedIngredients = {};
+    saveStats();
+    showConsumedIngredients();
+    showToast("已清空消耗记录");
+  }
+}
+
+function clearSupplementedIngredients() {
+  if (confirm("确定清空所有经常补充的食材记录吗？此操作不可恢复。")) {
+    window.userStats.supplementedIngredients = {};
+    saveStats();
+    showConsumedIngredients();
+    showToast("已清空补充记录");
+  }
 }
 
 function clearAllData() {

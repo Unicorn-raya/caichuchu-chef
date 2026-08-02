@@ -5741,3 +5741,25 @@ u.cg-underline {
   color: var(--text-secondary, #666);
   border: 2px solid var(--border, #e8e0d8);
 }
+
+.ingredient-record-clear {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e8e0d8);
+  background: white;
+  color: var(--text-secondary, #888);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ingredient-record-clear:hover {
+  background: #fff0f0;
+  color: #e55;
+  border-color: #fcc;
+}
+
+.ingredient-record-clear:active {
+  transform: scale(0.95);
+}
