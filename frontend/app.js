@@ -5133,37 +5133,38 @@ function showFavoriteRecipes() {
   const favorites = getFavoriteRecipes();
 
   app.innerHTML = `
-    <div class="page detail-list-page">
+    <div class="page detail-list-page favorites-page">
       <div class="swipe-header">
         <button class="swipe-header-back" onclick="currentMeSubPage=null;document.getElementById('bottomNav').style.display='';renderPage('me')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
-        <div class="swipe-header-title">❤️ 收藏菜谱</div>
+        <div class="swipe-header-title">📌 收藏菜谱</div>
         <div style="width:50px"></div>
       </div>
 
       ${favorites.length === 0 ? `
         <div class="detail-empty">
-          <div style="font-size:48px;margin-bottom:12px">❤️</div>
+          <div style="font-size:48px;margin-bottom:12px">📌</div>
           <div style="font-size:16px;font-weight:600;margin-bottom:4px">还没有收藏菜谱</div>
-          <div style="font-size:13px;color:var(--text-muted)">看到喜欢的菜谱，点击 ❤️ 收藏起来</div>
+          <div style="font-size:13px;color:var(--text-muted)">看到喜欢的菜谱，点击菜谱详情里的收藏按钮钉起来</div>
         </div>
       ` : `
         <div class="stamp-grid">
-          ${favorites.map((r) => {
+          ${favorites.map((r, idx) => {
             const emoji = getRecipeEmoji(r);
             const image = r.images && r.images.length > 0 ? r.images[0] : null;
             const fav = isFavorite(r.id);
             const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
             const timeMins = r.timeMinutes ? r.timeMinutes : null;
-            const addedDate = new Date(r._favoriteAddedAt);
+            const addedDate = new Date(r._favoriteAddedAt || Date.now());
             const dateStr = `${addedDate.getMonth() + 1}月${addedDate.getDate()}日`;
+            // 随机分配图钉颜色（按索引取模，保持一致性）
+            const pinColors = ['pin-red', 'pin-pink', 'pin-orange', 'pin-yellow', 'pin-green', 'pin-blue', 'pin-purple', 'pin-brown'];
+            const pinColor = pinColors[idx % pinColors.length];
             return `
               <div class="stamp-card" onclick="showRecipeDetailDirect('${r.id}')">
-                <button class="stamp-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}">
-                  ${fav ? '❤️' : '🤍'}
-                </button>
+                <button class="stamp-fav-btn ${fav ? 'active' : ''} ${pinColor}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}"></button>
                 <div class="stamp-inner">
                   ${image
                     ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
@@ -5213,7 +5214,7 @@ function showCookedRecipes() {
         </div>
       ` : `
         <div class="stamp-grid">
-          ${entries.map(([recipeId, info]) => {
+          ${entries.map(([recipeId, info], idx) => {
             const recipe = allRecipes.find((r) => r.id === recipeId);
             const image = recipe && recipe.images && recipe.images.length > 0
               ? recipe.images[0] : null;
@@ -5221,8 +5222,12 @@ function showCookedRecipes() {
             const tagText = recipe && recipe.tags && recipe.tags.length > 0 ? recipe.tags[0] : "";
             const lastDate = new Date(info.lastCooked);
             const dateStr = `${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
+            // 随机分配图钉颜色
+            const pinColors = ['pin-red', 'pin-pink', 'pin-orange', 'pin-yellow', 'pin-green', 'pin-blue', 'pin-purple', 'pin-brown'];
+            const pinColor = pinColors[idx % pinColors.length];
             return `
               <div class="stamp-card" onclick="${recipe ? `showRecipeDetailDirect('${recipeId}')` : ''}">
+                <div class="stamp-fav-btn active ${pinColor}" style="pointer-events:none;"></div>
                 <div class="stamp-count-badge">×${info.count}</div>
                 <div class="stamp-inner">
                   ${image
