@@ -212,6 +212,88 @@ const ChefGuides = {
     return html;
   },
 
+  /**
+   * 将AI生成的3+2+1格式大厨总结渲染为美化卡片样式
+   * 三个区块：💡要点（绿）/⚠️坑点（橙）/✨升级（紫）
+   */
+  renderAISummaryCards(md) {
+    if (!md || !md.trim()) return '';
+
+    const esc = (s) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const inlineBold = (s) => esc(s).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+
+    // 解析markdown为结构化区块
+    const sections = [];
+    const lines = md.split('\n').map(l => l.trim()).filter(l => l);
+    let currentSection = null;
+
+    for (const line of lines) {
+      const h2Match = line.match(/^##\s+(.+)$/);
+      if (h2Match) {
+        const title = h2Match[1].trim();
+        let type = 'key', icon = '💡', color = '#3cb371', lightColor = '#e8f5e9';
+        if (title.includes('失败') || title.includes('坑')) {
+          type = 'pitfall'; icon = '⚠️'; color = '#e67e22'; lightColor = '#fff3e0';
+        } else if (title.includes('升级') || title.includes('进阶')) {
+          type = 'upgrade'; icon = '✨'; color = '#9b59b6'; lightColor = '#f3e5f5';
+        }
+        currentSection = { title, type, icon, color, lightColor, items: [] };
+        sections.push(currentSection);
+        continue;
+      }
+      const numMatch = line.match(/^(\d+)[.、)）]\s*(.+)$/);
+      if (numMatch && currentSection) {
+        currentSection.items.push(inlineBold(numMatch[2].trim()));
+        continue;
+      }
+      const bulletMatch = line.match(/^[-*]\s+(.+)$/);
+      if (bulletMatch && currentSection) {
+        currentSection.items.push(inlineBold(bulletMatch[1].trim()));
+      }
+    }
+
+    if (sections.length === 0) {
+      // 如果解析失败，退回普通markdown渲染
+      return `<div class="cg-ai-summary-content">${this.renderMarkdown(md)}</div>`;
+    }
+
+    // 统计数量
+    const keyCount = sections.find(s => s.type === 'key')?.items.length || 0;
+    const pitCount = sections.find(s => s.type === 'pitfall')?.items.length || 0;
+    const upCount = sections.find(s => s.type === 'upgrade')?.items.length || 0;
+
+    let html = '';
+
+    // 大厨标签
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;padding-left:4px;">
+      <span style="font-size:16px;">👨‍🍳</span>
+      <span style="font-size:15px;font-weight:600;color:#3cb371;">默认大厨总结</span>
+      <span style="margin-left:4px;padding:2px 6px;border-radius:4px;background:rgba(60,179,113,0.15);color:#3cb371;font-size:11px;font-weight:500;">AI生成</span>
+    </div>`;
+
+    // 渲染每个区块
+    for (const sec of sections) {
+      html += `<div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-left:4px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:${sec.lightColor};display:flex;align-items:center;justify-content:center;font-size:14px;">${sec.icon}</div>
+          <div style="font-size:16px;font-weight:700;color:${sec.color};">${sec.title}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">`;
+
+      sec.items.forEach((item, idx) => {
+        html += `<div style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:12px;background:${sec.lightColor}80;">
+          <div style="flex-shrink:0;width:24px;height:24px;border-radius:50%;background:${sec.color};color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">${idx + 1}</div>
+          <div style="font-size:14px;line-height:1.6;color:#333;flex:1;">${item}</div>
+        </div>`;
+      });
+
+      html += `</div></div>`;
+    }
+
+    return html;
+  },
+
   // 加载单个菜谱的详细指南（带缓存）
   async _loadRecipeGuide(file) {
     if (this._recipeCache[file]) return this._recipeCache[file];
@@ -599,17 +681,30 @@ const ChefGuides = {
         } catch (e) { cached = null; }
 
         if (cached && cached.text) {
-          html += `<div class="cg-ai-summary" style="border-left:3px solid #3cb371;padding-left:12px;margin-top:12px;">
-            <div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
-            <div class="cg-ai-summary-content">${this.renderMarkdown(cached.text)}</div>
+          // 解析统计数量用于副标题
+          const keyMatch = cached.text.match(/##\s*最重要的[\d个]+点[\s\S]*?(?=##|$)/);
+          const pitMatch = cached.text.match(/##\s*最容易失败的[\d个]+点[\s\S]*?(?=##|$)/);
+          const upMatch = cached.text.match(/##\s*下次可以升级的[\d个]+点[\s\S]*?(?=##|$)/);
+          const keyN = keyMatch ? (keyMatch[0].match(/^\d+[.、]/gm) || []).length : 3;
+          const pitN = pitMatch ? (pitMatch[0].match(/^\d+[.、]/gm) || []).length : 2;
+          const upN = upMatch ? (upMatch[0].match(/^\d+[.、]/gm) || []).length : 1;
+          // 更新副标题
+          const subEl = document.querySelector('.cg-notebook-sub');
+          if (subEl) subEl.textContent = `${keyN}个要点 + ${pitN}个坑 + ${upN}个升级`;
+
+          html += `<div class="cg-ai-summary" style="margin-top:12px;">
+            ${this.renderAISummaryCards(cached.text)}
           </div>`;
         } else {
           // 显示加载中，同时触发异步生成
           const loadingId = `ai_summary_loading_${Date.now()}`;
-          html += `<div class="cg-ai-summary" id="${loadingId}" style="border-left:3px solid #3cb371;padding-left:12px;margin-top:12px;">
-            <div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
-            <div style="color:var(--text-muted);font-size:14px;display:flex;align-items:center;gap:8px;">
-              <span class="loading-spinner" style="width:16px;height:16px;border-width:2px;"></span>
+          html += `<div class="cg-ai-summary" id="${loadingId}" style="margin-top:12px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;padding-left:4px;">
+              <span style="font-size:16px;">👨‍🍳</span>
+              <span style="font-size:15px;font-weight:600;color:#3cb371;">默认大厨总结</span>
+            </div>
+            <div style="color:var(--text-muted);font-size:14px;display:flex;align-items:center;gap:8px;padding:16px;background:#f8f9fa;border-radius:12px;">
+              <span class="loading-spinner" style="width:16px;height:16px;border-width:2px;border-color:#3cb371;border-top-color:transparent;"></span>
               大厨正在总结这道菜的要点...
             </div>
           </div>`;
@@ -641,19 +736,30 @@ const ChefGuides = {
               const aiText = await callAI(prompt, "chef_summary");
               // 缓存结果
               localStorage.setItem(cacheKey, JSON.stringify({ text: aiText, time: Date.now() }));
+              // 更新副标题统计
+              const keyMatch = aiText.match(/##\s*最重要的[\d个]+点[\s\S]*?(?=##|$)/);
+              const pitMatch = aiText.match(/##\s*最容易失败的[\d个]+点[\s\S]*?(?=##|$)/);
+              const upMatch = aiText.match(/##\s*下次可以升级的[\d个]+点[\s\S]*?(?=##|$)/);
+              const keyN = keyMatch ? (keyMatch[0].match(/^\d+[.、]/gm) || []).length : 3;
+              const pitN = pitMatch ? (pitMatch[0].match(/^\d+[.、]/gm) || []).length : 2;
+              const upN = upMatch ? (upMatch[0].match(/^\d+[.、]/gm) || []).length : 1;
+              const subEl = document.querySelector('.cg-notebook-sub');
+              if (subEl) subEl.textContent = `${keyN}个要点 + ${pitN}个坑 + ${upN}个升级`;
               // 更新DOM
               const el = document.getElementById(loadingId);
               if (el) {
-                el.innerHTML = `<div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
-                <div class="cg-ai-summary-content">${this.renderMarkdown(aiText)}</div>`;
+                el.innerHTML = this.renderAISummaryCards(aiText);
               }
             } catch (e) {
               console.error("AI总结生成失败", e);
               const el = document.getElementById(loadingId);
               if (el) {
-                el.innerHTML = `<div style="font-size:13px;font-weight:600;color:#3cb371;margin-bottom:10px;">👨‍🍳 默认大厨总结</div>
-                <div style="color:#999;font-size:13px;">总结生成失败，请稍后重试</div>
-                <button onclick="this.parentElement.remove();ChefGuides.buildSummaryHTML('${recipeTitle}').then(html=>{this.closest('.chef-guide-section').querySelector('.chef-guide-content').innerHTML=html;})" style="margin-top:8px;padding:4px 12px;border:1px solid #3cb371;border-radius:8px;background:white;color:#3cb371;font-size:12px;cursor:pointer;">重试</button>`;
+                el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;padding-left:4px;">
+                  <span style="font-size:16px;">👨‍🍳</span>
+                  <span style="font-size:15px;font-weight:600;color:#3cb371;">默认大厨总结</span>
+                </div>
+                <div style="color:#999;font-size:13px;padding:12px;background:#fff5f5;border-radius:8px;">总结生成失败，请稍后重试</div>
+                <button onclick="this.parentElement.remove();ChefGuides.buildSummaryHTML('${recipeTitle}').then(html=>{this.closest('.chef-guide-section').querySelector('.chef-guide-content').innerHTML=html;})" style="margin-top:8px;padding:6px 14px;border:1px solid #3cb371;border-radius:8px;background:white;color:#3cb371;font-size:12px;cursor:pointer;">重试</button>`;
               }
             }
           }, 100);
@@ -666,18 +772,21 @@ const ChefGuides = {
         if (!chef.isDefault && summary) {
           hasContent = true;
           const avatarHtml = chef.avatar
-            ? `<img src="${chef.avatar}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;vertical-align:middle;" />`
+            ? `<img src="${chef.avatar}" style="width:22px;height:22px;border-radius:50%;object-fit:cover;vertical-align:middle;" />`
             : "🧑‍🍳";
-          html += `<div class="cg-custom-summary-block" style="border-left:3px solid ${chef.color};padding-left:12px;margin-top:16px;">`;
-          html += `<div style="font-size:13px;font-weight:600;color:${chef.color};margin-bottom:8px;">${avatarHtml} ${chef.name}的总结</div>`;
+          html += `<div class="cg-custom-summary-block" style="margin-top:20px;padding-top:16px;border-top:1px dashed #e0e0d8;">`;
+          html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-left:4px;">
+            ${avatarHtml}
+            <span style="font-size:15px;font-weight:600;color:${chef.color};">${chef.name}的总结</span>
+          </div>`;
           // 润色后内容
-          html += `<div class="cg-custom-note-content">${this.renderMarkdown(this._fillEmptySections(summary))}</div>`;
+          html += `<div class="cg-custom-note-content" style="padding:0;background:transparent;">${this.renderMarkdown(this._fillEmptySections(summary))}</div>`;
           // 原始内容（润色前）
           const note = chef.recipes.find(r => r.title === recipeTitle);
           if (note && note.rawSummary && note.rawSummary.trim() && note.rawSummary.trim() !== summary.trim()) {
-            html += `<div class="cg-raw-content-block">`;
-            html += `<div class="cg-raw-content-label">原始输入</div>`;
-            html += `<div class="cg-raw-content-text">${this.renderMarkdown(this._fillEmptySections(note.rawSummary))}</div>`;
+            html += `<div class="cg-raw-content-block" style="margin-top:12px;padding:12px;background:#f5f5f0;border-radius:10px;">`;
+            html += `<div class="cg-raw-content-label" style="font-size:12px;color:#999;margin-bottom:6px;">📝 原始输入</div>`;
+            html += `<div class="cg-raw-content-text" style="font-size:13px;color:#888;line-height:1.6;">${this.renderMarkdown(this._fillEmptySections(note.rawSummary))}</div>`;
             html += `</div>`;
           }
           html += `</div>`;
