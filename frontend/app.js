@@ -255,6 +255,17 @@ function isFavorite(recipeId) {
   return getFavoriteRecipeIds().some(item => item.id === recipeId);
 }
 
+// 大头钉颜色列表（与CSS对应），基于recipeId哈希分配，确保同一道菜颜色一致
+const _pinColorList = ['pin-red', 'pin-pink', 'pin-orange', 'pin-yellow', 'pin-green', 'pin-blue', 'pin-purple', 'pin-brown'];
+function getPinColorClass(recipeId) {
+  let hash = 0;
+  for (let i = 0; i < recipeId.length; i++) {
+    hash = ((hash << 5) - hash) + recipeId.charCodeAt(i);
+    hash |= 0;
+  }
+  return _pinColorList[Math.abs(hash) % _pinColorList.length];
+}
+
 function toggleFavorite(recipeId) {
   const favs = getFavoriteRecipeIds();
   const idx = favs.findIndex(item => item.id === recipeId);
@@ -3173,6 +3184,7 @@ function renderRecipeListCard(recipe) {
   const emoji = getRecipeEmoji(recipe);
   const conflictLabels = getRecipeConflictLabels(recipe);
   const fav = isFavorite(recipe.id);
+  const pinColor = getPinColorClass(recipe.id);
   const chefTag = recipe._chefTag
     ? `<span class="chef-rec-tag ${recipe._chefTagCls}">${recipe._chefTag}</span>`
     : "";
@@ -3184,9 +3196,7 @@ function renderRecipeListCard(recipe) {
            <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
         : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
       }
-      <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
-        ${fav ? '❤️' : '🤍'}
-      </button>
+      <button class="recipe-fav-btn ${pinColor} ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}"></button>
       ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
         <div class="recipe-list-title-row">
@@ -3205,17 +3215,29 @@ function renderRecipeListCard(recipe) {
 
 function toggleFavoriteAndUpdate(recipeId) {
   toggleFavorite(recipeId);
-  // 就地更新按钮图标，不重新渲染页面（避免丢失分类视图/滚动位置）
+  // 就地更新按钮状态，不重新渲染页面（避免丢失分类视图/滚动位置）
   const fav = isFavorite(recipeId);
+  const titleText = fav ? '取消收藏' : '收藏';
+
+  // 更新发现页/搜索页/分类页列表卡片上的大头钉
   document.querySelectorAll(`.recipe-fav-btn`).forEach((btn) => {
-    // 找到对应recipeId的按钮（在卡片内）
     const card = btn.closest('.recipe-list-card');
     if (card && card.getAttribute('onclick') && card.getAttribute('onclick').includes(recipeId)) {
-      btn.textContent = fav ? '❤️' : '🤍';
       btn.classList.toggle('active', fav);
-      btn.title = fav ? '取消收藏' : '收藏';
+      btn.title = titleText;
+      btn.textContent = ''; // 大头钉不需要文字
     }
   });
+
+  // 更新收藏页stamp卡片上的大头钉（只更新active状态，不刷新页面避免打乱位置）
+  document.querySelectorAll(`.stamp-fav-btn`).forEach((btn) => {
+    const card = btn.closest('.stamp-card');
+    if (card && card.getAttribute('onclick') && card.getAttribute('onclick').includes(recipeId)) {
+      btn.classList.toggle('active', fav);
+      btn.title = titleText;
+    }
+  });
+
   // 如果在收藏页面取消收藏，刷新列表移除该项
   if (!fav && document.querySelector(".favorites-page")) {
     showFavoriteRecipes();
@@ -3271,13 +3293,12 @@ function showAIRecipeCategory() {
 function renderAIRecipeCard(recipe) {
   const emoji = "🌐";
   const fav = isFavorite(recipe.id);
+  const pinColor = getPinColorClass(recipe.id);
 
   return `
     <div class="recipe-list-card ai-recipe-card" onclick="showAIRecipeDetail('${recipe.id}')" oncontextmenu="return false;" data-ai-id="${recipe.id}">
       <div class="recipe-list-thumb-placeholder">${emoji}</div>
-      <button class="recipe-fav-btn ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}">
-        ${fav ? '❤️' : '🤍'}
-      </button>
+      <button class="recipe-fav-btn ${pinColor} ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}"></button>
       <div class="recipe-conflict-flags"><span class="recipe-conflict-flag flag-ai">AI</span></div>
       <div class="recipe-list-info">
         <div class="recipe-list-title">${recipe.title}</div>
@@ -5151,7 +5172,7 @@ function showFavoriteRecipes() {
         </div>
       ` : `
         <div class="stamp-grid">
-          ${favorites.map((r, idx) => {
+          ${favorites.map((r) => {
             const emoji = getRecipeEmoji(r);
             const image = r.images && r.images.length > 0 ? r.images[0] : null;
             const fav = isFavorite(r.id);
@@ -5159,12 +5180,16 @@ function showFavoriteRecipes() {
             const timeMins = r.timeMinutes ? r.timeMinutes : null;
             const addedDate = new Date(r._favoriteAddedAt || Date.now());
             const dateStr = `${addedDate.getMonth() + 1}月${addedDate.getDate()}日`;
-            // 随机分配图钉颜色（按索引取模，保持一致性）
-            const pinColors = ['pin-red', 'pin-pink', 'pin-orange', 'pin-yellow', 'pin-green', 'pin-blue', 'pin-purple', 'pin-brown'];
-            const pinColor = pinColors[idx % pinColors.length];
+            // 基于recipeId分配图钉颜色（与发现页保持一致）
+            const pinColor = getPinColorClass(r.id);
+            // 获取做菜次数
+            const cookedInfo = (window.userStats && window.userStats.cookedRecipes) ? window.userStats.cookedRecipes[r.id] : null;
+            const cookCount = cookedInfo ? cookedInfo.count : 0;
+            const countText = cookCount > 0 ? String(cookCount) : '';
+            const countLen = countText.length;
             return `
               <div class="stamp-card" onclick="showRecipeDetailDirect('${r.id}')">
-                <button class="stamp-fav-btn ${fav ? 'active' : ''} ${pinColor}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}"></button>
+                <button class="stamp-fav-btn ${fav ? 'active' : ''} ${pinColor}" ${countLen >= 3 ? `data-count-length="${countLen}"` : ''} onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}${cookCount > 0 ? ` · 已做${cookCount}次` : ''}">${countText}</button>
                 <div class="stamp-inner">
                   ${image
                     ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
@@ -5214,7 +5239,7 @@ function showCookedRecipes() {
         </div>
       ` : `
         <div class="stamp-grid">
-          ${entries.map(([recipeId, info], idx) => {
+          ${entries.map(([recipeId, info]) => {
             const recipe = allRecipes.find((r) => r.id === recipeId);
             const image = recipe && recipe.images && recipe.images.length > 0
               ? recipe.images[0] : null;
@@ -5222,9 +5247,8 @@ function showCookedRecipes() {
             const tagText = recipe && recipe.tags && recipe.tags.length > 0 ? recipe.tags[0] : "";
             const lastDate = new Date(info.lastCooked);
             const dateStr = `${lastDate.getMonth() + 1}月${lastDate.getDate()}日`;
-            // 随机分配图钉颜色
-            const pinColors = ['pin-red', 'pin-pink', 'pin-orange', 'pin-yellow', 'pin-green', 'pin-blue', 'pin-purple', 'pin-brown'];
-            const pinColor = pinColors[idx % pinColors.length];
+            // 基于recipeId分配图钉颜色（与发现页/收藏页一致）
+            const pinColor = getPinColorClass(recipeId);
             return `
               <div class="stamp-card" onclick="${recipe ? `showRecipeDetailDirect('${recipeId}')` : ''}">
                 <div class="stamp-fav-btn active ${pinColor}" style="pointer-events:none;"></div>
