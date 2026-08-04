@@ -2176,7 +2176,7 @@ function renderSwipeCard(combo, stackIdx) {
              <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
           : `<div class="swipe-card-placeholder">${emoji}</div>`
         }
-        <div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>
+        ${_creatorMode ? `<div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>` : ""}
         ${rec.hasAllergen ? `<div class="allergen-flag">含过敏源：${(getRecipeAllergenLabels(recipe) || []).join("、")}</div>` : ""}
         <div class="swipe-card-body">
           <div class="swipe-card-title">${recipe.title}</div>
@@ -2219,7 +2219,7 @@ function renderSwipeCard(combo, stackIdx) {
           <div class="combo-item-meta">
             ${recipe.timeMinutes ? `<span>⏱${recipe.timeMinutes}'</span>` : ""}
             ${recipe.difficulty ? `<span>${"★".repeat(recipe.difficulty)}</span>` : ""}
-            <span class="combo-item-match">匹配${rec.matchPercent}%</span>
+            ${_creatorMode ? `<span class="combo-item-match">匹配${rec.matchPercent}%</span>` : ""}
             ${rec.hasAllergen ? `<span class="combo-item-allergen">⚠含过敏源：${(getRecipeAllergenLabels(recipe) || []).join("、")}</span>` : ""}
           </div>
           <div class="combo-item-missing">
@@ -2238,7 +2238,7 @@ function renderSwipeCard(combo, stackIdx) {
     <div class="swipe-card combo-card" data-idx="${swipeIndex + stackIdx}">
       <div class="combo-card-header">
         <span class="combo-badge">${comboTypeLabel(combo.type)}</span>
-        <span class="combo-match">综合匹配 ${combo.totalMatchPercent}%</span>
+        ${_creatorMode ? `<span class="combo-match">综合匹配 ${combo.totalMatchPercent}%</span>` : ""}
       </div>
       <div class="combo-items">${items}</div>
       ${combo.aiReason ? `<div class="combo-ai-reason">🤖 ${combo.aiReason}</div>` : ""}
@@ -2615,7 +2615,7 @@ function showRecipeDetail(rec) {
           ${recipe.timeMinutes ? `<div class="recipe-detail-meta-item">⏱ ${recipe.timeMinutes}分钟</div>` : ""}
           ${recipe.calories ? `<div class="recipe-detail-meta-item">🔥 ${recipe.calories}卡</div>` : ""}
           ${recipe.difficulty ? `<div class="recipe-detail-meta-item">难度 ${"★".repeat(recipe.difficulty)}</div>` : ""}
-          <div class="recipe-detail-meta-item">匹配 ${rec.matchPercent}%</div>
+          ${_creatorMode ? `<div class="recipe-detail-meta-item">匹配 ${rec.matchPercent}%</div>` : ""}
         </div>
 
         ${description ? `<p class="recipe-detail-desc">${description}</p>` : ""}
