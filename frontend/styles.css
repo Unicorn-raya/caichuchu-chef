@@ -3844,14 +3844,18 @@ body {
 .journal-timeline {
   position: relative;
   padding: 0 16px;
+  /* 统一基准线：时间线圆心/线条中心距容器左边框的距离 */
+  --axis-x: 75px;
+  --dot-size: 14px;
+  --line-w: 3px;
 }
 
 .journal-line {
   position: absolute;
-  left: 58px;
+  left: calc(var(--axis-x) - var(--line-w) / 2);
   top: 0;
   bottom: 40px;
-  width: 3px;
+  width: var(--line-w);
   background: linear-gradient(to bottom, #d4a574, #c9956c, #b08968);
   border-radius: 2px;
   z-index: 0;
@@ -3877,10 +3881,10 @@ body {
 
 .journal-day-dot {
   position: absolute;
-  left: 52px;
+  left: calc(var(--axis-x) - 16px - var(--dot-size) / 2);
   top: 14px;
-  width: 14px;
-  height: 14px;
+  width: var(--dot-size);
+  height: var(--dot-size);
   border-radius: 50%;
   background: white;
   border: 3px solid #b08968;
