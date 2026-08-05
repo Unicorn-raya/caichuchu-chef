@@ -3214,6 +3214,18 @@ function showRecipeDetail(rec) {
           </div>
         ` : ""}
 
+        <a class="bili-video-link" href="https://search.bilibili.com/all?keyword=${encodeURIComponent(recipe.title + " 做法")}" target="_blank" rel="noopener noreferrer">
+          <svg class="bili-icon" viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
+            <rect x="10" y="17" width="28" height="17" rx="4" fill="#fff"/>
+            <ellipse cx="19" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+            <ellipse cx="29" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+          </svg>
+          <span>在B站看${recipe.title}视频教学</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
+
         <button class="btn-start-cooking" onclick="startCooking('${recipe.id}', ${JSON.stringify(rec.missing || []).replace(/"/g, '&quot;')})">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           开始沉浸烹饪
@@ -4034,6 +4046,18 @@ function showAIRecipeDetail(recipeId) {
           </ul>
         </div>
         ` : ''}
+
+        <a class="bili-video-link" href="https://search.bilibili.com/all?keyword=${encodeURIComponent(recipe.title + " 做法")}" target="_blank" rel="noopener noreferrer">
+          <svg class="bili-icon" viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
+            <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
+            <rect x="10" y="17" width="28" height="17" rx="4" fill="#fff"/>
+            <ellipse cx="19" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+            <ellipse cx="29" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+          </svg>
+          <span>在B站看${recipe.title}视频教学</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+        </a>
 
         <button class="btn-start-cooking" onclick="startCooking('${recipe.id}')">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>

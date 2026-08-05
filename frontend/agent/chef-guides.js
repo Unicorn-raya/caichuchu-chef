@@ -463,6 +463,19 @@ const ChefGuides = {
             }
             html += `</div>`;
           }
+          // B站视频链接
+          const biliUrl = "https://search.bilibili.com/all?keyword=" + encodeURIComponent(recipeTitle + " 做法");
+          html += `<a class="cg-bili-link" href="${biliUrl}" target="_blank" rel="noopener noreferrer">
+            <svg class="cg-bili-icon" viewBox="0 0 48 48" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
+              <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
+              <rect x="10" y="17" width="28" height="17" rx="4" fill="#fff"/>
+              <ellipse cx="19" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+              <ellipse cx="29" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
+            </svg>
+            <span>在B站看${recipeTitle}视频教学</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
+          </a>`;
         }
       }
 
