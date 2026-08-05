@@ -32,6 +32,10 @@ const STATS_KEY = "caichuchu_stats";
 const AI_MODELS_KEY = "caichuchu_ai_models";
 const DIET_PREFS_KEY = "caichuchu_diet_prefs";
 const ALLERGENS_KEY = "caichuchu_allergens";
+const CUSTOM_DIET_PREFS_KEY = "caichuchu_custom_diet_prefs";
+const CUSTOM_ALLERGENS_KEY = "caichuchu_custom_allergens";
+let customDietPrefs = [];
+let customAllergens = [];
 const SEASONINGS_KEY = "caichuchu_seasonings";
 const UTENSILS_KEY = "caichuchu_utensils";
 
@@ -78,6 +82,26 @@ const ALLERGEN_OPTIONS = [
   { value: "nuts", label: "坚果", icon: "🌰", keywords: ["核桃", "杏仁", "腰果", "松子", "榛子", "开心果", "夏威夷果"] },
   { value: "fish", label: "鱼", icon: "🐟", keywords: ["鱼"] },
 ];
+
+// 大厨笔记分类 key → 中文标签
+const CHEF_NOTE_CATEGORY_LABELS = {
+  "aquatic": "鱼虾水产",
+  "breakfast": "早餐",
+  "condiment": "调味酱料",
+  "dessert": "甜品",
+  "drink": "饮品",
+  "meat_dish": "肉菜",
+  "semi-finished": "半成品",
+  "soup": "汤粥",
+  "staple": "主食",
+  "template": "模板",
+  "vegetable_dish": "素菜蛋奶",
+  "meat": "肉菜",
+  "vegetable": "素菜",
+  "tofu": "豆制品",
+  "egg": "蛋类",
+  "mix": "混合菜",
+};
 
 // 常见食材快捷标签
 const COMMON_INGREDIENTS = [
@@ -206,7 +230,105 @@ const INGREDIENT_CLASS_MAP = {
   "千张": { class: "豆腐", category: "vegetarian" },
   "腐竹": { class: "豆腐", category: "vegetarian" },
   "日本豆腐": { class: "豆腐", category: "vegetarian" },
+  // 蔬菜类
+  "西红柿": { class: "西红柿", category: "vegetable" },
+  "番茄": { class: "西红柿", category: "vegetable" },
+  "圣女果": { class: "西红柿", category: "vegetable" },
+  "土豆": { class: "土豆", category: "vegetable" },
+  "马铃薯": { class: "土豆", category: "vegetable" },
+  "洋芋": { class: "土豆", category: "vegetable" },
+  "洋葱": { class: "洋葱", category: "vegetable" },
+  "胡萝卜": { class: "胡萝卜", category: "vegetable" },
+  "红萝卜": { class: "胡萝卜", category: "vegetable" },
+  "萝卜": { class: "萝卜", category: "vegetable" },
+  "白萝卜": { class: "萝卜", category: "vegetable" },
+  "茄子": { class: "茄子", category: "vegetable" },
+  "黄瓜": { class: "黄瓜", category: "vegetable" },
+  "青瓜": { class: "黄瓜", category: "vegetable" },
+  "青椒": { class: "青椒", category: "vegetable" },
+  "菜椒": { class: "青椒", category: "vegetable" },
+  "灯笼椒": { class: "青椒", category: "vegetable" },
+  "辣椒": { class: "辣椒", category: "vegetable" },
+  "小米辣": { class: "辣椒", category: "vegetable" },
+  "朝天椒": { class: "辣椒", category: "vegetable" },
+  "白菜": { class: "白菜", category: "vegetable" },
+  "大白菜": { class: "白菜", category: "vegetable" },
+  "青菜": { class: "青菜", category: "vegetable" },
+  "小白菜": { class: "青菜", category: "vegetable" },
+  "上海青": { class: "青菜", category: "vegetable" },
+  "菠菜": { class: "菠菜", category: "vegetable" },
+  "芹菜": { class: "芹菜", category: "vegetable" },
+  "韭菜": { class: "韭菜", category: "vegetable" },
+  "豆角": { class: "豆角", category: "vegetable" },
+  "四季豆": { class: "豆角", category: "vegetable" },
+  "扁豆": { class: "豆角", category: "vegetable" },
+  "西兰花": { class: "西兰花", category: "vegetable" },
+  "花菜": { class: "花菜", category: "vegetable" },
+  "菜花": { class: "花菜", category: "vegetable" },
+  "花椰菜": { class: "花菜", category: "vegetable" },
+  "冬瓜": { class: "冬瓜", category: "vegetable" },
+  "南瓜": { class: "南瓜", category: "vegetable" },
+  "苦瓜": { class: "苦瓜", category: "vegetable" },
+  "丝瓜": { class: "丝瓜", category: "vegetable" },
+  "莴笋": { class: "莴笋", category: "vegetable" },
+  "茭白": { class: "茭白", category: "vegetable" },
+  "莲藕": { class: "莲藕", category: "vegetable" },
+  "藕": { class: "莲藕", category: "vegetable" },
+  "蒜苔": { class: "蒜苔", category: "vegetable" },
+  "蒜薹": { class: "蒜苔", category: "vegetable" },
+  "蒜苗": { class: "蒜苗", category: "vegetable" },
+  "空心菜": { class: "空心菜", category: "vegetable" },
+  "油麦菜": { class: "油麦菜", category: "vegetable" },
+  "生菜": { class: "生菜", category: "vegetable" },
+  "包菜": { class: "包菜", category: "vegetable" },
+  "卷心菜": { class: "包菜", category: "vegetable" },
+  "圆白菜": { class: "包菜", category: "vegetable" },
+  "甘蓝": { class: "包菜", category: "vegetable" },
+  "娃娃菜": { class: "白菜", category: "vegetable" },
+  "木耳": { class: "木耳", category: "vegetable" },
+  "银耳": { class: "木耳", category: "vegetable" },
+  "香菇": { class: "蘑菇", category: "vegetable" },
+  "蘑菇": { class: "蘑菇", category: "vegetable" },
+  "金针菇": { class: "蘑菇", category: "vegetable" },
+  "杏鲍菇": { class: "蘑菇", category: "vegetable" },
+  "平菇": { class: "蘑菇", category: "vegetable" },
+  "口蘑": { class: "蘑菇", category: "vegetable" },
+  "草菇": { class: "蘑菇", category: "vegetable" },
+  "玉米": { class: "玉米", category: "vegetable" },
+  "玉米粒": { class: "玉米", category: "vegetable" },
+  "笋": { class: "笋", category: "vegetable" },
+  "竹笋": { class: "笋", category: "vegetable" },
+  "芦笋": { class: "芦笋", category: "vegetable" },
+  "葱": { class: "葱", category: "seasoning" },
+  "姜": { class: "姜", category: "seasoning" },
+  "蒜": { class: "蒜", category: "seasoning" },
+  "大蒜": { class: "蒜", category: "seasoning" },
+  "花椒": { class: "花椒", category: "seasoning" },
+  "八角": { class: "八角", category: "seasoning" },
+  "桂皮": { class: "桂皮", category: "seasoning" },
+  "香叶": { class: "香叶", category: "seasoning" },
+  "大料": { class: "八角", category: "seasoning" },
 };
+
+/**
+ * 食材后缀词：包含这些后缀的食材名属于调味品/加工品，
+ * 搜索新鲜食材时如果只匹配到加工品应降权。
+ * 例如搜索"番茄"匹配到"番茄酱"（调味品），不应视为番茄菜谱。
+ */
+const CONDIMENT_SUFFIXES = ["酱", "汁", "油", "粉", "膏", "醋", "酒", "精", "露", "霜"];
+
+/**
+ * 判断匹配到的食材是否是调味品/加工品形式（而非新鲜食材本身）
+ */
+function isCondimentMatch(ingredient, searchTerm) {
+  if (ingredient === searchTerm) return false;
+  // 如果匹配的食材名以搜索词开头但后面跟着调味品后缀，视为调味品
+  if (ingredient.startsWith(searchTerm) && ingredient.length > searchTerm.length) {
+    const suffix = ingredient.slice(searchTerm.length);
+    return CONDIMENT_SUFFIXES.some(s => suffix.includes(s));
+  }
+  return false;
+}
 
 /**
  * 获取食材的搜索扩展词列表：原词 + 所属主类
@@ -232,9 +354,15 @@ function ingredientMatches(ingredient, searchTerm) {
 
 /**
  * 智能匹配本地菜谱：计算匹配度得分并排序
- * - coreIngredients匹配权重远高于requiredIngredients
- * - 如果菜谱category与搜索食材主类冲突（如水产里放了几片五花肉），大幅降权
- * - 去掉危险的反向包含（name.includes(i)）避免单字误匹配
+ * - 菜谱标题包含食材名：+5分（主角）
+ * - coreIngredients前2位精确匹配：+4分（主角食材）
+ * - coreIngredients精确匹配：+3分
+ * - coreIngredients包含匹配：+2分
+ * - requiredIngredients精确匹配：+1分
+ * - requiredIngredients包含匹配：+0.5分
+ * - 调味品降权：葱姜蒜等搜索时作为调料的菜谱降权
+ * - 加工品降权：番茄匹配到番茄酱时降权
+ * - 跨分类降权：水产里放几片肉/菜作为配菜时大幅降权
  */
 function findLocalIngredientRecipes(name) {
   const searchTerms = getIngredientSearchTerms(name);
@@ -250,45 +378,94 @@ function findLocalIngredientRecipes(name) {
     const required = r.requiredIngredients || [];
     let matchedInCore = false;
     let matchedExact = false;
+    let matchedCondiment = false;
+    let matchedSeasoning = false;
+
+    // 【标题加分】如果菜谱标题包含搜索词或其主类，说明是主角食材，大幅加分
+    for (const term of searchTerms) {
+      if (term.length >= 2 && r.title.includes(term)) {
+        score += 5;
+        matchedInCore = true;
+        matchedExact = true;
+      }
+    }
 
     // 遍历每个搜索词（原词+主类）
     for (const term of searchTerms) {
-      // coreIngredients 精确匹配 +3分
-      if (core.some(i => i === term)) {
+      // coreIngredients 前2位精确匹配 → 主角食材，+4分
+      const coreIdxExact = core.findIndex(i => i === term);
+      if (coreIdxExact === 0 || coreIdxExact === 1) {
+        score += 4;
+        matchedInCore = true;
+        if (term === name) matchedExact = true;
+      }
+      // coreIngredients 其他位置精确匹配 +3分
+      else if (coreIdxExact >= 2) {
         score += 3;
         matchedInCore = true;
         if (term === name) matchedExact = true;
       }
-      // coreIngredients 包含匹配（搜索词>=2字） +2分
-      else if (term.length >= 2 && core.some(i => ingredientMatches(i, term))) {
-        score += 2;
-        matchedInCore = true;
-        if (term === name) matchedExact = true;
-      }
-      // requiredIngredients 精确匹配 +1分
-      else if (required.some(i => i === term)) {
-        score += 1;
-        if (term === name) matchedExact = true;
-      }
-      // requiredIngredients 包含匹配 +0.5分
-      else if (term.length >= 2 && required.some(i => ingredientMatches(i, term))) {
-        score += 0.5;
+      // coreIngredients 包含匹配
+      else if (term.length >= 2) {
+        const coreIdx = core.findIndex(i => {
+          if (i === term) return false; // 已处理精确匹配
+          if (isCondimentMatch(i, term)) { matchedCondiment = true; return false; }
+          return ingredientMatches(i, term);
+        });
+        if (coreIdx === 0 || coreIdx === 1) {
+          score += 3;
+          matchedInCore = true;
+          if (term === name) matchedExact = true;
+        } else if (coreIdx >= 2) {
+          score += 2;
+          matchedInCore = true;
+          if (term === name) matchedExact = true;
+        } else {
+          // requiredIngredients 精确匹配
+          if (required.some(i => i === term)) {
+            score += 1;
+            if (term === name) matchedExact = true;
+            // 检查是否是调料类
+            const m = INGREDIENT_CLASS_MAP[term];
+            if (m && m.category === "seasoning") matchedSeasoning = true;
+          }
+          // requiredIngredients 包含匹配
+          else if (term.length >= 2) {
+            const reqMatch = required.find(i => {
+              if (i === term) return false;
+              if (isCondimentMatch(i, term)) { matchedCondiment = true; return false; }
+              return ingredientMatches(i, term);
+            });
+            if (reqMatch) {
+              score += 0.5;
+            }
+          }
+        }
       }
     }
 
     if (score <= 0) continue;
 
-    // 【关键降权】如果搜索的是肉类/蛋类等，但菜谱category是水产/蔬菜，且core里有该分类的主食材
-    // 说明该食材只是配角增香用，不应该作为这个食材的推荐菜谱
-    // 例如：红烧鲤鱼(core有鲤鱼+五花肉) 搜索"五花肉"时应该被降权
+    // 【调味品降权】搜索到的是调料（葱姜蒜等），在菜谱里也只是调料角色，降权
+    if (searchCategory === "seasoning") {
+      score = score * 0.3;
+    }
+
+    // 【加工品降权】匹配到的是番茄酱/酱油等加工品而非新鲜食材
+    if (matchedCondiment) {
+      score = score * 0.15;
+    }
+
+    // 【关键降权】如果搜索的食材分类与菜谱分类冲突，且菜谱core里有自己分类的主食材
+    // 说明搜索到的食材只是配角，不应该作为这个食材的推荐菜谱
+    // 例如：红烧鲤鱼(core有鲤鱼+五花肉) 搜索"五花肉"降权
+    // 例如：咖喱炒蟹(core有青蟹+洋葱) 搜索"洋葱"降权
     if (searchCategory && r.category && searchCategory !== r.category) {
-      // 检查菜谱core里是否有它自己分类的代表食材
       const hasOwnCategoryMainIngredient = core.some(i => {
         const m = INGREDIENT_CLASS_MAP[i];
         return m && m.category === r.category;
       });
       if (hasOwnCategoryMainIngredient) {
-        // 自己分类的主食材在core里，说明搜索到的食材只是配角，大幅降权
         score = score * 0.1;
       }
     }
@@ -298,14 +475,32 @@ function findLocalIngredientRecipes(name) {
     }
   }
 
-  // 按得分排序：精确core匹配 > core匹配 > required匹配
+  // 按得分排序
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (b.matchedInCore !== a.matchedInCore) return b.matchedInCore ? 1 : -1;
     return 0;
   });
 
-  return scored.map(s => s.recipe);
+  // 应用饮食偏好和过敏原过滤
+  let results = scored.map(s => s.recipe);
+  results = results.filter(r => {
+    // 过敏原硬过滤
+    for (const a of allergens) {
+      if (recipeContainsAllergen(r, a)) return false;
+    }
+    for (const c of customAllergens) {
+      if (recipeContainsAllergen(r, `custom:${c}`)) return false;
+    }
+    // 自定义饮食偏好关键字过滤
+    const allText = r.title + " " + getRecipeAllIngredients(r).join(" ");
+    for (const custom of customDietPrefs) {
+      if (allText.includes(custom)) return false;
+    }
+    return true;
+  });
+
+  return results;
 }
 
 // 全局状态
@@ -506,26 +701,34 @@ function loadDietPrefs() {
   try {
     const data = localStorage.getItem(DIET_PREFS_KEY);
     dietPreferences = data ? JSON.parse(data) : [];
+    const cdata = localStorage.getItem(CUSTOM_DIET_PREFS_KEY);
+    customDietPrefs = cdata ? JSON.parse(cdata) : [];
   } catch {
     dietPreferences = [];
+    customDietPrefs = [];
   }
 }
 
 function saveDietPrefs() {
   localStorage.setItem(DIET_PREFS_KEY, JSON.stringify(dietPreferences));
+  localStorage.setItem(CUSTOM_DIET_PREFS_KEY, JSON.stringify(customDietPrefs));
 }
 
 function loadAllergens() {
   try {
     const data = localStorage.getItem(ALLERGENS_KEY);
     allergens = data ? JSON.parse(data) : [];
+    const cdata = localStorage.getItem(CUSTOM_ALLERGENS_KEY);
+    customAllergens = cdata ? JSON.parse(cdata) : [];
   } catch {
     allergens = [];
+    customAllergens = [];
   }
 }
 
 function saveAllergens() {
   localStorage.setItem(ALLERGENS_KEY, JSON.stringify(allergens));
+  localStorage.setItem(CUSTOM_ALLERGENS_KEY, JSON.stringify(customAllergens));
 }
 
 // ============================================
@@ -606,20 +809,27 @@ function isBeginnerRecipe(recipe) {
 // 菜谱是否含某过敏源
 function recipeContainsAllergen(recipe, allergenValue) {
   const opt = ALLERGEN_OPTIONS.find((o) => o.value === allergenValue);
-  if (!opt) return false;
   const allText = getRecipeAllIngredients(recipe).join(",");
-  return opt.keywords.some((kw) => allText.includes(kw));
+  if (opt) {
+    return opt.keywords.some((kw) => allText.includes(kw));
+  }
+  // 自定义过敏原：直接用名称作为关键词匹配
+  if (allergenValue && allergenValue.startsWith("custom:")) {
+    const keyword = allergenValue.slice(7);
+    return keyword && allText.includes(keyword);
+  }
+  return false;
 }
 
 // 菜谱是否含用户任一过敏源
 function recipeHasUserAllergen(recipe) {
-  if (allergens.length === 0) return false;
-  return allergens.some((a) => recipeContainsAllergen(recipe, a));
+  if (allergens.length === 0 && customAllergens.length === 0) return false;
+  const all = [...allergens, ...customAllergens.map(c => `custom:${c}`)];
+  return all.some((a) => recipeContainsAllergen(recipe, a));
 }
 
 // 获取菜谱中含的用户过敏源名称列表
 function getRecipeAllergenLabels(recipe) {
-  if (allergens.length === 0) return [];
   const labels = [];
   for (const a of allergens) {
     const opt = ALLERGEN_OPTIONS.find((o) => o.value === a);
@@ -627,12 +837,17 @@ function getRecipeAllergenLabels(recipe) {
       labels.push(opt.label);
     }
   }
+  for (const c of customAllergens) {
+    if (recipeContainsAllergen(recipe, `custom:${c}`)) {
+      labels.push(c);
+    }
+  }
   return labels;
 }
 
 // 按饮食偏好过滤（硬过滤）
 function filterByDietPrefs(results) {
-  if (dietPreferences.length === 0) return results;
+  if (dietPreferences.length === 0 && customDietPrefs.length === 0) return results;
   return results.filter((r) => {
     for (const pref of dietPreferences) {
       if (pref === "no_spicy" && isSpicyRecipe(r.recipe)) return false;
@@ -642,6 +857,11 @@ function filterByDietPrefs(results) {
       if (pref === "vegetarian" && !isVegetarianRecipe(r.recipe)) return false;
       if (pref === "quick" && !isQuickRecipe(r.recipe)) return false;
       if (pref === "beginner" && !isBeginnerRecipe(r.recipe)) return false;
+    }
+    // 自定义饮食偏好：关键字过滤（检查菜名和食材列表）
+    for (const custom of customDietPrefs) {
+      const text = (r.recipe.title + " " + getRecipeAllIngredients(r.recipe).join(" "));
+      if (text.includes(custom)) return false;
     }
     return true;
   });
@@ -669,6 +889,30 @@ function filterByAllergens(results) {
 function applyDietAndAllergens(results) {
   const filtered = filterByDietPrefs(results);
   return filterByAllergens(filtered);
+}
+
+// 构建 AI 提示用的饮食偏好/过敏原约束文本
+function buildDietAllergenHint() {
+  const parts = [];
+  const prefLabels = [];
+  for (const p of dietPreferences) {
+    const opt = DIET_PREFERENCE_OPTIONS.find(o => o.value === p);
+    if (opt) prefLabels.push(opt.label);
+  }
+  for (const c of customDietPrefs) prefLabels.push(c);
+  if (prefLabels.length > 0) {
+    parts.push(`用户饮食偏好/忌口：${prefLabels.join("、")}。请严格避开不符合这些偏好的菜谱。`);
+  }
+  const allergenLabels = [];
+  for (const a of allergens) {
+    const opt = ALLERGEN_OPTIONS.find(o => o.value === a);
+    if (opt) allergenLabels.push(opt.label);
+  }
+  for (const c of customAllergens) allergenLabels.push(c);
+  if (allergenLabels.length > 0) {
+    parts.push(`用户过敏原：${allergenLabels.join("、")}。绝对不要推荐含有这些过敏原食材的菜谱。`);
+  }
+  return parts.length > 0 ? "\n\n" + parts.join("\n") : "";
 }
 
 // ============================================
@@ -909,7 +1153,24 @@ async function fetchTags() {
 
 async function searchRecipes(ingredients, mode, tags, topK = 20, showAll = false, expiringIngredients = []) {
   FrontendLogger.info("api", "搜索菜谱", { ingredients, mode, tags, topK, showAll, expiringIngredients });
-  const body = JSON.stringify({ ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll, expiring_ingredients: expiringIngredients });
+  const dietPrefLabels = [];
+  for (const p of dietPreferences) {
+    const opt = DIET_PREFERENCE_OPTIONS.find(o => o.value === p);
+    if (opt) dietPrefLabels.push(opt.label);
+  }
+  for (const c of customDietPrefs) dietPrefLabels.push(c);
+  const allergenLabels = [];
+  for (const a of allergens) {
+    const opt = ALLERGEN_OPTIONS.find(o => o.value === a);
+    if (opt) allergenLabels.push(opt.label);
+  }
+  for (const c of customAllergens) allergenLabels.push(c);
+  const body = JSON.stringify({
+    ingredients, mode, top_k: topK, tags: tags || [], show_all: showAll,
+    expiring_ingredients: expiringIngredients,
+    diet_prefs: dietPrefLabels,
+    allergens: allergenLabels,
+  });
   // 线上后端冷启动需要 30+ 秒（模型延迟加载），移动端网络不稳定，需要超时 + 重试
   const MAX_RETRIES = 1;
   const TIMEOUT_MS = 60000; // 单次请求最多等 60 秒（容忍模型冷启动）
@@ -1181,6 +1442,15 @@ function renderIngredientGrid() {
   `;
 }
 
+/**
+ * 将纯文本中的URL转换为可点击链接
+ */
+function linkifyText(text) {
+  if (!text) return text;
+  return text.replace(/(https?:\/\/[^\s<>\u4e00-\u9fff，。！？、；：""'）】)]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--avocado);text-decoration:underline;word-break:break-all">$1</a>');
+}
+
 function renderEmptyFridge() {
   return `
     <div class="empty-fridge">
@@ -1299,7 +1569,8 @@ async function openIngredientDetail(index) {
   try {
     // AI提示词也带上主类信息，让推荐更准确
     const classHint = mapped ? `（${name}属于${mapped.class}类食材）` : "";
-    const prompt = `我冰箱里有食材「${name}」${classHint}。请推荐以这个食材（或同类食材）为主角的常见家常菜，优先推荐这道菜作为主要食材的菜谱，不要推荐只是少量用到它做配料的菜（比如做鱼放几片肉增香这种不算）。每道菜说明做法亮点和搭配食材，并给出一些烹饪小贴士。详细展开，不要限制内容长度。`;
+    const dietHint = buildDietAllergenHint();
+    const prompt = `我冰箱里有食材「${name}」${classHint}。请推荐以这个食材（或同类食材）为主角的常见家常菜，优先推荐这道菜作为主要食材的菜谱，不要推荐只是少量用到它做配料的菜（比如做鱼放几片肉增香这种不算）。每道菜说明做法亮点和搭配食材，并给出一些烹饪小贴士。详细展开，不要限制内容长度。${dietHint}`;
     const aiText = await callAI(prompt);
     contentEl.innerHTML = `
       <div class="ai-result">
@@ -1337,11 +1608,16 @@ function renderLocalIngredientMatches(matches, name, title) {
 }
 
 function formatAIText(text) {
-  // 简单的 markdown 转 HTML：换行、加粗、列表
+  // markdown 转 HTML：标题、加粗、列表（有序+无序）、链接、换行
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+
+  // 先把 URL 变成可点击链接（在其他处理之前，避免被转义破坏）
+  html = html.replace(/(https?:\/\/[^\s<>\u4e00-\u9fff，。！？、；：""'）】)]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--avocado);text-decoration:underline;word-break:break-all">$1</a>');
+
   // ### 等标题转为加粗（加粗到第一个标点符号，如冒号）
   html = html.replace(/^#{1,6}\s+(.+)$/gm, (match, content) => {
     const punctIdx = content.search(/[：:，,.。！？、]/);
@@ -1351,8 +1627,22 @@ function formatAIText(text) {
     return `<strong>${content}</strong>`;
   });
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/^\s*[-•]\s+(.+)$/gm, "<li>$1</li>");
-  html = html.replace(/(<li>[\s\S]+?<\/li>)/g, "<ul>$1</ul>");
+
+  // 有序列表：1. 2. 3. 等 → <ol><li>
+  html = html.replace(/^\s*\d+[.、)]\s+(.+)$/gm, '<li class="ol-item">$1</li>');
+  // 无序列表：- • 等 → <li class="ul-item">
+  html = html.replace(/^\s*[-•]\s+(.+)$/gm, '<li class="ul-item">$1</li>');
+
+  // 把连续的同类型 <li> 包进 <ol> 或 <ul>
+  // 先包有序列表
+  html = html.replace(/((?:<li class="ol-item">[\s\S]*?<\/li>\n?)+)/g, (match) => {
+    return '<ol style="padding-left:20px;margin:8px 0">' + match.replace(/class="ol-item"/g, '').replace(/<\/li>/g, '</li>') + '</ol>';
+  });
+  // 再包无序列表
+  html = html.replace(/((?:<li class="ul-item">[\s\S]*?<\/li>\n?)+)/g, (match) => {
+    return '<ul style="padding-left:20px;margin:8px 0">' + match.replace(/class="ul-item"/g, '') + '</ul>';
+  });
+
   html = html.replace(/\n\n/g, "</p><p>");
   html = `<p>${html}</p>`;
   return html;
@@ -1969,8 +2259,9 @@ async function generateAIRecommendedMenu() {
       : "";
 
     // AI联网推荐：不局限于本地菜谱，让AI基于食材自由推荐
+    const dietHint = buildDietAllergenHint();
     const prompt = `你是一位专业厨师。用户冰箱里有以下食材：${ingredients.join("、")}。
-可用调料：${seasonings.join("、")}。${expiringHint}
+可用调料：${seasonings.join("、")}。${expiringHint}${dietHint}
 
 请基于这些食材，推荐2道搭配合理的菜。可以是任何菜谱，不限于本地菜谱库。要求：
 1. 优先考虑使用临期食材的菜
@@ -2828,7 +3119,7 @@ function showRecipeDetail(rec) {
           ${_creatorMode ? `<div class="recipe-detail-meta-item">匹配 ${rec.matchPercent}%</div>` : ""}
         </div>
 
-        ${description ? `<p class="recipe-detail-desc">${description}</p>` : ""}
+        ${description ? `<p class="recipe-detail-desc">${linkifyText(description)}</p>` : ""}
 
         <div class="recipe-section-title">食材清单</div>
         <div class="ingredient-list">
@@ -2849,7 +3140,7 @@ function showRecipeDetail(rec) {
           ${recipe.steps.map((step, i) => `
             <div class="step-item">
               <div class="step-num">${i + 1}</div>
-              <div class="step-text">${step}</div>
+              <div class="step-text">${linkifyText(step)}</div>
             </div>
           `).join("")}
         </div>
@@ -2860,7 +3151,7 @@ function showRecipeDetail(rec) {
             ${tips.map((tip) => `
               <div class="tip-item">
                 <span class="tip-icon">💡</span>
-                <span class="tip-text">${tip}</span>
+                <span class="tip-text">${linkifyText(tip)}</span>
               </div>
             `).join("")}
           </div>
@@ -3127,13 +3418,32 @@ function filterDiscoverRecipes(query) {
     return;
   }
 
-  // 搜索菜谱名或食材
+  // 搜索菜谱名或食材（支持食材别名/主类映射）
+  const mapped = INGREDIENT_CLASS_MAP[query];
+  const searchTerms = [query];
+  if (mapped) {
+    // 搜索"番茄"时，同时用"西红柿"匹配
+    searchTerms.push(mapped.class.toLowerCase());
+  }
+
   const matched = allRecipes.filter((r) => {
-    const titleMatch = r.title.toLowerCase().includes(query);
-    const ingredientMatch = r.requiredIngredients.some((ing) =>
-      ing.toLowerCase().includes(query)
-    );
-    return titleMatch || ingredientMatch;
+    const titleLower = r.title.toLowerCase();
+    const titleMatch = searchTerms.some(term => titleLower.includes(term));
+    if (titleMatch) return true;
+    const ingArr = r.requiredIngredients.map(i => i.toLowerCase());
+    const ingredientMatch = searchTerms.some(term => {
+      // 如果搜索词是"番茄"且映射到"西红柿"类，需要匹配所有西红柿类食材
+      if (mapped && term === mapped.class.toLowerCase()) {
+        // 匹配所有映射到同一主类的食材
+        return Object.entries(INGREDIENT_CLASS_MAP).some(([name, info]) => {
+          if (info.class === mapped.class) return ingArr.includes(name.toLowerCase());
+          return false;
+        });
+      }
+      // 完整食材名匹配（避免"番茄"匹配到"番茄酱"）
+      return ingArr.includes(term) || ingArr.some(ing => ing === term);
+    });
+    return ingredientMatch;
   });
 
   content.innerHTML = `
@@ -4373,12 +4683,12 @@ function renderMe() {
         <div class="me-option-card" onclick="showDietPreferences()">
           <div class="me-option-icon">🍽️</div>
           <div class="me-option-label">饮食偏好</div>
-          <div class="me-option-sub">${dietPreferences.length > 0 ? `已选${dietPreferences.length}` : "未设置"}</div>
+          <div class="me-option-sub">${(dietPreferences.length + customDietPrefs.length) > 0 ? `已选${dietPreferences.length + customDietPrefs.length}` : "未设置"}</div>
         </div>
         <div class="me-option-card" onclick="showAllergens()">
           <div class="me-option-icon">⚠️</div>
           <div class="me-option-label">过敏原</div>
-          <div class="me-option-sub">${allergens.length > 0 ? `已选${allergens.length}` : "未设置"}</div>
+          <div class="me-option-sub">${(allergens.length + customAllergens.length) > 0 ? `已选${allergens.length + customAllergens.length}` : "未设置"}</div>
         </div>
         <div class="me-option-card" onclick="handleAboutClick()">
           <div class="me-option-icon">ℹ️</div>
@@ -4687,7 +4997,39 @@ function updateChef(chefId) {
   }
 }
 
+// 大厨笔记自定义标签存储
+const CHEF_NOTE_TAGS_KEY = "ccc_chef_note_tags";
+function loadChefNoteTags() {
+  try {
+    return JSON.parse(localStorage.getItem(CHEF_NOTE_TAGS_KEY) || "{}");
+  } catch { return {}; }
+}
+function saveChefNoteTag(file, tag) {
+  const all = loadChefNoteTags();
+  if (!all[file]) all[file] = [];
+  const t = tag.trim();
+  if (t && !all[file].includes(t)) all[file].push(t);
+  localStorage.setItem(CHEF_NOTE_TAGS_KEY, JSON.stringify(all));
+}
+function removeChefNoteTag(file, tag) {
+  const all = loadChefNoteTags();
+  if (all[file]) {
+    all[file] = all[file].filter(t => t !== tag);
+    localStorage.setItem(CHEF_NOTE_TAGS_KEY, JSON.stringify(all));
+  }
+}
+function getNoteTags(entry) {
+  // 默认标签：从 key 提取分类
+  const key = entry.key || "";
+  const catKey = key.split("__")[0];
+  const defaultTag = CHEF_NOTE_CATEGORY_LABELS[catKey] || null;
+  const custom = (loadChefNoteTags()[entry.file] || []);
+  const tags = defaultTag ? [defaultTag, ...custom] : custom;
+  return [...new Set(tags)];
+}
+
 // 查看默认大厨笔记列表
+window._chefNoteTagFilter = "";
 async function showDefaultChefNotes() {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
@@ -4703,8 +5045,9 @@ async function showDefaultChefNotes() {
         <div style="width:60px"></div>
       </div>
       <div class="chef-notes-search-bar">
-        <input type="text" id="defaultNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterDefaultChefNotes(this.value)" />
+        <input type="text" id="defaultNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱名或标签…" oninput="filterDefaultChefNotes(this.value)" />
       </div>
+      <div id="chefNoteTagFilterBar" class="chef-note-tag-filter-bar" style="display:none"></div>
       <div class="chef-notes-list" id="defaultChefNotesList">
         <div style="text-align:center;padding:40px;color:#999;">加载中...</div>
       </div>
@@ -4714,11 +5057,12 @@ async function showDefaultChefNotes() {
   try {
     const resp = await fetch("data/guides/index.json");
     if (!resp.ok) throw new Error("加载失败");
-    const index = await resp.json();
-    // 存到全局供搜索使用
-    window._defaultChefNotesIndex = Object.values(index).sort((a, b) =>
-      (a.title || "").localeCompare(b.title || "")
-    );
+    const indexRaw = await resp.json();
+    // 存到全局供搜索使用，保留原始 key
+    window._defaultChefNotesIndex = Object.entries(indexRaw).map(([key, val]) => ({
+      ...val,
+      key: key,
+    })).sort((a, b) => (a.title || "").localeCompare(b.title || ""));
     renderDefaultChefNotesList("");
   } catch (e) {
     document.getElementById("defaultChefNotesList").innerHTML =
@@ -4726,30 +5070,94 @@ async function showDefaultChefNotes() {
   }
 }
 
-// 渲染默认大厨笔记列表（带过滤）
+// 提取所有标签（用于标签过滤栏）
+function getAllNoteTags() {
+  const entries = window._defaultChefNotesIndex || [];
+  const tagSet = new Set();
+  entries.forEach(e => getNoteTags(e).forEach(t => tagSet.add(t)));
+  return [...tagSet].sort();
+}
+
+// 渲染默认大厨笔记列表（带搜索+标签过滤，模糊匹配）
 function renderDefaultChefNotesList(keyword) {
   const entries = window._defaultChefNotesIndex || [];
-  const filtered = keyword
-    ? entries.filter((e) => e.title.toLowerCase().includes(keyword.toLowerCase()))
-    : entries;
+  const kw = (keyword || "").trim().toLowerCase();
+  const tagFilter = window._chefNoteTagFilter;
+
+  const filtered = entries.filter((e) => {
+    const tags = getNoteTags(e);
+    // 标签过滤
+    if (tagFilter && !tags.includes(tagFilter)) return false;
+    // 关键字模糊搜索：匹配标题或标签
+    if (kw) {
+      const titleMatch = (e.title || "").toLowerCase().includes(kw);
+      const tagMatch = tags.some(t => t.toLowerCase().includes(kw));
+      if (!titleMatch && !tagMatch) return false;
+    }
+    return true;
+  });
+
+  const allTags = getAllNoteTags();
+  const tagBar = document.getElementById("chefNoteTagFilterBar");
+  if (tagBar) {
+    if (allTags.length > 0) {
+      tagBar.style.display = "flex";
+      tagBar.innerHTML = `<span class="chef-note-filter-label">标签：</span>` +
+        (window._chefNoteTagFilter
+          ? `<span class="chef-note-tag-chip active" onclick="setChefNoteTagFilter('')">× 清除</span>`
+          : ``) +
+        allTags.map(t => `<span class="chef-note-tag-chip ${tagFilter === t ? 'active' : ''}" onclick="setChefNoteTagFilter('${t}')">${t}</span>`).join("");
+    } else {
+      tagBar.style.display = "none";
+    }
+  }
 
   const listEl = document.getElementById("defaultChefNotesList");
   if (filtered.length === 0) {
     listEl.innerHTML = `<div style="text-align:center;padding:40px;color:#999;">未找到匹配的菜谱</div>`;
     return;
   }
-  listEl.innerHTML = filtered.map((entry) => `
+  listEl.innerHTML = filtered.map((entry) => {
+    const tags = getNoteTags(entry);
+    return `
     <div class="chef-note-item" onclick="viewDefaultChefNote('${entry.file}')">
       <span class="chef-note-item-icon">📄</span>
-      <span class="chef-note-item-title">${entry.title}</span>
+      <div class="chef-note-item-center">
+        <span class="chef-note-item-title">${entry.title}</span>
+        <span class="chef-note-item-tags">
+          ${tags.map(t => `<span class="chef-note-item-tag">${t}</span>`).join("")}
+        </span>
+      </div>
       <span class="chef-note-item-arrow">›</span>
     </div>
-  `).join("");
+  `}).join("");
+}
+
+function setChefNoteTagFilter(tag) {
+  window._chefNoteTagFilter = tag;
+  const searchEl = document.getElementById("defaultNotesSearch");
+  renderDefaultChefNotesList(searchEl ? searchEl.value : "");
 }
 
 // 搜索过滤默认大厨笔记
 function filterDefaultChefNotes(keyword) {
   renderDefaultChefNotesList(keyword);
+}
+
+// 添加自定义标签
+function addCustomChefNoteTag(file) {
+  const input = document.getElementById("customTagInput");
+  if (!input) return;
+  const tag = input.value.trim();
+  if (!tag) return;
+  saveChefNoteTag(file, tag);
+  viewDefaultChefNote(file); // 重新渲染
+}
+
+// 删除自定义标签
+function deleteCustomChefNoteTag(file, tag) {
+  removeChefNoteTag(file, tag);
+  viewDefaultChefNote(file);
 }
 
 // 查看默认大厨某道菜的笔记详情（只读，可复制）
@@ -4777,9 +5185,28 @@ async function viewDefaultChefNote(file) {
     const resp = await fetch("data/guides/recipes/" + file);
     if (!resp.ok) throw new Error("加载失败");
     const md = await resp.text();
+
+    // 找到对应的 entry
+    const entry = (window._defaultChefNotesIndex || []).find(e => e.file === file);
+    const tags = entry ? getNoteTags(entry) : [];
+    const defaultTagSet = new Set();
+    if (entry) {
+      const catKey = (entry.key || "").split("__")[0];
+      const def = CHEF_NOTE_CATEGORY_LABELS[catKey];
+      if (def) defaultTagSet.add(def);
+    }
+    const customTags = tags.filter(t => !defaultTagSet.has(t));
+
     const detailEl = document.getElementById("defaultNoteDetail");
     detailEl.innerHTML = `
       <div class="cg-readonly-note">
+        <div class="chef-note-detail-tags">
+          ${tags.map(t => `<span class="chef-note-tag-chip ${defaultTagSet.has(t) ? 'default' : 'custom'}">${t}${!defaultTagSet.has(t) ? `<span class="tag-del" onclick="event.stopPropagation();deleteCustomChefNoteTag('${file}','${t}')">×</span>` : ''}</span>`).join("")}
+        </div>
+        <div class="chef-note-add-tag-row">
+          <input type="text" id="customTagInput" class="chef-note-tag-input" placeholder="添加自定义标签…" onkeydown="if(event.key==='Enter')addCustomChefNoteTag('${file}')" />
+          <button class="chef-note-tag-add-btn" onclick="addCustomChefNoteTag('${file}')">添加</button>
+        </div>
         ${ChefGuides.renderMarkdown(md)}
       </div>
       <button class="chef-copy-btn" onclick="copyDefaultChefNote('${file}')">📋 复制笔记内容</button>
@@ -5266,7 +5693,7 @@ ${content}
 // ============================================
 // 饮食偏好 / 过敏源 选择页
 // ============================================
-function renderPrefPage({ title, options, selected, onToggle, intro }) {
+function renderPrefPage({ title, options, selected, customItems, onToggle, onAddCustom, onRemoveCustom, onClear, intro, customPlaceholder }) {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
   app.innerHTML = `
@@ -5277,7 +5704,7 @@ function renderPrefPage({ title, options, selected, onToggle, intro }) {
           返回
         </button>
         <div class="swipe-header-title">${title}</div>
-        <button class="pref-clear-btn" onclick="${onToggle}('__CLEAR__')">清空</button>
+        <button class="pref-clear-btn" onclick="${onClear}">清空</button>
       </div>
       <div class="pref-intro">${intro}</div>
       <div class="pref-tags">
@@ -5291,6 +5718,17 @@ function renderPrefPage({ title, options, selected, onToggle, intro }) {
             </div>
           `;
         }).join("")}
+        ${customItems.map((item) => `
+          <div class="pref-tag pref-tag-custom active" onclick="${onRemoveCustom}('${item.replace(/'/g, "\\'")}')">
+            <span class="pref-tag-icon">✏️</span>
+            <span class="pref-tag-label">${item}</span>
+            <span class="pref-tag-remove">×</span>
+          </div>
+        `).join("")}
+      </div>
+      <div class="pref-add-custom">
+        <input type="text" id="customPrefInput" class="pref-custom-input" placeholder="${customPlaceholder}" onkeydown="if(event.key==='Enter'){${onAddCustom}()}" />
+        <button class="pref-add-btn" onclick="${onAddCustom}()">添加</button>
       </div>
       <div class="pref-actions">
         <button class="pref-btn-save" onclick="savePrefsAndBack('${onToggle}')">保存并返回</button>
@@ -5304,8 +5742,13 @@ function showDietPreferences() {
     title: "饮食偏好",
     options: DIET_PREFERENCE_OPTIONS,
     selected: dietPreferences,
+    customItems: customDietPrefs,
     onToggle: "toggleDietPref",
-    intro: "选择你的饮食偏好，不符合的菜谱将不会出现在推荐中（可多选）",
+    onAddCustom: "addCustomDietPref",
+    onRemoveCustom: "removeCustomDietPref",
+    onClear: "clearDietPrefs",
+    intro: "选择你的饮食偏好，不符合的菜谱将不会出现在推荐中（可多选）。你也可以自定义添加忌口食材或偏好。",
+    customPlaceholder: "如：不吃香菜、不吃猪肉…",
   });
 }
 
@@ -5314,30 +5757,75 @@ function showAllergens() {
     title: "过敏原管理",
     options: ALLERGEN_OPTIONS,
     selected: allergens,
+    customItems: customAllergens,
     onToggle: "toggleAllergen",
-    intro: "选择你的过敏原，含过敏原的菜谱会被红色标识并排序靠后（可多选）",
+    onAddCustom: "addCustomAllergen",
+    onRemoveCustom: "removeCustomAllergen",
+    onClear: "clearAllergens",
+    intro: "选择你的过敏原，含过敏原的菜谱会被过滤掉或红色标识（可多选）。你也可以自定义添加过敏食材。",
+    customPlaceholder: "输入过敏食材名称…",
   });
 }
 
 function toggleDietPref(value) {
-  if (value === "__CLEAR__") {
-    dietPreferences = [];
-  } else {
-    const idx = dietPreferences.indexOf(value);
-    if (idx >= 0) dietPreferences.splice(idx, 1);
-    else dietPreferences.push(value);
-  }
+  const idx = dietPreferences.indexOf(value);
+  if (idx >= 0) dietPreferences.splice(idx, 1);
+  else dietPreferences.push(value);
   showDietPreferences();
 }
 
 function toggleAllergen(value) {
-  if (value === "__CLEAR__") {
-    allergens = [];
-  } else {
-    const idx = allergens.indexOf(value);
-    if (idx >= 0) allergens.splice(idx, 1);
-    else allergens.push(value);
+  const idx = allergens.indexOf(value);
+  if (idx >= 0) allergens.splice(idx, 1);
+  else allergens.push(value);
+  showAllergens();
+}
+
+function addCustomDietPref() {
+  const input = document.getElementById("customPrefInput");
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  if (customDietPrefs.includes(val)) {
+    showToast("已存在该偏好");
+    return;
   }
+  customDietPrefs.push(val);
+  showDietPreferences();
+}
+
+function removeCustomDietPref(value) {
+  customDietPrefs = customDietPrefs.filter(p => p !== value);
+  showDietPreferences();
+}
+
+function addCustomAllergen() {
+  const input = document.getElementById("customPrefInput");
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) return;
+  if (customAllergens.includes(val)) {
+    showToast("已存在该过敏原");
+    return;
+  }
+  customAllergens.push(val);
+  showAllergens();
+}
+
+function removeCustomAllergen(value) {
+  customAllergens = customAllergens.filter(a => a !== value);
+  showAllergens();
+}
+
+function clearDietPrefs() {
+  dietPreferences = [];
+  customDietPrefs = [];
+  showDietPreferences();
+}
+
+function clearAllergens() {
+  allergens = [];
+  customAllergens = [];
   showAllergens();
 }
 

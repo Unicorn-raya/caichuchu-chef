@@ -2099,6 +2099,68 @@ body {
   box-shadow: 0 2px 10px rgba(232,133,58,0.3);
 }
 
+.pref-tag-custom {
+  background: var(--avocado) !important;
+  border-color: var(--avocado) !important;
+  color: white !important;
+  font-weight: 600;
+  box-shadow: 0 2px 10px rgba(124,164,76,0.3);
+}
+
+.pref-tag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  font-size: 13px;
+  line-height: 1;
+  margin-left: 2px;
+}
+
+.pref-tag-remove:hover {
+  background: rgba(255,255,255,0.5);
+}
+
+.pref-add-custom {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 16px;
+}
+
+.pref-custom-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  outline: none;
+  background: var(--bg-card);
+}
+
+.pref-custom-input:focus {
+  border-color: var(--avocado);
+}
+
+.pref-add-btn {
+  padding: 10px 18px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pref-add-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--avocado);
+  color: var(--avocado);
+}
+
 .pref-actions {
   padding: 12px 20px 24px;
 }
@@ -3786,7 +3848,7 @@ body {
 
 .journal-line {
   position: absolute;
-  left: 50px;
+  left: 58px;
   top: 0;
   bottom: 40px;
   width: 3px;
@@ -3805,18 +3867,20 @@ body {
 
 /* 日期标记 */
 .journal-day-marker {
-  width: 50px;
+  width: 70px;
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 12px;
+  align-items: flex-start;
+  padding-top: 10px;
   position: relative;
 }
 
 .journal-day-dot {
-  width: 12px;
-  height: 12px;
+  position: absolute;
+  left: 52px;
+  top: 14px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: white;
   border: 3px solid #b08968;
@@ -3838,12 +3902,13 @@ body {
 }
 
 .journal-day-date {
-  text-align: center;
-  margin-top: 4px;
+  text-align: right;
+  padding-right: 24px;
+  width: 100%;
 }
 
 .journal-day-num {
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
   color: #8b5e3c;
   line-height: 1;
@@ -5352,6 +5417,142 @@ u.cg-underline {
 .chef-note-item-arrow {
   color: #ccc;
   font-size: 20px;
+}
+
+.chef-note-item-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chef-note-item-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chef-note-item-tag {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f0ebe3;
+  color: #7a6248;
+  white-space: nowrap;
+}
+
+/* 标签过滤栏 */
+.chef-note-tag-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 4px;
+  align-items: center;
+}
+
+.chef-note-filter-label {
+  font-size: 12px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.chef-note-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: #f5f0e8;
+  color: #7a6248;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.chef-note-tag-chip:hover {
+  background: #ebe3d5;
+}
+
+.chef-note-tag-chip.active {
+  background: var(--avocado, #3cb371);
+  color: #fff;
+  border-color: var(--avocado, #3cb371);
+}
+
+.chef-note-tag-chip.default {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.chef-note-tag-chip.custom {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.tag-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.1);
+  font-size: 11px;
+  line-height: 1;
+  margin-left: 2px;
+  cursor: pointer;
+}
+
+.tag-del:hover {
+  background: rgba(0,0,0,0.25);
+}
+
+/* 笔记详情标签行 */
+.chef-note-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #eee;
+}
+
+.chef-note-add-tag-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chef-note-tag-input {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+}
+
+.chef-note-tag-input:focus {
+  border-color: var(--avocado, #3cb371);
+}
+
+.chef-note-tag-add-btn {
+  padding: 6px 14px;
+  background: var(--avocado, #3cb371);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.chef-note-tag-add-btn:hover {
+  opacity: 0.85;
 }
 
 /* 只读笔记详情 */
