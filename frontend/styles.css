@@ -5591,6 +5591,19 @@ u.cg-underline {
   margin: 4px 0;
 }
 
+/* 嵌套列表：子步骤字号稍小、颜色稍淡 */
+.cg-readonly-note li > ul,
+.cg-readonly-note li > ol {
+  padding-left: 18px;
+  margin: 4px 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.cg-readonly-note li > ul > li {
+  margin: 2px 0;
+}
+
 .cg-readonly-note strong {
   color: #e8853a;
 }

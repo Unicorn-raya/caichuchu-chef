@@ -1608,44 +1608,101 @@ function renderLocalIngredientMatches(matches, name, title) {
 }
 
 function formatAIText(text) {
-  // markdown 转 HTML：标题、加粗、列表（有序+无序）、链接、换行
+  // markdown 转 HTML：标题、加粗、列表（有序+无序，支持嵌套）、链接、换行
   let html = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // 先把 URL 变成可点击链接（在其他处理之前，避免被转义破坏）
+  // URL 变成可点击链接
   html = html.replace(/(https?:\/\/[^\s<>\u4e00-\u9fff，。！？、；：""'）】)]+)/g,
     '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--avocado);text-decoration:underline;word-break:break-all">$1</a>');
 
-  // ### 等标题转为加粗（加粗到第一个标点符号，如冒号）
-  html = html.replace(/^#{1,6}\s+(.+)$/gm, (match, content) => {
-    const punctIdx = content.search(/[：:，,.。！？、]/);
-    if (punctIdx > 0) {
-      return `<strong>${content.slice(0, punctIdx)}</strong>${content.slice(punctIdx)}`;
-    }
-    return `<strong>${content}</strong>`;
-  });
+  // **加粗**
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 
-  // 有序列表：1. 2. 3. 等 → <ol><li>
-  html = html.replace(/^\s*\d+[.、)]\s+(.+)$/gm, '<li class="ol-item">$1</li>');
-  // 无序列表：- • 等 → <li class="ul-item">
-  html = html.replace(/^\s*[-•]\s+(.+)$/gm, '<li class="ul-item">$1</li>');
+  // 行内处理：加粗、标题
+  const processInline = (s) => {
+    // ### 等标题转为加粗
+    s = s.replace(/^#{1,6}\s+(.+)$/, (match, content) => {
+      const punctIdx = content.search(/[：:，,.。！？、]/);
+      if (punctIdx > 0) {
+        return `<strong>${content.slice(0, punctIdx)}</strong>${content.slice(punctIdx)}`;
+      }
+      return `<strong>${content}</strong>`;
+    });
+    return s;
+  };
 
-  // 把连续的同类型 <li> 包进 <ol> 或 <ul>
-  // 先包有序列表
-  html = html.replace(/((?:<li class="ol-item">[\s\S]*?<\/li>\n?)+)/g, (match) => {
-    return '<ol style="padding-left:20px;margin:8px 0">' + match.replace(/class="ol-item"/g, '').replace(/<\/li>/g, '</li>') + '</ol>';
-  });
-  // 再包无序列表
-  html = html.replace(/((?:<li class="ul-item">[\s\S]*?<\/li>\n?)+)/g, (match) => {
-    return '<ul style="padding-left:20px;margin:8px 0">' + match.replace(/class="ul-item"/g, '') + '</ul>';
-  });
+  // 按行解析，支持有序列表嵌套无序列表
+  const lines = html.split("\n");
+  let out = "";
+  let i = 0;
+  let inOl = false;
+  let inUl = false;
 
-  html = html.replace(/\n\n/g, "</p><p>");
-  html = `<p>${html}</p>`;
-  return html;
+  const closeLists = () => {
+    if (inUl) { out += "</ul>"; inUl = false; }
+    if (inOl) { out += "</ol>"; inOl = false; }
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      closeLists();
+      i++;
+      continue;
+    }
+
+    // 有序列表项
+    const olMatch = trimmed.match(/^\d+[.、)]\s+(.+)$/);
+    if (olMatch) {
+      if (inUl) { out += "</ul>"; inUl = false; }
+      if (!inOl) { out += '<ol style="padding-left:20px;margin:8px 0">'; inOl = true; }
+      const content = processInline(olMatch[1]);
+      out += `<li>${content}`;
+      // 收集后续的 - 子项（非数字开头的列表项）
+      let j = i + 1;
+      const subItems = [];
+      while (j < lines.length) {
+        const nextTrimmed = lines[j].trim();
+        if (!nextTrimmed) { j++; continue; }
+        const ulMatch = nextTrimmed.match(/^[-•]\s+(.+)$/);
+        if (ulMatch && !/^\d+[.、)]/.test(nextTrimmed)) {
+          subItems.push(processInline(ulMatch[1]));
+          j++;
+          continue;
+        }
+        break;
+      }
+      if (subItems.length > 0) {
+        out += '<ul style="padding-left:18px;margin:4px 0">' + subItems.map(s => `<li>${s}</li>`).join("") + "</ul>";
+      }
+      out += "</li>";
+      i = j;
+      continue;
+    }
+
+    // 无序列表项（顶层，非嵌套）
+    const ulMatch = trimmed.match(/^[-•]\s+(.+)$/);
+    if (ulMatch) {
+      if (inOl) { out += "</ol>"; inOl = false; }
+      if (!inUl) { out += '<ul style="padding-left:20px;margin:8px 0">'; inUl = true; }
+      out += `<li>${processInline(ulMatch[1])}</li>`;
+      i++;
+      continue;
+    }
+
+    // 普通文本
+    closeLists();
+    out += `<p>${processInline(trimmed)}</p>`;
+    i++;
+  }
+  closeLists();
+
+  return out;
 }
 
 function backFromIngredientDetail() {
@@ -3420,31 +3477,88 @@ function filterDiscoverRecipes(query) {
 
   // 搜索菜谱名或食材（支持食材别名/主类映射）
   const mapped = INGREDIENT_CLASS_MAP[query];
-  const searchTerms = [query];
+  // 主类名（如搜索"番茄" → canonical = "西红柿"）
+  const canonical = mapped ? mapped.class.toLowerCase() : query;
+  // 同一主类的所有别名
+  const aliasSet = new Set();
+  aliasSet.add(query);
   if (mapped) {
-    // 搜索"番茄"时，同时用"西红柿"匹配
-    searchTerms.push(mapped.class.toLowerCase());
+    aliasSet.add(mapped.class.toLowerCase());
+    Object.entries(INGREDIENT_CLASS_MAP).forEach(([name, info]) => {
+      if (info.class === mapped.class) aliasSet.add(name.toLowerCase());
+    });
   }
 
-  const matched = allRecipes.filter((r) => {
-    const titleLower = r.title.toLowerCase();
-    const titleMatch = searchTerms.some(term => titleLower.includes(term));
-    if (titleMatch) return true;
-    const ingArr = r.requiredIngredients.map(i => i.toLowerCase());
-    const ingredientMatch = searchTerms.some(term => {
-      // 如果搜索词是"番茄"且映射到"西红柿"类，需要匹配所有西红柿类食材
-      if (mapped && term === mapped.class.toLowerCase()) {
-        // 匹配所有映射到同一主类的食材
-        return Object.entries(INGREDIENT_CLASS_MAP).some(([name, info]) => {
-          if (info.class === mapped.class) return ingArr.includes(name.toLowerCase());
-          return false;
-        });
+  // 获取菜谱中与搜索词相关的食材列表及位置信息
+  const getIngredientPositions = (r) => {
+    const positions = [];
+    // 调味品/加工品关键词，匹配到这些时降权
+    const CONDIMENT_SUFFIXES = ["酱", "油", "醋", "酒", "粉", "汁", "料", "精", "露", "膏"];
+    const isCondiment = (name) => CONDIMENT_SUFFIXES.some(suf => name.length > 1 && name.endsWith(suf) && !aliasSet.has(name));
+    const allIgs = [
+      ...(r.coreIngredients || r.requiredIngredients || []).map((n, idx) => ({ name: n.toLowerCase(), idx, isCore: true })),
+      ...(r.optionalIngredients || []).map((n, idx) => ({ name: n.toLowerCase(), idx: idx + 100, isCore: false })),
+    ];
+    for (const ig of allIgs) {
+      let matched = false;
+      let isExact = false;
+      for (const alias of aliasSet) {
+        if (ig.name === alias) { matched = true; isExact = true; break; }
       }
-      // 完整食材名匹配（避免"番茄"匹配到"番茄酱"）
-      return ingArr.includes(term) || ingArr.some(ing => ing === term);
-    });
-    return ingredientMatch;
-  });
+      // 如果没有精确匹配，检查是否为调味品加工品（如番茄酱匹配到番茄），跳过避免误匹配
+      if (!matched && !isCondiment(ig.name)) {
+        for (const alias of aliasSet) {
+          if (alias.length >= 2 && ig.name.includes(alias)) {
+            // 只有当搜索词是食材名的主要部分时才算匹配（不是作为修饰词）
+            // 例如 "西红柿鸡蛋" 包含 "西红柿" 是有效的
+            matched = true;
+            break;
+          }
+        }
+      }
+      if (matched) {
+        positions.push({ ...ig, isExact, isCondiment: isCondiment(ig.name) });
+      }
+    }
+    return positions;
+  };
+
+  // 打分排序：标题匹配 > 主食材靠前匹配 > 配菜匹配 > 调味品降权
+  const scored = allRecipes.map((r) => {
+    let score = 0;
+    const titleLower = r.title.toLowerCase();
+    // 标题直接包含搜索词（如西红柿土豆炖牛肉）—— 最高优先级
+    if (titleLower.includes(query)) score += 100;
+    // 标题以搜索词开头（如"西红柿炒鸡蛋"）额外加分
+    if (titleLower.startsWith(query)) score += 20;
+    // 标题包含主类名/别名（如搜"番茄"，标题含"西红柿"；搜"西红柿"，标题含"番茄"）
+    if (!titleLower.includes(query)) {
+      for (const alias of aliasSet) {
+        if (alias !== query && titleLower.includes(alias)) {
+          score += 80;
+          if (titleLower.startsWith(alias)) score += 10;
+          break;
+        }
+      }
+    }
+    // 食材匹配：coreIngredients 越靠前分越高
+    const positions = getIngredientPositions(r);
+    for (const pos of positions) {
+      if (pos.isCore) {
+        let pts = Math.max(50 - pos.idx * 10, 10);
+        if (!pos.isExact) pts *= 0.5;
+        if (pos.isCondiment) pts *= 0.1; // 调味品大幅降权
+        score += pts;
+      } else {
+        score += pos.isCondiment ? 1 : 5; // 可选食材低分
+      }
+    }
+    return { recipe: r, score };
+  }).filter(s => s.score > 0);
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const matched = scored.map(s => s.recipe);
 
   content.innerHTML = `
     <div class="discover-search-result">

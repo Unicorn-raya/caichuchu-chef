@@ -175,23 +175,45 @@ const ChefGuides = {
         continue;
       }
 
-      // 有序列表（允许条目之间有空行，保持编号连续）
+      // 有序列表（支持嵌套无序列表，保持编号连续）
       if (/^\d+[.、]\s*/.test(trimmed)) {
         html += "<ol>";
         while (i < lines.length) {
-          const t = lines[i].trim();
+          const rawLine = lines[i];
+          const t = rawLine.trim();
+          // 有序条目
           if (/^\d+[.、]\s*/.test(t)) {
-            html += `<li>${inline(t.replace(/^\d+[.、]\s*/, ""))}</li>`;
+            html += `<li>${inline(t.replace(/^\d+[.、]\s*/, ""))}`;
+            // 收集后面的缩进项（子列表）
+            let j = i + 1;
+            let subItems = [];
+            while (j < lines.length) {
+              const nextRaw = lines[j];
+              const nextTrimmed = nextRaw.trim();
+              if (!nextTrimmed) { j++; continue; }
+              // 行首有空白 + 以 -/* 开头 → 子列表项
+              if (/^\s+[-*]\s+/.test(nextRaw)) {
+                subItems.push(nextTrimmed.replace(/^[-*]\s+/, ""));
+                j++;
+                continue;
+              }
+              break;
+            }
+            if (subItems.length > 0) {
+              html += "<ul>" + subItems.map(s => `<li>${inline(s)}</li>`).join("") + "</ul>";
+            }
+            html += "</li>";
+            i = j;
+            continue;
+          }
+          // 空行：跳过，但不结束列表
+          if (!t) {
             i++;
             continue;
           }
-          if (!t) {
-            let j = i + 1;
-            while (j < lines.length && !lines[j].trim()) j++;
-            if (j < lines.length && /^\d+[.、]\s*/.test(lines[j].trim())) {
-              i = j;
-              continue;
-            }
+          // 非缩进的顶层 - 列表项（不应出现在有序列表中间，结束）
+          if (/^[-*]\s+/.test(t) && !/^\s+/.test(rawLine)) {
+            break;
           }
           break;
         }
