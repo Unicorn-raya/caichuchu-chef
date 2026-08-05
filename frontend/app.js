@@ -103,6 +103,211 @@ const INGREDIENT_EMOJI = {
   "黄油": "🧈", "螃蟹": "🦀", "小龙虾": "🦞", "鱿鱼": "🦑", "蛤蜊": "🐚",
 };
 
+/**
+ * 食材主类映射：具体食材 → 所属主类
+ * 用于扩展搜索：搜索"五花肉"时同时匹配"猪肉"类菜谱
+ * 主类词也用于判断菜谱主角是否匹配（避免水产里放几片五花肉就推荐为肉菜谱）
+ */
+const INGREDIENT_CLASS_MAP = {
+  // 猪肉类
+  "猪肉": { class: "猪肉", category: "meat" },
+  "五花肉": { class: "猪肉", category: "meat" },
+  "排骨": { class: "猪肉", category: "meat" },
+  "里脊": { class: "猪肉", category: "meat" },
+  "瘦肉": { class: "猪肉", category: "meat" },
+  "肥肉": { class: "猪肉", category: "meat" },
+  "肉末": { class: "猪肉", category: "meat" },
+  "肉片": { class: "猪肉", category: "meat" },
+  "肉丝": { class: "猪肉", category: "meat" },
+  "肉丁": { class: "猪肉", category: "meat" },
+  "猪蹄": { class: "猪肉", category: "meat" },
+  "肘子": { class: "猪肉", category: "meat" },
+  "扣肉": { class: "猪肉", category: "meat" },
+  "腊肉": { class: "猪肉", category: "meat" },
+  "腊肠": { class: "猪肉", category: "meat" },
+  "培根": { class: "猪肉", category: "meat" },
+  "咸肉": { class: "猪肉", category: "meat" },
+  "蹄髈": { class: "猪肉", category: "meat" },
+  "猪皮": { class: "猪肉", category: "meat" },
+  // 牛肉类
+  "牛肉": { class: "牛肉", category: "meat" },
+  "牛腩": { class: "牛肉", category: "meat" },
+  "牛柳": { class: "牛肉", category: "meat" },
+  "肥牛": { class: "牛肉", category: "meat" },
+  "牛排": { class: "牛肉", category: "meat" },
+  // 羊肉类
+  "羊肉": { class: "羊肉", category: "meat" },
+  "羊排": { class: "羊肉", category: "meat" },
+  "羊腩": { class: "羊肉", category: "meat" },
+  // 鸡肉类
+  "鸡肉": { class: "鸡肉", category: "meat" },
+  "鸡翅": { class: "鸡肉", category: "meat" },
+  "鸡腿": { class: "鸡肉", category: "meat" },
+  "鸡胸": { class: "鸡肉", category: "meat" },
+  "鸡爪": { class: "鸡肉", category: "meat" },
+  "鸡肝": { class: "鸡肉", category: "meat" },
+  "鸡": { class: "鸡肉", category: "meat" },
+  // 鸭/鹅类
+  "鸭肉": { class: "鸭肉", category: "meat" },
+  "鸭": { class: "鸭肉", category: "meat" },
+  "鸭腿": { class: "鸭肉", category: "meat" },
+  "鸭脖": { class: "鸭肉", category: "meat" },
+  "鸭血": { class: "鸭肉", category: "meat" },
+  "鹅": { class: "鹅肉", category: "meat" },
+  "鸽子": { class: "鸽肉", category: "meat" },
+  "乳鸽": { class: "鸽肉", category: "meat" },
+  "兔": { class: "兔肉", category: "meat" },
+  // 鱼类（水产）
+  "鱼": { class: "鱼", category: "aquatic" },
+  "鲤鱼": { class: "鱼", category: "aquatic" },
+  "鲈鱼": { class: "鱼", category: "aquatic" },
+  "桂鱼": { class: "鱼", category: "aquatic" },
+  "鳜鱼": { class: "鱼", category: "aquatic" },
+  "鳕鱼": { class: "鱼", category: "aquatic" },
+  "三文鱼": { class: "鱼", category: "aquatic" },
+  "草鱼": { class: "鱼", category: "aquatic" },
+  "鲫鱼": { class: "鱼", category: "aquatic" },
+  "黑鱼": { class: "鱼", category: "aquatic" },
+  "带鱼": { class: "鱼", category: "aquatic" },
+  "黄鱼": { class: "鱼", category: "aquatic" },
+  "昂刺鱼": { class: "鱼", category: "aquatic" },
+  "翘嘴鱼": { class: "鱼", category: "aquatic" },
+  "鱼头": { class: "鱼", category: "aquatic" },
+  "鳝丝": { class: "鱼", category: "aquatic" },
+  "白鳝": { class: "鱼", category: "aquatic" },
+  // 虾蟹贝类
+  "虾": { class: "虾", category: "aquatic" },
+  "虾仁": { class: "虾", category: "aquatic" },
+  "基围虾": { class: "虾", category: "aquatic" },
+  "红虾": { class: "虾", category: "aquatic" },
+  "对虾": { class: "虾", category: "aquatic" },
+  "罗氏虾": { class: "虾", category: "aquatic" },
+  "螃蟹": { class: "蟹", category: "aquatic" },
+  "青蟹": { class: "蟹", category: "aquatic" },
+  "梭子蟹": { class: "蟹", category: "aquatic" },
+  "大闸蟹": { class: "蟹", category: "aquatic" },
+  "小龙虾": { class: "小龙虾", category: "aquatic" },
+  "鱿鱼": { class: "鱿鱼", category: "aquatic" },
+  "蛤蜊": { class: "贝类", category: "aquatic" },
+  "蛏子": { class: "贝类", category: "aquatic" },
+  "生蚝": { class: "贝类", category: "aquatic" },
+  "牡蛎": { class: "贝类", category: "aquatic" },
+  "田螺": { class: "贝类", category: "aquatic" },
+  // 鸡蛋/蛋制品
+  "鸡蛋": { class: "鸡蛋", category: "egg" },
+  "蛋": { class: "鸡蛋", category: "egg" },
+  "鹌鹑蛋": { class: "蛋", category: "egg" },
+  "皮蛋": { class: "蛋", category: "egg" },
+  "咸蛋": { class: "蛋", category: "egg" },
+  // 豆制品
+  "豆腐": { class: "豆腐", category: "vegetarian" },
+  "豆干": { class: "豆腐", category: "vegetarian" },
+  "豆皮": { class: "豆腐", category: "vegetarian" },
+  "千张": { class: "豆腐", category: "vegetarian" },
+  "腐竹": { class: "豆腐", category: "vegetarian" },
+  "日本豆腐": { class: "豆腐", category: "vegetarian" },
+};
+
+/**
+ * 获取食材的搜索扩展词列表：原词 + 所属主类
+ * 例如："五花肉" → ["五花肉", "猪肉"]
+ */
+function getIngredientSearchTerms(name) {
+  const terms = [name];
+  const mapped = INGREDIENT_CLASS_MAP[name];
+  if (mapped && !terms.includes(mapped.class)) {
+    terms.push(mapped.class);
+  }
+  return terms;
+}
+
+/**
+ * 检查一个食材名是否匹配搜索词（安全的单向包含：菜谱食材包含搜索词，搜索词至少2字）
+ */
+function ingredientMatches(ingredient, searchTerm) {
+  if (ingredient === searchTerm) return true;
+  if (searchTerm.length >= 2 && ingredient.includes(searchTerm)) return true;
+  return false;
+}
+
+/**
+ * 智能匹配本地菜谱：计算匹配度得分并排序
+ * - coreIngredients匹配权重远高于requiredIngredients
+ * - 如果菜谱category与搜索食材主类冲突（如水产里放了几片五花肉），大幅降权
+ * - 去掉危险的反向包含（name.includes(i)）避免单字误匹配
+ */
+function findLocalIngredientRecipes(name) {
+  const searchTerms = getIngredientSearchTerms(name);
+  const mapped = INGREDIENT_CLASS_MAP[name];
+  const searchClass = mapped ? mapped.class : name;
+  const searchCategory = mapped ? mapped.category : null;
+
+  const scored = [];
+
+  for (const r of allRecipes) {
+    let score = 0;
+    const core = r.coreIngredients || [];
+    const required = r.requiredIngredients || [];
+    let matchedInCore = false;
+    let matchedExact = false;
+
+    // 遍历每个搜索词（原词+主类）
+    for (const term of searchTerms) {
+      // coreIngredients 精确匹配 +3分
+      if (core.some(i => i === term)) {
+        score += 3;
+        matchedInCore = true;
+        if (term === name) matchedExact = true;
+      }
+      // coreIngredients 包含匹配（搜索词>=2字） +2分
+      else if (term.length >= 2 && core.some(i => ingredientMatches(i, term))) {
+        score += 2;
+        matchedInCore = true;
+        if (term === name) matchedExact = true;
+      }
+      // requiredIngredients 精确匹配 +1分
+      else if (required.some(i => i === term)) {
+        score += 1;
+        if (term === name) matchedExact = true;
+      }
+      // requiredIngredients 包含匹配 +0.5分
+      else if (term.length >= 2 && required.some(i => ingredientMatches(i, term))) {
+        score += 0.5;
+      }
+    }
+
+    if (score <= 0) continue;
+
+    // 【关键降权】如果搜索的是肉类/蛋类等，但菜谱category是水产/蔬菜，且core里有该分类的主食材
+    // 说明该食材只是配角增香用，不应该作为这个食材的推荐菜谱
+    // 例如：红烧鲤鱼(core有鲤鱼+五花肉) 搜索"五花肉"时应该被降权
+    if (searchCategory && r.category && searchCategory !== r.category) {
+      // 检查菜谱core里是否有它自己分类的代表食材
+      const hasOwnCategoryMainIngredient = core.some(i => {
+        const m = INGREDIENT_CLASS_MAP[i];
+        return m && m.category === r.category;
+      });
+      if (hasOwnCategoryMainIngredient) {
+        // 自己分类的主食材在core里，说明搜索到的食材只是配角，大幅降权
+        score = score * 0.1;
+      }
+    }
+
+    if (score > 0) {
+      scored.push({ recipe: r, score, matchedInCore, matchedExact });
+    }
+  }
+
+  // 按得分排序：精确core匹配 > core匹配 > required匹配
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.matchedInCore !== a.matchedInCore) return b.matchedInCore ? 1 : -1;
+    return 0;
+  });
+
+  return scored.map(s => s.recipe);
+}
+
 // 全局状态
 let currentPage = "home";
 let fridge = []; // { name, addedAt }
@@ -1068,10 +1273,12 @@ async function openIngredientDetail(index) {
     </div>
   `;
 
-  // 同时查找本地菜谱中含此食材的菜
-  const localMatches = allRecipes
-    .filter((r) => r.requiredIngredients.some((i) => i.includes(name) || name.includes(i)))
-    .slice(0, 6);
+  // 智能查找本地菜谱：基于食材主类映射+得分排序，过滤掉配角食材误匹配
+  const localMatches = findLocalIngredientRecipes(name).slice(0, 8);
+  const mapped = INGREDIENT_CLASS_MAP[name];
+  const matchTitle = mapped
+    ? `📚 适合做「${name}」（${mapped.class}类）的菜谱`
+    : `📚 含「${name}」的菜谱`;
 
   const contentEl = document.getElementById("ingredientDetailContent");
   const defaultModel = getDefaultAIModel();
@@ -1084,13 +1291,15 @@ async function openIngredientDetail(index) {
         <div class="ai-empty-sub">配置 AI 模型后，可获取专属这道食材的灵感菜谱推荐</div>
         <button class="ai-empty-btn" onclick="showAIModels()">前往配置</button>
       </div>
-      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name, matchTitle) : ""}
     `;
     return;
   }
 
   try {
-    const prompt = `我冰箱里有食材「${name}」。请推荐以这个食材为主角的常见家常菜，每道菜说明做法亮点和搭配食材，并给出一些烹饪小贴士。详细展开，不要限制内容长度。`;
+    // AI提示词也带上主类信息，让推荐更准确
+    const classHint = mapped ? `（${name}属于${mapped.class}类食材）` : "";
+    const prompt = `我冰箱里有食材「${name}」${classHint}。请推荐以这个食材（或同类食材）为主角的常见家常菜，优先推荐这道菜作为主要食材的菜谱，不要推荐只是少量用到它做配料的菜（比如做鱼放几片肉增香这种不算）。每道菜说明做法亮点和搭配食材，并给出一些烹饪小贴士。详细展开，不要限制内容长度。`;
     const aiText = await callAI(prompt);
     contentEl.innerHTML = `
       <div class="ai-result">
@@ -1100,7 +1309,7 @@ async function openIngredientDetail(index) {
         </div>
         <div class="ai-result-text">${formatAIText(aiText)}</div>
       </div>
-      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name, matchTitle) : ""}
     `;
   } catch (e) {
     const msg = e.message === "NO_AI_MODEL" ? "尚未配置 AI 模型" : e.message;
@@ -1110,15 +1319,16 @@ async function openIngredientDetail(index) {
         <div class="ai-empty-title">AI 生成失败</div>
         <div class="ai-empty-sub">${msg}</div>
       </div>
-      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name) : ""}
+      ${localMatches.length > 0 ? renderLocalIngredientMatches(localMatches, name, matchTitle) : ""}
     `;
   }
 }
 
-function renderLocalIngredientMatches(matches, name) {
+function renderLocalIngredientMatches(matches, name, title) {
+  const displayTitle = title || `📚 含「${name}」的菜谱`;
   return `
     <div class="local-match-section">
-      <div class="local-match-title">📚 含「${name}」的菜谱</div>
+      <div class="local-match-title">${displayTitle}</div>
       <div class="recipe-list" style="padding:0">
         ${matches.map((r) => renderRecipeListCard(r)).join("")}
       </div>
