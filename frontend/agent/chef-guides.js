@@ -464,8 +464,9 @@ const ChefGuides = {
             html += `</div>`;
           }
           // B站视频链接
-          const biliUrl = "https://search.bilibili.com/all?keyword=" + encodeURIComponent(recipeTitle + " 做法");
-          html += `<a class="cg-bili-link" href="${biliUrl}" target="_blank" rel="noopener noreferrer">
+          const biliKw = recipeTitle;
+          const safeBiliKw = JSON.stringify(biliKw);
+          html += `<a class="cg-bili-link" href="javascript:void(0)" onclick='openBiliSearch(${safeBiliKw});return false;'>
             <svg class="cg-bili-icon" viewBox="0 0 48 48" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
               <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
               <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>

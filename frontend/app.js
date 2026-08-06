@@ -560,12 +560,12 @@ async function showBootAnimation() {
   const overlay = document.getElementById("bootOverlay");
   if (!overlay) return;
 
-  // 仅每个会话首次打开时显示
-  if (sessionStorage.getItem("caichuchu_boot_shown")) {
-    overlay.remove();
+  // 已显示过动画则直接跳过，也处理 inline script 已设 display:none 的情况
+  if (localStorage.getItem("caichuchu_boot_shown_ever")) {
+    if (overlay.parentNode) overlay.remove();
     return;
   }
-  sessionStorage.setItem("caichuchu_boot_shown", "1");
+  localStorage.setItem("caichuchu_boot_shown_ever", "1");
 
   // 白天（6-18点）用页面背景色 + 黑色logo，夜晚用黑色背景 + 白色logo
   const h = new Date().getHours();
@@ -3214,7 +3214,7 @@ function showRecipeDetail(rec) {
           </div>
         ` : ""}
 
-        <a class="bili-video-link" href="https://search.bilibili.com/all?keyword=${encodeURIComponent(recipe.title + " 做法")}" target="_blank" rel="noopener noreferrer">
+        <a class="bili-video-link" href="javascript:void(0)" onclick='openBiliSearch(${JSON.stringify(recipe.title)});return false;'>
           <svg class="bili-icon" viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
             <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
             <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
@@ -4047,7 +4047,7 @@ function showAIRecipeDetail(recipeId) {
         </div>
         ` : ''}
 
-        <a class="bili-video-link" href="https://search.bilibili.com/all?keyword=${encodeURIComponent(recipe.title + " 做法")}" target="_blank" rel="noopener noreferrer">
+        <a class="bili-video-link" href="javascript:void(0)" onclick='openBiliSearch(${JSON.stringify(recipe.title)});return false;'>
           <svg class="bili-icon" viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
             <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
             <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
@@ -4582,8 +4582,10 @@ function renderTimelineMode() {
         <div class="journal-line"></div>
         ${timelineHtml}
         <div class="journal-end">
-          <div class="journal-end-dot"></div>
-          <div class="journal-end-text">继续烹饪吧 🍳</div>
+          <button type="button" class="journal-end-dot" id="journalEndDot" onclick="toggleJournalEncouragement(this)" title="点击查看鼓励"></button>
+          <div class="journal-end-encourage" id="journalEndEncourage" style="display:none">
+            不是只有专业的厨师才能做出美味的菜的，加油！🧑‍🍳
+          </div>
         </div>
       </div>
     </div>
@@ -4592,6 +4594,52 @@ function renderTimelineMode() {
       <span class="calendar-chef-text">大厨点评</span>
     </div>
   `;
+}
+
+// 日历结束圆点：点击显示鼓励语
+function toggleJournalEncouragement(btn) {
+  const msg = document.getElementById("journalEndEncourage");
+  if (!msg) return;
+  if (msg.style.display === "none") {
+    msg.style.display = "block";
+    msg.style.animation = "journalEncourageIn 0.35s ease-out";
+  } else {
+    msg.style.display = "none";
+  }
+}
+
+// 打开B站搜索：桌面端开新标签网页，手机端尝试唤起B站App
+function openBiliSearch(keyword) {
+  const ua = navigator.userAgent.toLowerCase();
+  const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|harmonyos|miui/i.test(ua);
+  const webUrl = "https://search.bilibili.com/all?keyword=" + encodeURIComponent(keyword + " 做法");
+  if (!isMobile) {
+    // 桌面端：直接打开新标签页
+    window.open(webUrl, "_blank", "noopener noreferrer");
+    return;
+  }
+  // 手机端：尝试唤起App，失败回退网页
+  const appUrl = "bilibili://search?keyword=" + encodeURIComponent(keyword + " 做法");
+  const startTime = Date.now();
+  const timer = setTimeout(function() {
+    // 如果还在页面中，说明App没唤起，回退网页
+    if (document.visibilityState !== "hidden" && Date.now() - startTime < 2500) {
+      window.location.href = webUrl;
+    }
+  }, 1500);
+  // 页面切到后台说明App唤起成功，取消回退
+  document.addEventListener("visibilitychange", function onVs() {
+    if (document.visibilityState === "hidden") {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVs);
+    }
+  });
+  try {
+    window.location.href = appUrl;
+  } catch(e) {
+    clearTimeout(timer);
+    window.location.href = webUrl;
+  }
 }
 
 // ============================================
@@ -5367,6 +5415,140 @@ async function copyDefaultChefNote(file) {
   }
 }
 
+// ============================================
+// 自定义大厨笔记查看（结构与默认大厨一致）
+// ============================================
+let _customChefNotesContext = null; // { chefId, searchKw }
+
+function showCustomChefNotes(chefId) {
+  _customChefNotesContext = { chefId, searchKw: "" };
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick="showChefs()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">${chef.name}的笔记</div>
+        <div style="width:60px"></div>
+      </div>
+      <div class="chef-notes-search-bar">
+        <input type="text" id="customNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱名…" oninput="filterCustomChefNotes(this.value)" />
+      </div>
+      <div class="chef-notes-list" id="customChefNotesList">
+      </div>
+    </div>
+  `;
+  renderCustomChefNotesList("");
+}
+
+function renderCustomChefNotesList(keyword) {
+  const ctx = _customChefNotesContext;
+  if (!ctx) return;
+  const chef = ChefManager.getById(ctx.chefId);
+  if (!chef) return;
+  const kw = (keyword || "").trim().toLowerCase();
+  const recipes = (chef.recipes || []).slice().sort((a, b) => {
+    const da = a.updatedAt || a.createdAt || "";
+    const db = b.updatedAt || b.createdAt || "";
+    return db.localeCompare(da);
+  });
+  const filtered = kw
+    ? recipes.filter(r => (r.title || "").toLowerCase().includes(kw))
+    : recipes;
+
+  const listEl = document.getElementById("customChefNotesList");
+  if (!listEl) return;
+  if (filtered.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center;padding:60px 20px;color:#999;">
+      <div style="font-size:48px;margin-bottom:12px;">📝</div>
+      <div>${chef.recipes.length === 0 ? "这位大厨还没有写笔记，去编辑页面添加吧~" : "没有找到匹配的菜谱"}</div>
+    </div>`;
+    return;
+  }
+  listEl.innerHTML = filtered.map((r, idx) => {
+    const safeId = JSON.stringify(ctx.chefId);
+    const safeTitle = JSON.stringify(r.title);
+    return `
+    <div class="chef-note-item" onclick='viewCustomChefNote(${safeId},${safeTitle})'>
+      <span class="chef-note-item-icon">📄</span>
+      <div class="chef-note-item-center">
+        <span class="chef-note-item-title">${r.title}</span>
+        <span class="chef-note-item-tags">
+          ${r.updatedAt ? `<span class="chef-note-item-tag">更新于 ${new Date(r.updatedAt).toLocaleDateString()}</span>` : ""}
+          ${r.summary && r.summary.trim() ? `<span class="chef-note-item-tag">有总结</span>` : ""}
+          ${r.content && r.content.trim() ? `<span class="chef-note-item-tag">${Math.max(1, (r.content.trim().match(/\n/g) || []).length + 1)} 段</span>` : ""}
+        </span>
+      </div>
+      <span class="chef-note-item-arrow">›</span>
+    </div>
+  `}).join("");
+}
+
+function filterCustomChefNotes(keyword) {
+  renderCustomChefNotesList(keyword);
+}
+
+function viewCustomChefNote(chefId, recipeTitle) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+  const note = chef.recipes.find(r => r.title === recipeTitle);
+  if (!note) {
+    showToast("笔记不存在");
+    return;
+  }
+  const safeChefId = JSON.stringify(chefId);
+  const content = note.content || "";
+  const summary = note.summary || "";
+
+  const app = document.getElementById("app");
+  document.getElementById("bottomNav").style.display = "none";
+  app.innerHTML = `
+    <div class="page detail-list-page">
+      <div class="swipe-header">
+        <button class="swipe-header-back" onclick='showCustomChefNotes(${safeChefId})'>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+          返回
+        </button>
+        <div class="swipe-header-title">笔记详情</div>
+        <div style="width:60px"></div>
+      </div>
+      <div style="padding:16px;">
+        <div class="cg-readonly-note">
+          ${summary ? `
+          <div style="margin-bottom:20px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg, #f0fbe8 0%, #fafdf3 100%);border:1px solid #d5e8c5;">
+            <div style="font-size:13px;font-weight:600;color:#5a8a3a;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
+              <span>📝</span><span>${chef.name}的总结</span>
+            </div>
+            <div style="font-size:14px;line-height:1.7;color:#465;white-space:pre-wrap;">${summary}</div>
+          </div>` : ""}
+          ${ChefGuides ? ChefGuides.renderMarkdown(content) : `<pre style="white-space:pre-wrap;font-size:14px;line-height:1.7;">${content}</pre>`}
+        </div>
+        <button class="chef-copy-btn" onclick='copyCustomChefNote(${safeChefId},${JSON.stringify(recipeTitle)})'>📋 复制笔记内容</button>
+      </div>
+    </div>
+  `;
+}
+
+function copyCustomChefNote(chefId, recipeTitle) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) { showToast("复制失败"); return; }
+  const note = chef.recipes.find(r => r.title === recipeTitle);
+  if (!note) { showToast("复制失败"); return; }
+  const text = (note.summary ? note.summary + "\n\n===== 详细笔记 =====\n\n" : "") + (note.content || "");
+  try {
+    navigator.clipboard.writeText(text);
+    showToast("已复制到剪贴板");
+  } catch (e) {
+    showToast("复制失败");
+  }
+}
+
 function renderChefCard(chef, index) {
   const isDefault = chef.isDefault;
   const enabled = chef.enabled;
@@ -5378,6 +5560,11 @@ function renderChefCard(chef, index) {
     ? `<span class="chef-note-count" data-default-count="1">加载中...</span>`
     : `${chef.recipes.length} 条笔记`;
 
+  const safeChefId = JSON.stringify(chef.id);
+  const viewNotesFn = isDefault
+    ? `showDefaultChefNotes()`
+    : `showCustomChefNotes(${safeChefId})`;
+
   return `
     <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
       <div class="chef-card-color-dot" style="background:${chef.color}" onclick="showChefColorPicker('${chef.id}', this)" title="点击更换颜色"></div>
@@ -5385,7 +5572,7 @@ function renderChefCard(chef, index) {
         ${avatarHtml}
         <div class="chef-card-avatar-edit">✏️</div>
       </div>
-      <div class="chef-card-info" onclick="${isDefault ? `showDefaultChefNotes()` : `editChef('${chef.id}')`}">
+      <div class="chef-card-info" onclick="${viewNotesFn}">
         <div class="chef-card-name">${chef.name}</div>
         <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${noteCount} · 优先级 ${index + 1}</div>
       </div>
@@ -5396,7 +5583,10 @@ function renderChefCard(chef, index) {
         </div>
         ${isDefault
           ? `<button class="chef-card-view-btn" onclick="event.stopPropagation(); showDefaultChefNotes()" title="查看笔记">📖</button>`
-          : `<button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>`
+          : `
+          <button class="chef-card-view-btn" onclick="event.stopPropagation(); showCustomChefNotes(${safeChefId})" title="查看笔记">📖</button>
+          <button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>
+          `
         }
         <button class="chef-card-toggle ${enabled ? "active" : ""}" onclick="event.stopPropagation(); toggleChefEnabled('${chef.id}')">
           <span class="chef-card-toggle-dot"></span>

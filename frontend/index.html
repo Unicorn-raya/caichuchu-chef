@@ -17,6 +17,17 @@
       <span id="bootText" class="boot-text"></span><span class="boot-cursor">|</span>
     </div>
   </div>
+  <script>
+    // 立即判断是否需要跳过开场动画，避免黑色闪烁
+    (function() {
+      try {
+        if (localStorage.getItem("caichuchu_boot_shown_ever")) {
+          var o = document.getElementById("bootOverlay");
+          if (o) o.style.display = "none";
+        }
+      } catch(e) {}
+    })();
+  </script>
 
   <main id="app"></main>
 
