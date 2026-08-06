@@ -5482,8 +5482,10 @@ function renderCustomChefNotesList(keyword) {
   listEl.innerHTML = filtered.map((r, idx) => {
     const safeId = JSON.stringify(ctx.chefId);
     const safeTitle = JSON.stringify(r.title);
+    const itemId = "custom-note-" + ctx.chefId.replace(/[^a-zA-Z0-9]/g, "_") + "-" + idx;
     return `
-    <div class="chef-note-item" onclick='viewCustomChefNote(${safeId},${safeTitle})'>
+    <div class="chef-note-item" id="${itemId}" onclick='viewCustomChefNote(${safeId},${safeTitle})'>
+      <button class="chef-note-delete-btn" onclick='event.stopPropagation();toggleShakeDeleteCustomNote(${safeId},${safeTitle},${JSON.stringify(itemId)})'>×</button>
       <span class="chef-note-item-icon">📄</span>
       <div class="chef-note-item-center">
         <span class="chef-note-item-title">${r.title}</span>
@@ -5496,6 +5498,50 @@ function renderCustomChefNotesList(keyword) {
       <span class="chef-note-item-arrow">›</span>
     </div>
   `}).join("");
+}
+
+// 自定义大厨笔记列表：iOS风格抖动删除（第一次×→抖，第二次×→删）
+let shakingCustomNoteKey = null; // 格式: `${chefId}||${recipeTitle}`
+
+function toggleShakeDeleteCustomNote(chefId, recipeTitle, itemId) {
+  const key = chefId + "||" + recipeTitle;
+  if (shakingCustomNoteKey === key) {
+    // 第二次点击：删除此笔记
+    const chef = ChefManager.getById(chefId);
+    if (chef) {
+      chef.recipes = (chef.recipes || []).filter(r => r.title !== recipeTitle);
+      try { ChefManager._save(); } catch(e) {}
+    }
+    shakingCustomNoteKey = null;
+    renderCustomChefNotesList(_customChefNotesContext ? _customChefNotesContext.searchKw : "");
+    showToast(`已删除《${recipeTitle}》的笔记`);
+    return;
+  }
+  // 取消之前其它卡片的抖动（直接在当前列表里清掉所有 .shaking）
+  const listEl = document.getElementById("customChefNotesList");
+  if (listEl) {
+    listEl.querySelectorAll(".chef-note-item.shaking").forEach(function(it) {
+      it.classList.remove("shaking");
+    });
+  }
+  shakingCustomNoteKey = key;
+  // 加上 shaking 类
+  const card = document.getElementById(itemId);
+  if (card) card.classList.add("shaking");
+}
+
+// 从自定义大厨（ChefManager内部）直接删除某菜谱笔记并保存
+function deleteCustomChefRecipeNote(chefId, recipeTitle, afterDeleteBackToList) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return;
+  const existIdx = chef.recipes.findIndex(r => r.title === recipeTitle);
+  if (existIdx < 0) return;
+  chef.recipes.splice(existIdx, 1);
+  try { ChefManager._save(); } catch(e) {}
+  showToast(`已删除《${recipeTitle}》的笔记`);
+  if (afterDeleteBackToList) {
+    showCustomChefNotes(chefId);
+  }
 }
 
 function filterCustomChefNotes(keyword) {
@@ -5539,6 +5585,7 @@ function viewCustomChefNote(chefId, recipeTitle) {
         </div>
         <button class="chef-copy-btn" onclick='copyCustomChefNote(${safeChefId},${JSON.stringify(recipeTitle)})'>📋 复制笔记内容</button>
         <button class="chef-edit-btn" onclick='editChef(${safeChefId},${JSON.stringify(recipeTitle)})'>✏️ 编辑此笔记</button>
+        <button class="chef-delete-note-btn" onclick='deleteCustomChefRecipeNote(${safeChefId},${JSON.stringify(recipeTitle)},true)'>🗑️ 删除此笔记</button>
       </div>
     </div>
   `;
