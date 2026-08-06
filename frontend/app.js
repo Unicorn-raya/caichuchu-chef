@@ -554,6 +554,30 @@ async function init() {
 
   setupNavigation();
   initClickTracking();
+  // 全局：厨师卡片 / 自定义笔记卡片 抖动删除时，点击页面其他区域 → 取消抖动
+  document.addEventListener("click", function(e) {
+    // 取消厨师卡片抖动
+    if (shakingChefId) {
+      const shakeCard = document.getElementById("chef-card-" + shakingChefId);
+      if (shakeCard && !shakeCard.contains(e.target)) {
+        shakeCard.classList.remove("shaking");
+        shakingChefId = null;
+      }
+    }
+    // 取消自定义笔记卡片抖动
+    if (shakingCustomNoteKey) {
+      const listEl = document.getElementById("customChefNotesList");
+      const shakeCards = listEl ? listEl.querySelectorAll(".chef-note-item.shaking") : [];
+      let clickedInsideShake = false;
+      for (let i = 0; i < shakeCards.length; i++) {
+        if (shakeCards[i].contains(e.target)) { clickedInsideShake = true; break; }
+      }
+      if (!clickedInsideShake) {
+        for (let i = 0; i < shakeCards.length; i++) shakeCards[i].classList.remove("shaking");
+        shakingCustomNoteKey = null;
+      }
+    }
+  }, true); // useCapture，优先于 onclick inline handler 执行，避免stopPropagation按钮影响判断
   renderPage("home");
   initChefAgentFab();
   updateChefFabState();
@@ -5509,6 +5533,65 @@ function deleteCustomChefNoteTag(file, tag) {
   viewDefaultChefNote(file);
 }
 
+// ===================== 自定义大厨笔记 - 标签系统 =====================
+// 标签存储 key：`custom||${chefId}||${recipeTitle}`（与默认大厨的file区分）
+const CUSTOM_CHEF_NOTE_TAG_PREFIX = "custom||";
+function customNoteTagKey(chefId, recipeTitle) {
+  return CUSTOM_CHEF_NOTE_TAG_PREFIX + chefId + "||" + recipeTitle;
+}
+// 保存自定义大厨笔记的标签
+function saveCustomChefNoteTag(chefId, recipeTitle, tag) {
+  const all = loadChefNoteTags();
+  const key = customNoteTagKey(chefId, recipeTitle);
+  if (!all[key]) all[key] = [];
+  const t = tag.trim();
+  if (t && !all[key].includes(t)) all[key].push(t);
+  localStorage.setItem(CHEF_NOTE_TAGS_KEY, JSON.stringify(all));
+}
+// 删除自定义大厨笔记的标签
+function removeCustomChefNoteTag(chefId, recipeTitle, tag) {
+  const all = loadChefNoteTags();
+  const key = customNoteTagKey(chefId, recipeTitle);
+  if (all[key]) {
+    all[key] = all[key].filter(t => t !== tag);
+    localStorage.setItem(CHEF_NOTE_TAGS_KEY, JSON.stringify(all));
+  }
+}
+// 自定义大厨笔记默认标签：根据菜谱标题，在全部菜谱(allRecipes)中查category后匹配
+function getCustomNoteDefaultTag(recipeTitle) {
+  if (!recipeTitle) return null;
+  const t = recipeTitle.trim();
+  const r = allRecipes.find(x => x.title === t);
+  if (!r || !r.category) return null;
+  const cat = r.category;
+  // 精确匹配
+  if (CHEF_NOTE_CATEGORY_LABELS[cat]) return CHEF_NOTE_CATEGORY_LABELS[cat];
+  // 模糊：如 category="meat_dish" 也兼容 "meat" 等单字 key 已在上面 map 里
+  return null;
+}
+// 获取自定义大厨某篇笔记的全部标签 = 默认标签 + 用户自定义标签（去重）
+function getCustomNoteTags(chefId, recipeTitle) {
+  const defaultTag = getCustomNoteDefaultTag(recipeTitle);
+  const key = customNoteTagKey(chefId, recipeTitle);
+  const custom = (loadChefNoteTags()[key] || []);
+  const merged = defaultTag ? [defaultTag, ...custom] : custom;
+  return [...new Set(merged)];
+}
+// 某标签是否是默认标签（供详情页判断是否展示删除×）
+function isCustomNoteDefaultTag(chefId, recipeTitle, tag) {
+  return tag === getCustomNoteDefaultTag(recipeTitle);
+}
+// 提取某自定义大厨下所有笔记的全部标签（用于列表页标签筛选栏）
+function getAllCustomNoteTags(chefId) {
+  const chef = ChefManager.getById(chefId);
+  if (!chef) return [];
+  const s = new Set();
+  (chef.recipes || []).forEach(r => {
+    getCustomNoteTags(chefId, r.title).forEach(t => s.add(t));
+  });
+  return [...s].sort();
+}
+
 // 查看默认大厨某道菜的笔记详情（只读，可复制）
 async function viewDefaultChefNote(file) {
   const app = document.getElementById("app");
@@ -5584,7 +5667,7 @@ async function copyDefaultChefNote(file) {
 let _customChefNotesContext = null; // { chefId, searchKw }
 
 function showCustomChefNotes(chefId) {
-  _customChefNotesContext = { chefId, searchKw: "" };
+  _customChefNotesContext = { chefId, searchKw: "", tagFilter: "" };
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
   const app = document.getElementById("app");
@@ -5604,8 +5687,9 @@ function showCustomChefNotes(chefId) {
         </button>
       </div>
       <div class="chef-notes-search-bar">
-        <input type="text" id="customNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱名…" oninput="filterCustomChefNotes(this.value)" />
+        <input type="text" id="customNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱名或标签…" oninput="filterCustomChefNotes(this.value)" />
       </div>
+      <div id="customChefNoteTagFilterBar" class="chef-note-tag-filter-bar" style="display:none"></div>
       <div class="chef-notes-list" id="customChefNotesList">
       </div>
     </div>
@@ -5619,14 +5703,45 @@ function renderCustomChefNotesList(keyword) {
   const chef = ChefManager.getById(ctx.chefId);
   if (!chef) return;
   const kw = (keyword || "").trim().toLowerCase();
+  ctx.searchKw = keyword || "";
+  const tagFilter = ctx.tagFilter || "";
   const recipes = (chef.recipes || []).slice().sort((a, b) => {
     const da = a.updatedAt || a.createdAt || "";
     const db = b.updatedAt || b.createdAt || "";
     return db.localeCompare(da);
   });
-  const filtered = kw
-    ? recipes.filter(r => (r.title || "").toLowerCase().includes(kw))
-    : recipes;
+
+  const filtered = recipes.filter(r => {
+    const tags = getCustomNoteTags(ctx.chefId, r.title);
+    // 标签过滤
+    if (tagFilter && !tags.includes(tagFilter)) return false;
+    // 关键字模糊搜索：匹配标题 或 标签
+    if (kw) {
+      const titleMatch = (r.title || "").toLowerCase().includes(kw);
+      const tagMatch = tags.some(t => String(t).toLowerCase().includes(kw));
+      if (!titleMatch && !tagMatch) return false;
+    }
+    return true;
+  });
+
+  // —— 标签筛选栏（与默认大厨结构一致）
+  const allTags = getAllCustomNoteTags(ctx.chefId);
+  const tagBar = document.getElementById("customChefNoteTagFilterBar");
+  if (tagBar) {
+    if (allTags.length > 0) {
+      tagBar.style.display = "flex";
+      tagBar.innerHTML = `<span class="chef-note-filter-label">标签：</span>` +
+        (tagFilter
+          ? `<span class="chef-note-tag-chip active" onclick="setCustomChefNoteTagFilter('')">× 清除</span>`
+          : ``) +
+        allTags.map(t => {
+          const safeT = JSON.stringify(t);
+          return `<span class="chef-note-tag-chip ${tagFilter === t ? 'active' : ''}" onclick='setCustomChefNoteTagFilter(${safeT})'>${t}</span>`;
+        }).join("");
+    } else {
+      tagBar.style.display = "none";
+    }
+  }
 
   const listEl = document.getElementById("customChefNotesList");
   if (!listEl) return;
@@ -5641,6 +5756,13 @@ function renderCustomChefNotesList(keyword) {
     const safeId = JSON.stringify(ctx.chefId);
     const safeTitle = JSON.stringify(r.title);
     const itemId = "custom-note-" + ctx.chefId.replace(/[^a-zA-Z0-9]/g, "_") + "-" + idx;
+    const tags = getCustomNoteTags(ctx.chefId, r.title);
+    // 元信息 tags（更新于 / 有总结 / 段数）—— 保持在日期行
+    const metaTags = [];
+    if (r.updatedAt) metaTags.push(`<span class="chef-note-item-tag">更新于 ${new Date(r.updatedAt).toLocaleDateString()}</span>`);
+    if (r.summary && r.summary.trim()) metaTags.push(`<span class="chef-note-item-tag">有总结</span>`);
+    if (r.content && r.content.trim()) metaTags.push(`<span class="chef-note-item-tag">${Math.max(1, (r.content.trim().match(/\n/g) || []).length + 1)} 段</span>`);
+
     return `
     <div class="chef-note-item" id="${itemId}" onclick='viewCustomChefNote(${safeId},${safeTitle})'>
       <button class="chef-note-delete-btn" onclick='event.stopPropagation();toggleShakeDeleteCustomNote(${safeId},${safeTitle},${JSON.stringify(itemId)})'>×</button>
@@ -5648,14 +5770,21 @@ function renderCustomChefNotesList(keyword) {
       <div class="chef-note-item-center">
         <span class="chef-note-item-title">${r.title}</span>
         <span class="chef-note-item-tags">
-          ${r.updatedAt ? `<span class="chef-note-item-tag">更新于 ${new Date(r.updatedAt).toLocaleDateString()}</span>` : ""}
-          ${r.summary && r.summary.trim() ? `<span class="chef-note-item-tag">有总结</span>` : ""}
-          ${r.content && r.content.trim() ? `<span class="chef-note-item-tag">${Math.max(1, (r.content.trim().match(/\n/g) || []).length + 1)} 段</span>` : ""}
+          ${tags.map(t => `<span class="chef-note-item-tag">${t}</span>`).join("")}
+          ${tags.length > 0 ? "" : metaTags.join("")}
         </span>
+        ${tags.length > 0 ? `<span class="chef-note-item-tags" style="margin-top:4px">${metaTags.join("")}</span>` : ""}
       </div>
       <span class="chef-note-item-arrow">›</span>
     </div>
   `}).join("");
+}
+
+// 自定义大厨笔记筛选标签（点击chip切换）
+function setCustomChefNoteTagFilter(tag) {
+  if (_customChefNotesContext) _customChefNotesContext.tagFilter = tag || "";
+  const searchEl = document.getElementById("customNotesSearch");
+  renderCustomChefNotesList(searchEl ? searchEl.value : "");
 }
 
 // 自定义大厨笔记列表：iOS风格抖动删除（第一次×→抖，第二次×→删）
@@ -5702,6 +5831,21 @@ function deleteCustomChefRecipeNote(chefId, recipeTitle, afterDeleteBackToList) 
   }
 }
 
+// —— 自定义大厨笔记详情页：添加自定义标签
+function addCustomChefNoteTagV2(chefId, recipeTitle) {
+  const input = document.getElementById("customTagInput");
+  if (!input) return;
+  const tag = input.value.trim();
+  if (!tag) return;
+  saveCustomChefNoteTag(chefId, recipeTitle, tag);
+  viewCustomChefNote(chefId, recipeTitle); // 重新渲染
+}
+// —— 自定义大厨笔记详情页：删除自定义标签
+function deleteCustomChefNoteTagV2(chefId, recipeTitle, tag) {
+  removeCustomChefNoteTag(chefId, recipeTitle, tag);
+  viewCustomChefNote(chefId, recipeTitle);
+}
+
 function filterCustomChefNotes(keyword) {
   renderCustomChefNotesList(keyword);
 }
@@ -5718,6 +5862,12 @@ function viewCustomChefNote(chefId, recipeTitle) {
   const content = note.content || "";
   const summary = note.summary || "";
 
+  // 标签系统：默认标签 + 自定义标签
+  const tags = getCustomNoteTags(chefId, recipeTitle);
+  const defaultTagSet = new Set();
+  const def = getCustomNoteDefaultTag(recipeTitle);
+  if (def) defaultTagSet.add(def);
+
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
   app.innerHTML = `
@@ -5732,6 +5882,17 @@ function viewCustomChefNote(chefId, recipeTitle) {
       </div>
       <div style="padding:16px;">
         <div class="cg-readonly-note">
+          <div class="chef-note-detail-tags">
+            ${tags.map(t => {
+              const isDef = defaultTagSet.has(t);
+              const safeTag = JSON.stringify(t);
+              return `<span class="chef-note-tag-chip ${isDef ? 'default' : 'custom'}">${t}${!isDef ? `<span class="tag-del" onclick='event.stopPropagation();deleteCustomChefNoteTagV2(${safeChefId},${JSON.stringify(recipeTitle)},${safeTag})'>×</span>` : ''}</span>`;
+            }).join("")}
+          </div>
+          <div class="chef-note-add-tag-row">
+            <input type="text" id="customTagInput" class="chef-note-tag-input" placeholder="添加自定义标签…" onkeydown="if(event.key==='Enter'){ addCustomChefNoteTagV2(${safeChefId},${JSON.stringify(recipeTitle)}); return false; }" />
+            <button class="chef-note-tag-add-btn" onclick='addCustomChefNoteTagV2(${safeChefId},${JSON.stringify(recipeTitle)})'>添加</button>
+          </div>
           ${summary ? `
           <div style="margin-bottom:20px;padding:14px 18px;border-radius:12px;background:linear-gradient(135deg, #f0fbe8 0%, #fafdf3 100%);border:1px solid #d5e8c5;">
             <div style="font-size:13px;font-weight:600;color:#5a8a3a;margin-bottom:6px;display:flex;align-items:center;gap:4px;">
