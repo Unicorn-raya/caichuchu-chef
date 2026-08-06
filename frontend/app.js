@@ -2723,7 +2723,11 @@ function renderSwipeCard(combo, stackIdx) {
   if (combo.type === "single") {
     const rec = combo.recipes[0];
     const recipe = rec.recipe;
-    const image = getRecipeImage(recipe);
+    const localImg = getRecipeImage(recipe);
+    const [aiPrimary, aiFallback] = isAIRecipe(recipe) ? getRecipeImageSources(recipe, "square") : ["", ""];
+    const hasLocal = !!localImg;
+    const imgSrc = hasLocal ? assetUrl(localImg) : aiPrimary;
+    const imgFallback = hasLocal ? aiPrimary : aiFallback;
     const emoji = getRecipeEmoji(recipe);
     const missingChips = filterWaterItems(rec.missing || []).slice(0, 5).map((i) =>
       `<span class="ingredient-chip missing">${i}</span>`
@@ -2733,9 +2737,9 @@ function renderSwipeCard(combo, stackIdx) {
     ).join("");
     return `
       <div class="swipe-card" data-idx="${swipeIndex + stackIdx}">
-        ${image
-          ? `<img class="swipe-card-image" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-             <div class="swipe-card-placeholder" style="display:none">${emoji}</div>`
+        ${imgSrc
+          ? `<img class="swipe-card-image" src="${imgSrc}" data-src-primary="${imgSrc}" data-src-fallback="${imgFallback}" alt="${recipe.title}" onerror="handleRecipeImageError(this)">
+             <div class="swipe-card-placeholder recipe-image-fallback" style="display:none">${emoji}</div>`
           : `<div class="swipe-card-placeholder">${emoji}</div>`
         }
         ${_creatorMode ? `<div class="swipe-card-match-badge">匹配 ${rec.matchPercent}%</div>` : ""}
@@ -2760,7 +2764,11 @@ function renderSwipeCard(combo, stackIdx) {
   // 组合卡片：展示 2-3 道菜
   const items = combo.recipes.map((rec, i) => {
     const recipe = rec.recipe;
-    const image = getRecipeImage(recipe);
+    const localImg = getRecipeImage(recipe);
+    const [aiPrimary, aiFallback] = isAIRecipe(recipe) ? getRecipeImageSources(recipe, "square") : ["", ""];
+    const hasLocal = !!localImg;
+    const imgSrc = hasLocal ? assetUrl(localImg) : aiPrimary;
+    const imgFallback = hasLocal ? aiPrimary : aiFallback;
     const emoji = getRecipeEmoji(recipe);
     const dishKindTag = isMainDish(recipe)
       ? `<span class="combo-item-kind meat">主</span>`
@@ -2769,9 +2777,9 @@ function renderSwipeCard(combo, stackIdx) {
     return `
       <div class="combo-item" data-recipe-id="${recipe.id}" data-idx="${i}">
         <div class="combo-item-image">
-          ${image
-            ? `<img src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-               <div class="combo-item-placeholder" style="display:none">${emoji}</div>`
+          ${imgSrc
+            ? `<img src="${imgSrc}" data-src-primary="${imgSrc}" data-src-fallback="${imgFallback}" alt="${recipe.title}" onerror="handleRecipeImageError(this)">
+               <div class="combo-item-placeholder recipe-image-fallback" style="display:none">${emoji}</div>`
             : `<div class="combo-item-placeholder">${emoji}</div>`
           }
           ${dishKindTag}
@@ -2830,13 +2838,84 @@ function isAIRecipe(recipe) {
   return false;
 }
 
-// 为AI大厨推荐的菜谱生成AI图片URL（用于列表缩略图 & 详情页大图）
-// image_size ∈ square_hd | square | portrait_4_3 | portrait_16_9 | landscape_4_3 | landscape_16_9
+// 稳定哈希（用于生成固定 seed，保证同一道菜每次刷新出同样的图片）
+function _stableHash(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+// 解析 size 名字 → {w, h}
+function _parseImgSize(sizeName) {
+  switch (sizeName) {
+    case "landscape_16_9": return { w: 960, h: 540 };
+    case "landscape_4_3":  return { w: 800, h: 600 };
+    case "portrait_4_3":   return { w: 600, h: 800 };
+    case "portrait_16_9":  return { w: 540, h: 960 };
+    case "square_hd":      return { w: 720, h: 720 };
+    case "square":
+    default:               return { w: 512, h: 512 };
+  }
+}
+
+/**
+ * 为AI菜谱 / 无本地图的菜谱返回双层 fallback 图片源（真实图片搜索→AI生成）。
+ * 返回数组：[primaryUrl, fallbackUrl]
+ *  - Primary: loremflickr.com  — 基于 Flickr 的真实关键词搜索图片，浏览器环境可用（403 仅服务器爬虫触发）
+ *  - Fallback: pollinations.ai — 按菜名 AI 实时生成，服务端已验证 200 OK / image/jpeg
+ *  onerror 时由 handleRecipeImageError 切换到 fallback
+ */
+function getRecipeImageSources(recipe, sizeName) {
+  if (!recipe || !recipe.title) return ["", ""];
+  const title = recipe.title || "";
+  const { w, h } = _parseImgSize(sizeName);
+
+  // Primary：真实图片搜索（loremflickr），中英混合关键词提高中餐命中率
+  const flickrKw = encodeURIComponent(title + ", chinese food, dish, cooking, homemade cuisine, meal");
+  const primary = `https://loremflickr.com/${w}/${h}/${flickrKw}?lock=${encodeURIComponent(_stableHash(title))}`;
+
+  // Fallback：pollinations.ai 按菜名 AI 生成（始终有效）
+  const prompt =
+    "Professional food photography of " + title + ", authentic Chinese dish, " +
+    "finished plated meal, top-down 45 degree view, natural soft window lighting, " +
+    "shallow depth of field, 85mm lens, high detail, appetizing, vibrant warm colors, clean table setting, no watermark, no text";
+  const fallback =
+    "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) +
+    "?width=" + w +
+    "&height=" + h +
+    "&seed=" + encodeURIComponent(_stableHash(title + "_" + sizeName)) +
+    "&nologo=true&model=flux";
+
+  return [primary, fallback];
+}
+
+// 兼容旧调用：返回主URL
 function getAIImageUrl(recipe, size) {
-  if (!recipe || !recipe.title) return "";
-  const raw = "专业美食摄影，菜品成品图，" + recipe.title + "，真实中式家常菜成品，餐具摆盘精致，顶光柔光，高清高细节，85mm定焦，浅景深，食欲满满，无文字水印";
-  const url = "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=" + encodeURIComponent(raw) + "&image_size=" + (size || "square");
-  return url;
+  return getRecipeImageSources(recipe, size)[0];
+}
+
+// 通用图片错误处理：primary失败 → 切fallback；fallback也失败 → 显示emoji占位
+// 约定：<img> 需加 data-src-primary / data-src-fallback，紧邻兄弟元素有 .recipe-list-thumb-placeholder 类
+function handleRecipeImageError(imgEl) {
+  if (!imgEl) return;
+  const fallback = imgEl.getAttribute("data-src-fallback");
+  if (imgEl.getAttribute("data-tried-fallback") !== "1" && fallback) {
+    imgEl.setAttribute("data-tried-fallback", "1");
+    imgEl.src = fallback;
+    return;
+  }
+  // fallback也失败了 → 显示emoji占位
+  imgEl.style.display = "none";
+  if (imgEl.nextElementSibling && imgEl.nextElementSibling.classList.contains("recipe-image-fallback")) {
+    imgEl.nextElementSibling.style.display = "flex";
+  } else if (imgEl.nextElementSibling && /-placeholder$/.test(imgEl.nextElementSibling.className || "")) {
+    imgEl.nextElementSibling.style.display = "flex";
+  } else {
+    // swipe-card / combo-item 没有placeholder：隐藏img并显示背景emoji
+  }
 }
 
 // ============================================
@@ -3155,7 +3234,11 @@ function showRecipeDetail(rec) {
   document.getElementById("bottomNav").style.display = "";
   const recipe = rec.recipe;
   const app = document.getElementById("app");
-  const image = getRecipeImage(recipe, "landscape_16_9");
+  const localImg = getRecipeImage(recipe, "landscape_16_9");
+  const [aiPrimary, aiFallback] = isAIRecipe(recipe) ? getRecipeImageSources(recipe, "landscape_16_9") : ["", ""];
+  const hasLocal = !!localImg;
+  const image = hasLocal ? assetUrl(localImg) : aiPrimary;
+  const imgFallback = hasLocal ? aiPrimary : aiFallback;
   const emoji = getRecipeEmoji(recipe);
 
   // 从本地 allRecipes 补全后端缺失的字段（description/quantities/tips）
@@ -3178,8 +3261,8 @@ function showRecipeDetail(rec) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         </button>
         ${image
-          ? `<img src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-             <div class="recipe-detail-hero-placeholder" style="display:none">${emoji}</div>`
+          ? `<img src="${image}" data-src-primary="${image}" data-src-fallback="${imgFallback}" alt="${recipe.title}" onerror="handleRecipeImageError(this)">
+             <div class="recipe-detail-hero-placeholder recipe-image-fallback" style="display:none">${emoji}</div>`
           : `<div class="recipe-detail-hero-placeholder">${emoji}</div>`
         }
       </div>
@@ -3847,16 +3930,18 @@ function getRecipeConflictLabels(recipe) {
 
 function renderRecipeListCard(recipe) {
   const emoji = getRecipeEmoji(recipe);
-  // 图片优先级：原有 recipe.images → AI菜谱调用 text_to_image 生成 → emoji 兜底
+  // 图片优先级：本地 recipe.images → AI菜谱调用 Flickr(真实) + pollinations(AI生成) 双层 fallback → emoji 兜底
   let thumbHtml = "";
-  if (recipe.images && recipe.images.length > 0) {
-    const image = recipe.images[0];
-    thumbHtml = `<img class="recipe-list-thumb" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`;
-  } else if (isAIRecipe(recipe)) {
-    const aiUrl = getAIImageUrl(recipe, "square");
-    thumbHtml = `<img class="recipe-list-thumb" src="${aiUrl}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`;
+  const localImg = (recipe.images && recipe.images.length > 0) ? recipe.images[0] : null;
+  const [aiPrimary, aiFallback] = isAIRecipe(recipe) ? getRecipeImageSources(recipe, "square") : ["", ""];
+
+  if (localImg) {
+    const src = assetUrl(localImg);
+    thumbHtml = `<img class="recipe-list-thumb" src="${src}" data-src-primary="${src}" data-src-fallback="${aiPrimary}" alt="${recipe.title}" onerror="handleRecipeImageError(this)">
+           <div class="recipe-list-thumb-placeholder recipe-image-fallback" style="display:none">${emoji}</div>`;
+  } else if (aiPrimary) {
+    thumbHtml = `<img class="recipe-list-thumb" src="${aiPrimary}" data-src-primary="${aiPrimary}" data-src-fallback="${aiFallback}" alt="${recipe.title}" onerror="handleRecipeImageError(this)">
+           <div class="recipe-list-thumb-placeholder recipe-image-fallback" style="display:none">${emoji}</div>`;
   } else {
     thumbHtml = `<div class="recipe-list-thumb-placeholder">${emoji}</div>`;
   }
