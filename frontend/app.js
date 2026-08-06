@@ -4952,39 +4952,61 @@ async function loadDefaultChefNoteCount() {
   }
 }
 
+// 从自定义大厨笔记列表直接进入"新增笔记"模式
+function openAddChefNote(chefId) {
+  editChef(chefId, "", "addNote");
+}
+
 // 编辑自定义大厨（预填表单）
-function editChef(chefId, preselectRecipeTitle) {
+// mode: undefined=正常编辑大厨页面, "addNote"=从笔记列表进入新增笔记（标题/返回/保存后跳转都对应笔记列表）
+function editChef(chefId, preselectRecipeTitle, mode) {
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
 
   window._editingChefId = chefId;
+  window._editingChefMode = mode || "editChef";
+  const isAddNote = mode === "addNote";
 
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
-  // 优先使用调用方传入的指定菜谱（从笔记详情页过来），否则回退到第一个菜谱
-  let recipeTitle = preselectRecipeTitle || "";
-  if (!recipeTitle) {
+  // 根据模式决定默认食谱与过滤规则
+  const jsChefId = JSON.stringify(chefId);
+  const backToNotes = `showCustomChefNotes(${jsChefId})`;
+  let defaultFilter = isAddNote ? "unwritten" : "all";
+  let recipeTitle = "";
+
+  if (isAddNote) {
+    // 新增笔记：不预选任何已有菜谱，让用户去选（默认显示未写列表）
+    recipeTitle = "";
+  } else if (preselectRecipeTitle) {
+    recipeTitle = preselectRecipeTitle;
+    // 确认该菜谱存在（避免传入无效值）
+    if (recipeTitle && !chef.recipes.find(r => r.title === recipeTitle)) {
+      recipeTitle = chef.recipes[0]?.title || recipeTitle;
+    }
+  } else {
+    // 编辑大厨页面：默认加载第一个菜谱
     const recipe = chef.recipes[0] || {};
     recipeTitle = recipe.title || "";
   }
-  // 确认该菜谱存在（避免传入无效值）
-  if (recipeTitle && !chef.recipes.find(r => r.title === recipeTitle)) {
-    recipeTitle = chef.recipes[0]?.title || recipeTitle;
-  }
+  window._chefRecipeFilter = defaultFilter;
+
+  const headerTitle = isAddNote ? "新增笔记" : "编辑大厨";
+  const submitText = isAddNote ? "提交并保存" : "保存修改";
 
   app.innerHTML = `
     <div class="page detail-list-page">
       <div class="swipe-header">
-        <button class="swipe-header-back" onclick="showChefs()">
+        <button class="swipe-header-back" onclick='${isAddNote ? backToNotes : "showChefs()"}'>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
           返回
         </button>
-        <div class="swipe-header-title">编辑大厨</div>
+        <div class="swipe-header-title">${headerTitle}</div>
         <div style="width:60px"></div>
       </div>
       <div class="chef-form">
-        <div class="chef-form-section">
+        <div class="chef-form-section" ${isAddNote ? `style="display:none;"` : ""}>
           <label class="chef-form-label">大厨名称</label>
           <input type="text" id="newChefName" class="chef-form-input" placeholder="如：川菜大师" value="${chef.name}" />
         </div>
@@ -4993,12 +5015,21 @@ function editChef(chefId, preselectRecipeTitle) {
           <div class="chef-recipe-picker" id="chefRecipePicker">
             <input type="text" class="chef-recipe-search" placeholder="搜索菜谱..." oninput="filterChefRecipeListForEdit(this.value)" />
             <div class="chef-recipe-filter-bar">
-              <button class="chef-recipe-filter-btn active" data-filter="all" onclick="setChefRecipeFilter('all')">全部</button>
-              <button class="chef-recipe-filter-btn" data-filter="written" onclick="setChefRecipeFilter('written')">已写</button>
-              <button class="chef-recipe-filter-btn" data-filter="unwritten" onclick="setChefRecipeFilter('unwritten')">未写</button>
+              ${(isAddNote
+                ? `
+                  <button class="chef-recipe-filter-btn" data-filter="all" onclick="setChefRecipeFilter('all')">全部</button>
+                  <button class="chef-recipe-filter-btn" data-filter="written" onclick="setChefRecipeFilter('written')">已写</button>
+                  <button class="chef-recipe-filter-btn active" data-filter="unwritten" onclick="setChefRecipeFilter('unwritten')">未写</button>
+                `
+                : `
+                  <button class="chef-recipe-filter-btn active" data-filter="all" onclick="setChefRecipeFilter('all')">全部</button>
+                  <button class="chef-recipe-filter-btn" data-filter="written" onclick="setChefRecipeFilter('written')">已写</button>
+                  <button class="chef-recipe-filter-btn" data-filter="unwritten" onclick="setChefRecipeFilter('unwritten')">未写</button>
+                `
+              )}
             </div>
             <div class="chef-recipe-list" id="chefRecipeList">
-              ${renderChefRecipeListForEdit("", "all", recipeTitle)}
+              ${renderChefRecipeListForEdit("", defaultFilter, recipeTitle)}
             </div>
           </div>
         </div>
@@ -5011,12 +5042,12 @@ function editChef(chefId, preselectRecipeTitle) {
           <textarea id="newChefSummary" class="chef-form-textarea" rows="10"></textarea>
         </div>
         <div class="chef-form-actions">
-          <button class="chef-form-submit" onclick="updateChef('${chefId}')">保存修改</button>
+          <button class="chef-form-submit" onclick="updateChef('${chefId}')">${submitText}</button>
         </div>
       </div>
     </div>
   `;
-  // 初始加载指定菜谱（或第一个）的内容
+  // 初始加载指定菜谱（或无预选时：loadChefRecipeContent 会填模板）
   loadChefRecipeContent(chefId, recipeTitle);
 }
 
@@ -5129,13 +5160,16 @@ function loadChefRecipeContent(chefId, recipeTitle) {
 
 // 更新自定义大厨
 function updateChef(chefId) {
-  const name = document.getElementById("newChefName").value.trim();
+  const nameInput = document.getElementById("newChefName");
+  const name = nameInput ? nameInput.value.trim() : "";
   const content = document.getElementById("newChefContent").value.trim();
   const summary = document.getElementById("newChefSummary").value.trim();
   const checkedRadio = document.querySelector(".chef-recipe-checkbox:checked");
   const selectedRecipe = checkedRadio ? checkedRadio.value : window._chefCurrentRecipe || "";
+  const mode = window._editingChefMode || "editChef";
 
-  if (!name) {
+  // 编辑大厨模式下名称必填（新增笔记模式下不显示名称输入，用已有厨师名）
+  if (mode === "editChef" && !name) {
     showToast("请输入大厨名称");
     return;
   }
@@ -5147,8 +5181,10 @@ function updateChef(chefId) {
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
 
-  // 更新厨师信息
-  chef.name = name;
+  // 更新厨师信息（新增笔记模式下不改名称）
+  if (mode === "editChef") {
+    chef.name = name;
+  }
 
   // 保存当前选中菜谱的内容（不替换其他菜谱）
   const existingRecipe = chef.recipes.find(r => r.title === selectedRecipe);
@@ -5175,7 +5211,12 @@ function updateChef(chefId) {
     });
   }
   ChefManager._save();
-  showChefs();
+  // 保存后根据模式跳转
+  if (mode === "addNote") {
+    showCustomChefNotes(chefId);
+  } else {
+    showChefs();
+  }
 
   // 如果笔记内容有变化，重新提交AI处理
   if (contentChanged) {
@@ -5434,6 +5475,7 @@ function showCustomChefNotes(chefId) {
   if (!chef) return;
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
+  const jsChefId = JSON.stringify(chefId);
 
   app.innerHTML = `
     <div class="page detail-list-page">
@@ -5443,7 +5485,9 @@ function showCustomChefNotes(chefId) {
           返回
         </button>
         <div class="swipe-header-title">${chef.name}的笔记</div>
-        <div style="width:60px"></div>
+        <button class="swipe-header-add-btn" title="新增笔记" onclick='openAddChefNote(${jsChefId})'>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
       <div class="chef-notes-search-bar">
         <input type="text" id="customNotesSearch" class="chef-recipe-search" placeholder="搜索菜谱名…" oninput="filterCustomChefNotes(this.value)" />
