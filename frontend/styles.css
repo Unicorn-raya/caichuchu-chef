@@ -6258,6 +6258,39 @@ u.cg-underline {
   text-overflow: ellipsis;
 }
 
+/* 购物清单：单个食材右侧的复制按钮 */
+.shopping-item-copy {
+  flex-shrink: 0;
+  align-self: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: #f6f1e8;
+  color: var(--text-muted, #a08060);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
+  padding: 0;
+}
+
+.shopping-item-copy:hover {
+  background: linear-gradient(135deg, var(--avocado, #5a8a3a), #6ea048);
+  color: #fff;
+  transform: scale(1.06);
+}
+
+.shopping-item-copy:active {
+  transform: scale(0.94);
+}
+
+/* 勾选中的食材行：复制按钮减弱一点视觉权重 */
+.shopping-item.checked .shopping-item-copy {
+  opacity: 0.55;
+}
+
 .shopping-list-actions {
   display: flex;
   gap: 10px;

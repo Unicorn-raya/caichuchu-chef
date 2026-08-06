@@ -7547,7 +7547,9 @@ function showShoppingList() {
           </div>
         ` : `
           <div class="shopping-list-container" id="shoppingListContainer">
-            ${missingList.map((item, idx) => `
+            ${missingList.map((item, idx) => {
+              const safeName = JSON.stringify(item.name);
+              return `
               <div class="shopping-item ${item.checked ? 'checked' : ''}" data-idx="${idx}" onclick="toggleShoppingItem(${idx})">
                 <div class="shopping-item-checkbox">
                   ${item.checked ? '✅' : '⬜'}
@@ -7556,8 +7558,11 @@ function showShoppingList() {
                   <div class="shopping-item-name">${item.name}</div>
                   <div class="shopping-item-from">用于：${item.from.join("、")}</div>
                 </div>
+                <button class="shopping-item-copy" title="复制食材名" onclick='event.stopPropagation();copyShoppingItem(${safeName})'>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                </button>
               </div>
-            `).join("")}
+            `}).join("")}
           </div>
 
           <div class="shopping-list-actions">
@@ -7589,6 +7594,30 @@ function toggleShoppingItem(idx) {
     const checkbox = el.querySelector(".shopping-item-checkbox");
     if (checkbox) checkbox.textContent = window._shoppingListItems[idx].checked ? '✅' : '⬜';
   }
+}
+
+// 复制单个食材名到剪贴板（购物清单每行右侧按钮）
+function copyShoppingItem(name) {
+  if (!name) return;
+  const text = name.trim();
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(`已复制：${text}`);
+    }).catch(() => fallbackCopyShoppingItem(text));
+  } else {
+    fallbackCopyShoppingItem(text);
+  }
+}
+function fallbackCopyShoppingItem(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch(e) {}
+  document.body.removeChild(ta);
+  showToast(`已复制：${text}`);
 }
 
 // 复制购物清单到剪贴板
@@ -7644,7 +7673,9 @@ function clearShoppingChecked() {
       page.querySelector(".shopping-list-dish-info").insertAdjacentHTML("afterend", emptyHtml);
     }
   } else if (container) {
-    container.innerHTML = window._shoppingListItems.map((item, idx) => `
+    container.innerHTML = window._shoppingListItems.map((item, idx) => {
+      const safeName = JSON.stringify(item.name);
+      return `
       <div class="shopping-item ${item.checked ? 'checked' : ''}" data-idx="${idx}" onclick="toggleShoppingItem(${idx})">
         <div class="shopping-item-checkbox">
           ${item.checked ? '✅' : '⬜'}
@@ -7653,8 +7684,11 @@ function clearShoppingChecked() {
           <div class="shopping-item-name">${item.name}</div>
           <div class="shopping-item-from">用于：${item.from.join("、")}</div>
         </div>
+        <button class="shopping-item-copy" title="复制食材名" onclick='event.stopPropagation();copyShoppingItem(${safeName})'>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+        </button>
       </div>
-    `).join("");
+    `}).join("");
   }
   showToast("已清除已购买项");
 }
