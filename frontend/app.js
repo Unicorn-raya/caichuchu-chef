@@ -5560,10 +5560,9 @@ function renderChefCard(chef, index) {
     ? `<span class="chef-note-count" data-default-count="1">加载中...</span>`
     : `${chef.recipes.length} 条笔记`;
 
-  const safeChefId = JSON.stringify(chef.id);
-  const viewNotesFn = isDefault
-    ? `showDefaultChefNotes()`
-    : `showCustomChefNotes(${safeChefId})`;
+  // 注意：所有把 chefId 嵌入 onclick 的地方都要用单引号包围属性，
+  // 避免 JSON.stringify 的双引号与 HTML 属性引号冲突
+  const jsChefId = JSON.stringify(chef.id);
 
   return `
     <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
@@ -5572,7 +5571,7 @@ function renderChefCard(chef, index) {
         ${avatarHtml}
         <div class="chef-card-avatar-edit">✏️</div>
       </div>
-      <div class="chef-card-info" onclick="${viewNotesFn}">
+      <div class="chef-card-info" onclick='${isDefault ? "showDefaultChefNotes()" : "showCustomChefNotes(" + jsChefId + ")"}'>
         <div class="chef-card-name">${chef.name}</div>
         <div class="chef-card-status">${enabled ? "已启用" : "已禁用"} · ${noteCount} · 优先级 ${index + 1}</div>
       </div>
@@ -5584,7 +5583,7 @@ function renderChefCard(chef, index) {
         ${isDefault
           ? `<button class="chef-card-view-btn" onclick="event.stopPropagation(); showDefaultChefNotes()" title="查看笔记">📖</button>`
           : `
-          <button class="chef-card-view-btn" onclick="event.stopPropagation(); showCustomChefNotes(${safeChefId})" title="查看笔记">📖</button>
+          <button class="chef-card-view-btn" onclick='event.stopPropagation(); showCustomChefNotes(${jsChefId})' title="查看笔记">📖</button>
           <button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>
           `
         }
