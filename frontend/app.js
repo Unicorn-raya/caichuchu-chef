@@ -14,7 +14,7 @@ function assetUrl(path) {
 
 // 从本地 allRecipes 查找菜谱的正确图片路径
 // 后端 API 返回的 images 可能是旧路径，本地 recipes.json 是最新的
-function getRecipeImage(recipe) {
+function getRecipeImage(recipe, size) {
   if (!recipe) return null;
   // 优先从本地 allRecipes 查找（路径准确）
   const local = allRecipes.find((r) => r.id === recipe.id);
@@ -24,6 +24,10 @@ function getRecipeImage(recipe) {
   // 回退到后端返回的路径
   if (recipe.images && recipe.images.length > 0) {
     return recipe.images[0];
+  }
+  // AI大厨推荐菜谱：没有本地图时调用 text_to_image 生成
+  if (isAIRecipe(recipe)) {
+    return getAIImageUrl(recipe, size || "square");
   }
   return null;
 }
@@ -2817,6 +2821,24 @@ function getRecipeEmoji(recipe) {
   return "🍳";
 }
 
+// 判断是否是AI联网生成的菜谱（AI大厨推荐）
+function isAIRecipe(recipe) {
+  if (!recipe) return false;
+  if (recipe.category === "ai_recipe") return true;
+  if (recipe.description === "AI大厨联网搜索推荐菜谱") return true;
+  if (Array.isArray(recipe.tags) && recipe.tags.includes("AI推荐")) return true;
+  return false;
+}
+
+// 为AI大厨推荐的菜谱生成AI图片URL（用于列表缩略图 & 详情页大图）
+// image_size ∈ square_hd | square | portrait_4_3 | portrait_16_9 | landscape_4_3 | landscape_16_9
+function getAIImageUrl(recipe, size) {
+  if (!recipe || !recipe.title) return "";
+  const raw = "专业美食摄影，菜品成品图，" + recipe.title + "，真实中式家常菜成品，餐具摆盘精致，顶光柔光，高清高细节，85mm定焦，浅景深，食欲满满，无文字水印";
+  const url = "https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=" + encodeURIComponent(raw) + "&image_size=" + (size || "square");
+  return url;
+}
+
 // ============================================
 // 卡片拖拽
 // ============================================
@@ -3133,7 +3155,7 @@ function showRecipeDetail(rec) {
   document.getElementById("bottomNav").style.display = "";
   const recipe = rec.recipe;
   const app = document.getElementById("app");
-  const image = getRecipeImage(recipe);
+  const image = getRecipeImage(recipe, "landscape_16_9");
   const emoji = getRecipeEmoji(recipe);
 
   // 从本地 allRecipes 补全后端缺失的字段（description/quantities/tips）
@@ -3824,10 +3846,21 @@ function getRecipeConflictLabels(recipe) {
 }
 
 function renderRecipeListCard(recipe) {
-  const image = recipe.images && recipe.images.length > 0
-    ? recipe.images[0]
-    : null;
   const emoji = getRecipeEmoji(recipe);
+  // 图片优先级：原有 recipe.images → AI菜谱调用 text_to_image 生成 → emoji 兜底
+  let thumbHtml = "";
+  if (recipe.images && recipe.images.length > 0) {
+    const image = recipe.images[0];
+    thumbHtml = `<img class="recipe-list-thumb" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`;
+  } else if (isAIRecipe(recipe)) {
+    const aiUrl = getAIImageUrl(recipe, "square");
+    thumbHtml = `<img class="recipe-list-thumb" src="${aiUrl}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+           <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`;
+  } else {
+    thumbHtml = `<div class="recipe-list-thumb-placeholder">${emoji}</div>`;
+  }
+
   const conflictLabels = getRecipeConflictLabels(recipe);
   const fav = isFavorite(recipe.id);
   const pinColor = getPinColorClass(recipe.id);
@@ -3837,11 +3870,7 @@ function renderRecipeListCard(recipe) {
 
   return `
     <div class="recipe-list-card" onclick="showRecipeDetailDirect('${recipe.id}')">
-      ${image
-        ? `<img class="recipe-list-thumb" src="${assetUrl(image)}" alt="${recipe.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
-           <div class="recipe-list-thumb-placeholder" style="display:none">${emoji}</div>`
-        : `<div class="recipe-list-thumb-placeholder">${emoji}</div>`
-      }
+      ${thumbHtml}
       <button class="recipe-fav-btn ${pinColor} ${fav ? 'active' : ''}" onclick="event.stopPropagation();toggleFavoriteAndUpdate('${recipe.id}')" title="${fav ? '取消收藏' : '收藏'}"></button>
       ${conflictLabels.length > 0 ? `<div class="recipe-conflict-flags">${conflictLabels.map((l) => `<span class="recipe-conflict-flag ${l.cls}">${l.text}</span>`).join("")}</div>` : ""}
       <div class="recipe-list-info">
