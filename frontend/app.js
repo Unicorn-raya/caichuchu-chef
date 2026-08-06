@@ -710,9 +710,11 @@ function toggleFavorite(recipeId) {
 
 function getFavoriteRecipes() {
   const favItems = getFavoriteRecipeIds();
+  const aiRecipeList = typeof getAIRecipes === "function" ? getAIRecipes() : [];
   return favItems
     .map(item => {
-      const recipe = allRecipes.find(r => r.id === item.id);
+      let recipe = allRecipes.find(r => r.id === item.id);
+      if (!recipe && aiRecipeList.length) recipe = aiRecipeList.find(r => r.id === item.id);
       if (recipe) {
         return { ...recipe, _favoriteAddedAt: item.addedAt };
       }
@@ -4197,14 +4199,30 @@ function showCategory(category) {
 }
 
 function showRecipeDetailDirect(recipeId) {
-  const recipe = allRecipes.find((r) => r.id === recipeId);
+  let recipe = allRecipes.find((r) => r.id === recipeId);
+  const isAI = !recipe && typeof getAIRecipes === "function" ? !!getAIRecipes().find(r => r.id === recipeId) : false;
+  if (!recipe && isAI) recipe = getAIRecipes().find(r => r.id === recipeId);
   if (!recipe) return;
+  // 对 AI 菜谱做结构规范化，确保 showRecipeDetail 渲染正确
+  if (isAI) {
+    if (!recipe.coreIngredients || !recipe.coreIngredients.length) {
+      recipe.coreIngredients = (recipe.requiredIngredients || []).slice();
+    }
+    if (!recipe.seasonings) recipe.seasonings = [];
+    if (!recipe.optionalIngredients) recipe.optionalIngredients = [];
+    if (!recipe.quantities) recipe.quantities = {};
+    if (!recipe.tips) recipe.tips = [];
+    if (!recipe.description) recipe.description = "AI大厨联网搜索推荐菜谱，做法来自公开优质菜谱。食材清单仅供参考，可根据实际口味灵活调整。";
+    if (!recipe.timeMinutes) recipe.timeMinutes = 30;
+    if (!recipe.difficulty) recipe.difficulty = 2;
+    if (!recipe.steps) recipe.steps = [];
+  }
   // 记录浏览历史
   addRecentlyViewed(recipeId);
   // 根据当前所在页面设置返回动作
   const activeNav = document.querySelector(".nav-btn.active");
   const activePage = activeNav ? activeNav.dataset.page : null;
-  FrontendLogger.info("recipe", "查看菜谱详情", { recipeId, title: recipe.title, from: currentMeSubPage || activePage || "unknown" });
+  FrontendLogger.info("recipe", "查看菜谱详情", { recipeId, title: recipe.title, from: currentMeSubPage || activePage || "unknown", isAI });
   if (currentMeSubPage === "favorites") {
     // 从收藏页进入：返回收藏页
     recipeDetailBackFn = () => showFavoriteRecipes();
@@ -6551,7 +6569,16 @@ function showFavoriteRecipes() {
         <div class="stamp-grid">
           ${favorites.map((r) => {
             const emoji = getRecipeEmoji(r);
-            const image = r.images && r.images.length > 0 ? r.images[0] : null;
+            // 支持 AI 菜谱：优先使用 r.images；没有则走 AI 图片生成 + fallback
+            let imgSrc = "";
+            let imgFallback = "";
+            if (r.images && r.images.length > 0) {
+              imgSrc = assetUrl(r.images[0]);
+            } else if (isAIRecipe(r)) {
+              const [aiPrimary, aiFallback] = getRecipeImageSources(r, "square");
+              imgSrc = aiPrimary;
+              imgFallback = aiFallback;
+            }
             const fav = isFavorite(r.id);
             const tagText = r.tags && r.tags.length > 0 ? r.tags[0] : "";
             const timeMins = r.timeMinutes ? r.timeMinutes : null;
@@ -6568,8 +6595,8 @@ function showFavoriteRecipes() {
               <div class="stamp-card" onclick="showRecipeDetailDirect('${r.id}')">
                 <button class="stamp-fav-btn ${fav ? 'active' : ''} ${pinColor}" ${countLen >= 3 ? `data-count-length="${countLen}"` : ''} onclick="event.stopPropagation();toggleFavoriteAndUpdate('${r.id}')" title="${fav ? '取消收藏' : '收藏'}${cookCount > 0 ? ` · 已做${cookCount}次` : ''}">${countText}</button>
                 <div class="stamp-inner">
-                  ${image
-                    ? `<img class="stamp-img" src="${assetUrl(image)}" alt="${r.title}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                  ${imgSrc
+                    ? `<img class="stamp-img" src="${imgSrc}" data-src-primary="${imgSrc}" data-src-fallback="${imgFallback}" alt="${r.title}" onerror="handleRecipeImageError(this)">
                        <div class="stamp-img-placeholder" style="display:none">${emoji}</div>`
                     : `<div class="stamp-img-placeholder">${emoji}</div>`
                   }
