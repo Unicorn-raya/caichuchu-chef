@@ -5575,7 +5575,7 @@ function renderChefCard(chef, index) {
 
   return `
     <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}" id="chef-card-${chef.id}">
-      ${!isDefault ? `<button class="chef-card-delete-btn" onclick="event.stopPropagation();toggleShakeDeleteChef(${jsChefId})">×</button>` : ""}
+      ${!isDefault ? `<button class="chef-card-delete-btn" onclick='event.stopPropagation();toggleShakeDeleteChef(${jsChefId})'>×</button>` : ""}
       <div class="chef-card-color-dot" style="background:${chef.color}" onclick="showChefColorPicker('${chef.id}', this)" title="点击更换颜色"></div>
       <div class="chef-card-avatar" onclick="showChefAvatarPicker('${chef.id}')">
         ${avatarHtml}
