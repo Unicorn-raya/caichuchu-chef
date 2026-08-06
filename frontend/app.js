@@ -4126,84 +4126,50 @@ function setupAIRecipeLongPress() {
   });
 }
 
-// 查看AI菜谱详情
+// 查看AI菜谱详情：把AI菜谱字段规范化后，复用本地菜谱详情页 showRecipeDetail 渲染
+// 这样与本地菜谱排版完全一致（大图、难度、卡片式食材/步骤、简介、B站链接、开始沉浸烹饪）
 function showAIRecipeDetail(recipeId) {
   const recipe = getAIRecipes().find(r => r.id === recipeId);
   if (!recipe) return;
   addRecentlyViewed(recipeId);
-  document.getElementById("bottomNav").style.display = "none";
 
-  const app = document.getElementById("app");
-  app.innerHTML = `
-    <div class="page detail-list-page">
-      <div class="swipe-header">
-        <button class="swipe-header-back" onclick="showAIRecipeCategory()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-          返回
-        </button>
-        <div class="swipe-header-title">菜谱详情</div>
-        <div style="width:50px"></div>
-      </div>
-      <div class="recipe-detail-body" style="padding:16px">
-        <div class="recipe-detail-title-row">
-          <h1 class="recipe-detail-title">${recipe.title}</h1>
-          <button class="recipe-fav-btn-large ${isFavorite(recipe.id) ? 'active' : ''}" onclick="toggleFavoriteDetail('${recipe.id}')" title="${isFavorite(recipe.id) ? '取消收藏' : '收藏'}">
-            ${isFavorite(recipe.id) ? '❤️' : '🤍'}
-          </button>
-        </div>
-        <div class="recipe-detail-tags">
-          <span class="recipe-tag" style="background:var(--carrot-light);color:var(--carrot)">🌐 联网搜索</span>
-        </div>
+  // 计算冰箱已有 / 缺少的食材（用于食材行的"已有"/"需采买"标签）
+  const invSet = new Set();
+  (fridge || []).forEach(it => { if (it && it.name) invSet.add(it.name); });
+  (seasonings || []).forEach(n => invSet.add(String(n).trim()));
+  const reqIng = recipe.requiredIngredients || recipe.coreIngredients || [];
+  const existingArr = reqIng.filter(i => localItemMatches(invSet, String(i)));
+  const missingArr  = reqIng.filter(i => !localItemMatches(invSet, String(i)));
 
-        <div class="recipe-detail-section">
-          <div class="recipe-detail-section-title">🥘 食材清单</div>
-          <div class="ingredient-chips">
-            ${(recipe.requiredIngredients || []).map(ing => `<div class="ingredient-chip">${ing}</div>`).join("")}
-          </div>
-        </div>
+  // 确保 showRecipeDetail 需要的字段存在（coreIngredients / seasonings / optionalIngredients）
+  if (!recipe.coreIngredients || !recipe.coreIngredients.length) recipe.coreIngredients = reqIng.slice();
+  if (!recipe.seasonings) recipe.seasonings = [];
+  if (!recipe.optionalIngredients) recipe.optionalIngredients = [];
+  if (!recipe.quantities) recipe.quantities = {};
+  if (!recipe.tips) recipe.tips = [];
+  if (!recipe.description) recipe.description = "AI大厨联网搜索推荐菜谱，做法来自公开优质菜谱。食材清单仅供参考，可根据实际口味灵活调整。";
+  if (!recipe.timeMinutes) recipe.timeMinutes = 30;
+  if (!recipe.difficulty) recipe.difficulty = 2;
+  if (!recipe.steps || !recipe.steps.length) recipe.steps = [];
 
-        ${recipe.steps && recipe.steps.length > 0 ? `
-        <div class="recipe-detail-section">
-          <div class="recipe-detail-section-title">📋 烹饪步骤</div>
-          <div class="recipe-steps">
-            ${recipe.steps.map((step, i) => `
-              <div class="recipe-step">
-                <div class="recipe-step-num">${i + 1}</div>
-                <div class="recipe-step-text">${step}</div>
-              </div>
-            `).join("")}
-          </div>
-        </div>
-        ` : ''}
-
-        ${recipe.tips && recipe.tips.length > 0 ? `
-        <div class="recipe-detail-section">
-          <div class="recipe-detail-section-title">💡 小贴士</div>
-          <ul class="recipe-tips-list">
-            ${recipe.tips.map(tip => `<li>${tip}</li>`).join("")}
-          </ul>
-        </div>
-        ` : ''}
-
-        <a class="bili-video-link" href="javascript:void(0)" onclick='openBiliSearch(${JSON.stringify(recipe.title)});return false;'>
-          <svg class="bili-icon" viewBox="0 0 48 48" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-            <path d="M14 11L9 4M34 11l5-7" stroke="#00AEEC" stroke-width="3" stroke-linecap="round" fill="none"/>
-            <rect x="5" y="11" width="38" height="29" rx="8" fill="#00AEEC"/>
-            <rect x="10" y="17" width="28" height="17" rx="4" fill="#fff"/>
-            <ellipse cx="19" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
-            <ellipse cx="29" cy="25.5" rx="3" ry="3.5" fill="#00AEEC"/>
-          </svg>
-          <span>在B站看${recipe.title}视频教学</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M7 7h10v10"/></svg>
-        </a>
-
-        <button class="btn-start-cooking" onclick="startCooking('${recipe.id}')">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          开始沉浸烹饪
-        </button>
-      </div>
-    </div>
-  `;
+  const coverage = reqIng.length > 0 ? existingArr.length / reqIng.length : 0;
+  const rec = {
+    recipe,
+    score: coverage * 100,
+    matchPercent: Math.round(coverage * 100),
+    existing: existingArr.map(i => String(i)),
+    missing: missingArr.map(i => String(i)),
+    missingCore: missingArr.map(i => String(i)),
+    missingSeasonings: [],
+    optional: [],
+    reason: recipe.description || "AI大厨联网搜索推荐菜谱",
+    aiReason: "AI大厨联网搜索推荐菜谱",
+    homeRank: 0,
+  };
+  // 设置返回：返回时回到 AI菜谱分类页
+  recipeDetailBackFn = () => showAIRecipeCategory();
+  FrontendLogger.info("ai-recipe", "查看AI菜谱详情", { recipeId, title: recipe.title });
+  showRecipeDetail(rec);
 }
 
 function showCategory(category) {
