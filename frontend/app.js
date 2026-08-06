@@ -4953,7 +4953,7 @@ async function loadDefaultChefNoteCount() {
 }
 
 // 编辑自定义大厨（预填表单）
-function editChef(chefId) {
+function editChef(chefId, preselectRecipeTitle) {
   const chef = ChefManager.getById(chefId);
   if (!chef) return;
 
@@ -4962,8 +4962,16 @@ function editChef(chefId) {
   const app = document.getElementById("app");
   document.getElementById("bottomNav").style.display = "none";
 
-  const recipe = chef.recipes[0] || {};
-  const recipeTitle = recipe.title || "";
+  // 优先使用调用方传入的指定菜谱（从笔记详情页过来），否则回退到第一个菜谱
+  let recipeTitle = preselectRecipeTitle || "";
+  if (!recipeTitle) {
+    const recipe = chef.recipes[0] || {};
+    recipeTitle = recipe.title || "";
+  }
+  // 确认该菜谱存在（避免传入无效值）
+  if (recipeTitle && !chef.recipes.find(r => r.title === recipeTitle)) {
+    recipeTitle = chef.recipes[0]?.title || recipeTitle;
+  }
 
   app.innerHTML = `
     <div class="page detail-list-page">
@@ -5008,7 +5016,7 @@ function editChef(chefId) {
       </div>
     </div>
   `;
-  // 初始加载第一个菜谱的内容
+  // 初始加载指定菜谱（或第一个）的内容
   loadChefRecipeContent(chefId, recipeTitle);
 }
 
@@ -5530,6 +5538,7 @@ function viewCustomChefNote(chefId, recipeTitle) {
           ${ChefGuides ? ChefGuides.renderMarkdown(content) : `<pre style="white-space:pre-wrap;font-size:14px;line-height:1.7;">${content}</pre>`}
         </div>
         <button class="chef-copy-btn" onclick='copyCustomChefNote(${safeChefId},${JSON.stringify(recipeTitle)})'>📋 复制笔记内容</button>
+        <button class="chef-edit-btn" onclick='editChef(${safeChefId},${JSON.stringify(recipeTitle)})'>✏️ 编辑此笔记</button>
       </div>
     </div>
   `;
@@ -5565,7 +5574,8 @@ function renderChefCard(chef, index) {
   const jsChefId = JSON.stringify(chef.id);
 
   return `
-    <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}">
+    <div class="chef-card ${enabled ? "" : "chef-card-disabled"}" data-chef-id="${chef.id}" id="chef-card-${chef.id}">
+      ${!isDefault ? `<button class="chef-card-delete-btn" onclick="event.stopPropagation();toggleShakeDeleteChef(${jsChefId})">×</button>` : ""}
       <div class="chef-card-color-dot" style="background:${chef.color}" onclick="showChefColorPicker('${chef.id}', this)" title="点击更换颜色"></div>
       <div class="chef-card-avatar" onclick="showChefAvatarPicker('${chef.id}')">
         ${avatarHtml}
@@ -5580,17 +5590,10 @@ function renderChefCard(chef, index) {
           <button class="chef-reorder-btn" onclick="event.stopPropagation(); moveChefOrder('${chef.id}', 'up')" title="上移">▲</button>
           <button class="chef-reorder-btn" onclick="event.stopPropagation(); moveChefOrder('${chef.id}', 'down')" title="下移">▼</button>
         </div>
-        ${isDefault
-          ? `<button class="chef-card-view-btn" onclick="event.stopPropagation(); showDefaultChefNotes()" title="查看笔记">📖</button>`
-          : `
-          <button class="chef-card-view-btn" onclick='event.stopPropagation(); showCustomChefNotes(${jsChefId})' title="查看笔记">📖</button>
-          <button class="chef-card-edit-btn" onclick="event.stopPropagation(); editChef('${chef.id}')" title="编辑笔记">✏️</button>
-          `
-        }
+        <button class="chef-card-view-btn" onclick='event.stopPropagation(); ${isDefault ? "showDefaultChefNotes()" : "showCustomChefNotes(" + jsChefId + ")"}' title="查看笔记">📖</button>
         <button class="chef-card-toggle ${enabled ? "active" : ""}" onclick="event.stopPropagation(); toggleChefEnabled('${chef.id}')">
           <span class="chef-card-toggle-dot"></span>
         </button>
-        ${!isDefault ? `<button class="chef-card-delete" onclick="event.stopPropagation(); deleteChef('${chef.id}')">🗑️</button>` : ""}
       </div>
     </div>
   `;
@@ -5676,13 +5679,30 @@ function selectChefColor(chefId, color) {
   showToast("颜色已更新");
 }
 
-function deleteChef(chefId) {
-  if (confirm("确定删除这位大厨？其所有笔记将被清除。")) {
+// 厨师卡片 iOS 风格抖动删除：第一次点 × → 抖动；第二次点 × → 删除
+let shakingChefId = null;
+
+function toggleShakeDeleteChef(chefId) {
+  if (shakingChefId === chefId) {
+    // 第二次点击：删除
+    const chef = ChefManager.getById(chefId);
+    const name = chef ? chef.name : "";
     ChefManager.removeChef(chefId);
+    shakingChefId = null;
     showChefs();
     updateChefFabState();
-    showToast("已删除");
+    showToast(`已删除${name ? " " + name : ""}`);
+    return;
   }
+  // 取消之前的抖动
+  if (shakingChefId) {
+    const prev = document.getElementById(`chef-card-${shakingChefId}`);
+    if (prev) prev.classList.remove("shaking");
+  }
+  // 开启当前卡片抖动
+  shakingChefId = chefId;
+  const card = document.getElementById(`chef-card-${chefId}`);
+  if (card) card.classList.add("shaking");
 }
 
 // 头像选择弹窗
