@@ -2614,14 +2614,25 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
     }
 
     const _hr = getHomeRank(recipe);
-    const homeRankBonus = _hr * 20; // homeRank=2 → +40, =1 → +20, =0 → 0
+    const homeRankBonus = _hr * 15; // homeRank=2 → +30, =1 → +15, =0 → 0
+    // 降权原因：homeRank=2 仅凭标题含"红烧肉"等关键词就拿 +40 太高，
+    // 会压过真正核心匹配更好的菜（如 香干芹菜炒肉 3个核心全命中 vs 徽派红烧肉 1个）。
+    // 降到 *15 后 homeRank=2 → +30, homeRank=1 → +15, 差距从 20 缩到 15。
+
+    // 5. 核心命中数加分：每命中一个非调料核心食材 +8
+    //    这是解决"徽派红烧肉 trick"的关键：
+    //    徽派红烧肉 core=[五花肉,白砂糖,姜,蒜头,葱,五香粉] → 过滤调料后只剩五花肉 1 个
+    //    → coreCoverage=100% 但实际只命中 1 个核心食材，和命中 3 个的香干芹菜炒肉不应同分。
+    const matchedCoreCount = coreNonSeasoning.length - missingCore.length;
+    const coreMatchBonus = matchedCoreCount * 8;
 
     const newScore =
       coreCoverage * 70 +
       coverage * 40 +
       homeRankBonus +
       titleHitBonus +
-      expiringBonus -
+      expiringBonus +
+      coreMatchBonus -
       missingCore.length * 25 -
       categoryMismatchPenalty;
 
@@ -2635,6 +2646,8 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
     r._debug.titleHit = titleHitBonus;
     r._debug.expiring = expiringBonus;
     r._debug.homeRank = homeRankBonus;
+    r._debug.coreMatchBonus = coreMatchBonus;
+    r._debug.matchedCoreCount = matchedCoreCount;
     r.homeRank = _hr;
   }
 
