@@ -5469,6 +5469,8 @@ function updateChef(chefId) {
   if (!contentChanged && !summaryChanged) {
     showToast("已保存修改");
   }
+  // 保存大厨信息后，刷新大厨按钮的颜色 / 呼吸圆环配色
+  updateChefFabState();
 }
 
 // 大厨笔记自定义标签存储
@@ -7261,6 +7263,87 @@ function isChefFabActiveOnCurrentPage() {
   return false;
 }
 
+// —— 大厨颜色解析：支持 #rgb / #rgba / #rrggbb / #rrggbbaa / rgb()/rgba() / 命名色
+// 返回 {r, g, b}（0-255）；失败返回胡萝卜色 {230, 126, 34}
+function _colorToRgb(color) {
+  const carrot = { r: 230, g: 126, b: 34 };
+  if (!color || typeof color !== "string") return carrot;
+  const c = color.trim();
+
+  // #RGB
+  if (/^#[0-9a-f]{3}$/i.test(c)) {
+    return {
+      r: parseInt(c[1]+c[1], 16),
+      g: parseInt(c[2]+c[2], 16),
+      b: parseInt(c[3]+c[3], 16),
+    };
+  }
+  // #RGBA → 忽略 A
+  if (/^#[0-9a-f]{4}$/i.test(c)) {
+    return {
+      r: parseInt(c[1]+c[1], 16),
+      g: parseInt(c[2]+c[2], 16),
+      b: parseInt(c[3]+c[3], 16),
+    };
+  }
+  // #RRGGBB
+  if (/^#[0-9a-f]{6}$/i.test(c)) {
+    return {
+      r: parseInt(c.slice(1,3), 16),
+      g: parseInt(c.slice(3,5), 16),
+      b: parseInt(c.slice(5,7), 16),
+    };
+  }
+  // #RRGGBBAA → 忽略 AA
+  if (/^#[0-9a-f]{8}$/i.test(c)) {
+    return {
+      r: parseInt(c.slice(1,3), 16),
+      g: parseInt(c.slice(3,5), 16),
+      b: parseInt(c.slice(5,7), 16),
+    };
+  }
+  // rgb(r,g,b) / rgba(r,g,b,a)
+  const m = c.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,[\s\d.]+)?\)/i);
+  if (m) {
+    return {
+      r: Math.max(0, Math.min(255, parseInt(m[1], 10))),
+      g: Math.max(0, Math.min(255, parseInt(m[2], 10))),
+      b: Math.max(0, Math.min(255, parseInt(m[3], 10))),
+    };
+  }
+  // 命名色：用临时 canvas 反查
+  try {
+    const tmp = document.createElement("canvas").getContext("2d");
+    tmp.fillStyle = c;
+    if (tmp.fillStyle && tmp.fillStyle !== "#000000") {
+      // fillStyle 赋值后浏览器会规范化为 #rrggbb
+      const out = tmp.fillStyle;
+      if (/^#[0-9a-f]{6}$/i.test(out)) {
+        return {
+          r: parseInt(out.slice(1,3), 16),
+          g: parseInt(out.slice(3,5), 16),
+          b: parseInt(out.slice(5,7), 16),
+        };
+      }
+    }
+  } catch (e) {}
+  return carrot;
+}
+
+function _rgbToHex({ r, g, b }) {
+  const h = n => Math.max(0, Math.min(255, n|0)).toString(16).padStart(2, "0");
+  return "#" + h(r) + h(g) + h(b);
+}
+
+// 把浅色变暗（factor 0.75 即保留 75% 亮度），保证在浅色背景上可见
+function _darkenRgb({ r, g, b }, factor) {
+  return {
+    r: Math.round(r * factor),
+    g: Math.round(g * factor),
+    b: Math.round(b * factor),
+  };
+}
+
 function updateChefFabState() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
@@ -7280,8 +7363,8 @@ function updateChefFabState() {
     }
     fab.style.background = "";
     fab.style.boxShadow = "";
-    fab.style.setProperty("--chef-ring-color", "rgba(120, 120, 120, 0.6)");
-    fab.style.setProperty("--chef-ring-color-rgb-a", "rgba(120, 120, 120, 0.3)");
+    fab.style.setProperty("--chef-ring-color", "#787878");
+    fab.style.setProperty("--chef-ring-color-rgb-a", "rgba(120, 120, 120, 0.45)");
   } else {
     fab.classList.remove("chef-fab-disabled");
     const iconEl = fab.querySelector(".chef-agent-fab-icon");
@@ -7292,23 +7375,33 @@ function updateChefFabState() {
     } else {
       iconEl.textContent = displayChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
     }
-    // FAB背景色跟随厨师颜色
-    const color = displayChef.color || "#e67e22";
-    fab.style.background = color;
-    // 将hex颜色转为半透明rgba用于阴影 & 呼吸圆环发光
-    let ringRgbA = "rgba(230, 126, 34, 0.55)";
-    if (color.startsWith("#") && color.length === 7) {
-      const r = parseInt(color.slice(1,3), 16);
-      const g = parseInt(color.slice(3,5), 16);
-      const b = parseInt(color.slice(5,7), 16);
-      fab.style.boxShadow = `0 4px 16px rgba(${r},${g},${b},0.4)`;
-      ringRgbA = `rgba(${r},${g},${b},0.6)`;
+    // FAB背景色跟随厨师颜色（原样，不做处理）
+    const rawColor = displayChef.color || "#e67e22";
+    fab.style.background = rawColor;
+
+    // 呼吸圆环颜色：解析成 RGB → 如果太浅（容易和米色背景融为一体）就加深
+    const rgb = _colorToRgb(rawColor);
+    const luminance = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b; // 相对亮度（0-255）
+    // 页面主背景是米色 ~#fff7ea（亮度 ≈ 250），亮度 > 210 的色值会看不清，暗化 25% ~ 45%
+    let ringRgb = rgb;
+    if (luminance > 225) {
+      ringRgb = _darkenRgb(rgb, 0.55);
+    } else if (luminance > 200) {
+      ringRgb = _darkenRgb(rgb, 0.65);
+    } else if (luminance > 175) {
+      ringRgb = _darkenRgb(rgb, 0.78);
     }
-    fab.style.setProperty("--chef-ring-color", color);
+    const ringHex = _rgbToHex(ringRgb);
+    const ringRgbA = `rgba(${ringRgb.r},${ringRgb.g},${ringRgb.b},0.65)`;
+
+    // FAB按钮本身的阴影（用原始色，不暗化）
+    fab.style.boxShadow = `0 4px 16px rgba(${rgb.r},${rgb.g},${rgb.b},0.45)`;
+    // 呼吸圆环描边色 + 霓虹发光
+    fab.style.setProperty("--chef-ring-color", ringHex);
     fab.style.setProperty("--chef-ring-color-rgb-a", ringRgbA);
   }
 
-  // —— 呼吸圆环特效：仅在"禁用状态未启用 + 当前页面支持大厨功能"时显示
+  // —— 呼吸圆环特效：仅在"非禁用 + 当前页面支持大厨功能"时显示
   const shouldPulse = !fab.classList.contains("chef-fab-disabled") && isChefFabActiveOnCurrentPage();
   const pulseCls = "chef-agent-fab--active-pulse";
   if (shouldPulse) {
