@@ -959,7 +959,20 @@ function saveAllergens() {
 function loadSeasonings() {
   try {
     const data = localStorage.getItem(SEASONINGS_KEY);
-    seasonings = data ? JSON.parse(data) : [...DEFAULT_SEASONINGS];
+    const userSaved = data ? JSON.parse(data) : [...DEFAULT_SEASONINGS];
+    // 每次启动都把新扩充的基础调料（葱姜蒜料酒花椒/五香粉等家家户户都有的）合并进用户调料里，
+    // 避免老用户 localStorage 里调料不足，导致 coverage 被低估、徽派红烧肉这种"核心塞满调料"的菜分数错乱。
+    const MANDATORY_BASE_SEASONINGS = [
+      "葱", "姜", "蒜", "料酒", "花椒", "八角", "桂皮", "香叶",
+      "五香粉", "胡椒粉", "辣椒粉", "花椒粉", "辣椒", "干辣椒",
+      "小米辣", "米醋", "味精", "鸡精", "香油", "冰糖", "蜂蜜",
+      "淀粉", "生粉", "鸡粉", "醋", "白砂糖",
+    ];
+    const merged = new Set([...userSaved]);
+    for (const s of DEFAULT_SEASONINGS) merged.add(s);
+    for (const s of MANDATORY_BASE_SEASONINGS) merged.add(s);
+    seasonings = [...merged];
+    if (userSaved.length < seasonings.length) saveSeasonings();
   } catch {
     seasonings = [...DEFAULT_SEASONINGS];
   }
@@ -2437,10 +2450,18 @@ function supplementExactMatches(apiResults, ingredients) {
       const missing = required.filter((i) => !localItemMatches(inventorySet, i));
       const coverage = required.length > 0 ? existing.length / required.length : 0;
       const _hr = getHomeRank(recipe);
-      const homeBonus = _hr === 2 ? 30 : (_hr === 1 ? 12 : 0);
-      supplemented.push({
+      const matchedCoreCount = coreNonSeasoning.length - missingCore.length;
+      const coreMatchBonus = matchedCoreCount * 10; // A 类内部也区分：命中 3 个核心（香干芹菜炒肉） vs 只命中 1 个（徽派红烧肉）
+      const homeBonus = _hr === 2 ? 18 : (_hr === 1 ? 12 : 0);
+      // 为什么把 homeBonus 从 30/12 降到 18/12？
+      // 之前徽派红烧肉（rank=2，只命中五花肉1个核心）拿 30 分 homeBonus，
+      // 香干芹菜炒肉（rank=1，命中3个核心）拿 12 分 homeBonus，差距 18 太大，
+      // 导致"家常菜关键词"压过了真正的核心食材命中数。
+      // 现在 rank=2 homeBonus=18，rank=1 家常菜 12，差距缩到 6；
+      // 而 coreMatchBonus×10 拉开了真实匹配的菜和"调料塞满 core"的菜。
+      const recEntry = {
         recipe,
-        score: coverage * 100 + 40 + homeBonus, // A类比原来+20再多+20，确保排在后端高分水产前面
+        score: coverage * 100 + 40 + homeBonus + coreMatchBonus,
         matchPercent: Math.round(coverage * 100),
         existing,
         missing,
@@ -2449,7 +2470,20 @@ function supplementExactMatches(apiResults, ingredients) {
         optional: recipe.optionalIngredients || [],
         reason: "核心食材全部匹配(本地兜底)",
         homeRank: _hr,
-      });
+      };
+      if (resultIds.has(recipe.id)) {
+        // 🔥 关键修复：后端 RAG 已经返回过同 id 的菜（比如徽派红烧肉被后端推到第 1 位），
+        // 这里不能再用后端的老 score，必须把后端那条也覆盖成 A 类打分，
+        // 否则 supplementExactMatches 其实没替换、排序时后端高分永远压着 A 类菜。
+        const idx = supplemented.findIndex((r) => r.recipe.id === recipe.id);
+        if (idx >= 0) {
+          supplemented[idx] = { ...supplemented[idx], ...recEntry };
+          supplemented[idx].score = recEntry.score;
+        }
+      } else {
+        supplemented.push(recEntry);
+        resultIds.add(recipe.id);
+      }
       addedA++;
       continue;
     }
@@ -2700,6 +2734,23 @@ function buildMenuCombinations(results) {
     // 兜底：匹配度高的优先
     return (b.matchPercent || 0) - (a.matchPercent || 0);
   });
+  // Debug 打印 top 3 的 title + score 明细（方便 Console 核对为什么某道菜排 #1）
+  const top = sorted.slice(0, 3).map(r => {
+    const d = r._debug || {};
+    return {
+      title: r.recipe?.title,
+      score: Math.round(r.score * 100) / 100,
+      coreCov: d.coreCoverage, cov: d.coverage,
+      missingCore: d.missingCore, homeRank: r.homeRank,
+      titleHit: d.titleHit, coreMatchBonus: d.coreMatchBonus,
+      matchedCoreCount: d.matchedCoreCount, catPenalty: d.catPenalty,
+    };
+  });
+  FrontendLogger.info("menu", "buildMenuCombinations top3", top);
+  if (window.__cai_log_top3__ !== false) {
+    // eslint-disable-next-line no-console
+    console.log("[menu] Top3 排序明细：", top);
+  }
 
   // 返回前12个单菜推荐，支持左右切换浏览
   const topN = Math.min(12, sorted.length);
