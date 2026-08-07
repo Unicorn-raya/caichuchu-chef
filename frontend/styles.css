@@ -4291,7 +4291,7 @@ body {
   transition: transform 0.15s, box-shadow 0.15s;
 }
 
-/* 大厨FAB：功能可用页面特效 —— 呼吸光晕（仅保留柔和外圈光晕） */
+/* 大厨FAB：功能可用页面特效 —— 呼吸光晕（仅保留柔和外圈光晕，尺寸缩小） */
 .chef-agent-fab--active-pulse {
   overflow: visible;
 }
@@ -4300,22 +4300,22 @@ body {
   content: "";
   pointer-events: none;
   position: absolute;
-  inset: -12px;  /* 每边外扩 12px → 柔和光晕 */
+  inset: -8px;  /* 每边外扩 8px → 柔和光晕（之前-12px） */
   border-radius: 50%;
   background: radial-gradient(
     circle at center,
-    rgba(251, 146, 60, 0.5) 0%,
-    rgba(244, 114, 182, 0.36) 40%,
-    rgba(59, 130, 246, 0.2) 65%,
-    transparent 80%
+    rgba(251, 146, 60, 0.40) 0%,
+    rgba(244, 114, 182, 0.28) 40%,
+    rgba(59, 130, 246, 0.15) 62%,
+    transparent 75%
   );
   animation: chef-fb-glow 1.9s ease-in-out infinite;
   z-index: -1;
 }
 
 @keyframes chef-fb-glow {
-  0%, 100% { transform: scale(0.96); opacity: 0.55; }
-  50%      { transform: scale(1.08); opacity: 1; }
+  0%, 100% { transform: scale(0.98); opacity: 0.5; }
+  50%      { transform: scale(1.04); opacity: 0.85; }
 }
 
 .chef-agent-fab:active {
