@@ -2320,6 +2320,29 @@ function buildDualMenuCombinations(results) {
 }
 
 /**
+ * 通过后端 AI 接口为多道菜批量搜索真实配图（Flickr 授权真实图片）
+ * @param {string[]} dishes - 菜名数组
+ * @returns {Promise<Object.<string, Object.<string, string[]>>>}  { "菜名": { "square": ["url0", "url1"], "landscape_16_9": [...] } }
+ */
+async function searchAIRecipeImages(dishes) {
+  if (!dishes || !dishes.length) return {};
+  try {
+    const res = await fetch(`${API_BASE}/api/ai/search_recipe_images`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dishes }),
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    FrontendLogger.info("ai-image", "后端AI真实图搜索完成", { dishes, count: Object.keys(data && data.images || {}).length });
+    return (data && data.images) ? data.images : {};
+  } catch (e) {
+    FrontendLogger.warning("ai-image", "后端AI真实图搜索失败，使用前端兜底", { error: e.message });
+    return {};
+  }
+}
+
+/**
  * 通过AI生成双菜推荐（大厨弹窗选择"AI推荐"时调用）
  */
 async function generateAIRecommendedMenu() {
@@ -2335,7 +2358,7 @@ async function generateAIRecommendedMenu() {
     <div class="page" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh">
       <div class="loading-spinner"></div>
       <div style="margin-top:12px;color:var(--text-muted)">AI大厨正在联网搜索…</div>
-      <div style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">结合冰箱食材和全网菜谱为你搭配</div>
+      <div style="margin-top:6px;font-size:12px;color:var(--text-muted);opacity:0.7">结合冰箱食材和全网菜谱为你搭配，同时匹配最佳真实配图</div>
     </div>
   `;
 
@@ -2383,6 +2406,15 @@ async function generateAIRecommendedMenu() {
       return;
     }
 
+    // —— 新增：后端AI联网搜索每道菜的真实配图（不用AI生成，改用 Flickr 真实图库） ——
+    const loadingEl = document.querySelector(".loading-spinner + div + div + div, .loading-spinner + div");
+    if (loadingEl && loadingEl.style) {
+      loadingEl.textContent = "正在匹配最佳真实菜品配图…（AI 在网上搜索高清美食摄影图）";
+    }
+    const dishImages = await searchAIRecipeImages([aiResult.dish1, aiResult.dish2]);
+    const dish1Imgs = (dishImages && dishImages[aiResult.dish1]) ? dishImages[aiResult.dish1] : null;
+    const dish2Imgs = (dishImages && dishImages[aiResult.dish2]) ? dishImages[aiResult.dish2] : null;
+
     // 先尝试从本地菜谱库匹配
     let dish1Rec = null, dish2Rec = null;
     if (allRecipes && allRecipes.length > 0) {
@@ -2427,12 +2459,12 @@ async function generateAIRecommendedMenu() {
       if (r2) dish2Rec = buildRecFromRecipe(r2);
     }
 
-    // 如果本地匹配失败，构建虚拟菜谱
+    // 如果本地匹配失败，构建虚拟菜谱（携带真实配图 URL）
     if (!dish1Rec) {
-      dish1Rec = buildVirtualRecipe(aiResult.dish1, aiResult.dish1_ingredients || [], allIngredients, aiResult.dish1_steps || []);
+      dish1Rec = buildVirtualRecipe(aiResult.dish1, aiResult.dish1_ingredients || [], allIngredients, aiResult.dish1_steps || [], dish1Imgs);
     }
     if (!dish2Rec) {
-      dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients, aiResult.dish2_steps || []);
+      dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients, aiResult.dish2_steps || [], dish2Imgs);
     }
 
     const combo = buildCombo([dish1Rec, dish2Rec], "ai");
@@ -2450,13 +2482,43 @@ async function generateAIRecommendedMenu() {
 }
 
 // 构建虚拟菜谱（AI推荐的菜不在本地库中时）
-function buildVirtualRecipe(title, aiIngredients, userIngredients, aiSteps) {
+function buildVirtualRecipe(title, aiIngredients, userIngredients, aiSteps, imagesBySize) {
   const ingSet = new Set(userIngredients);
   const existing = aiIngredients.filter(i => localItemMatches(ingSet, i));
   const missing = aiIngredients.filter(i => !localItemMatches(ingSet, i));
   const coverage = aiIngredients.length > 0 ? existing.length / aiIngredients.length : 0;
   const recipeId = "ai_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
   const steps = (aiSteps && Array.isArray(aiSteps) && aiSteps.length > 0) ? aiSteps : [];
+
+  // imagesBySize: { square: [url0, url1], landscape_16_9: [...], ... }
+  // 存一份到 recipe.images（兼容老代码直接读 [0] 缩略图），并存一份到 _imgSources 供尺寸精确取值
+  const savedImages = [];
+  let savedImgSources = null;
+  if (imagesBySize && typeof imagesBySize === "object") {
+    savedImgSources = {};
+    for (const sz of Object.keys(imagesBySize)) {
+      const arr = imagesBySize[sz];
+      if (Array.isArray(arr) && arr.length > 0) {
+        savedImgSources[sz] = arr.slice();
+        if (savedImages.length === 0 && (sz === "square")) {
+          savedImages.push(arr[0]);
+          if (arr[1]) savedImages.push(arr[1]);
+        }
+        if (sz === "landscape_16_9") {
+          // hero 大图需要 landscape，放最后保证 [0] 依然是缩略图时不会被覆盖：只在 square 未取到时才用 landscape
+          if (savedImages.length === 0) savedImages.push(arr[0]);
+        }
+      }
+    }
+    // 兜底：square 没命中时，取第一个尺寸
+    if (savedImages.length === 0) {
+      for (const sz of Object.keys(imagesBySize)) {
+        const arr = imagesBySize[sz];
+        if (Array.isArray(arr) && arr.length > 0) { savedImages.push(arr[0]); break; }
+      }
+    }
+  }
+
   const recipe = {
     id: recipeId,
     title,
@@ -2471,7 +2533,8 @@ function buildVirtualRecipe(title, aiIngredients, userIngredients, aiSteps) {
     seasonings: [],
     optionalIngredients: [],
     steps,
-    images: [],
+    images: savedImages,
+    _imgSources: savedImgSources,
     tags: ["AI推荐"],
     description: "AI大厨联网搜索推荐菜谱",
     quantities: {},
@@ -2888,32 +2951,32 @@ function _parseImgSize(sizeName) {
 }
 
 /**
- * 为AI菜谱 / 无本地图的菜谱返回双层 fallback 图片源（真实图片搜索→AI生成）。
+ * 为 AI 菜谱 / 无本地图菜谱返回真实图片搜索的双层 fallback URL（不再用 AI 生成图）。
  * 返回数组：[primaryUrl, fallbackUrl]
- *  - Primary: loremflickr.com  — 基于 Flickr 的真实关键词搜索图片，浏览器环境可用（403 仅服务器爬虫触发）
- *  - Fallback: pollinations.ai — 按菜名 AI 实时生成，服务端已验证 200 OK / image/jpeg
- *  onerror 时由 handleRecipeImageError 切换到 fallback
+ *  - 优先使用后端返回并保存在 recipe._imgSources 的 AI 精搜关键词结果（每个尺寸2个URL）
+ *  - 兜底：使用 loremflickr 基于 Flickr 免费授权真实图库，按菜名+关键词搜索
+ *  onerror 时由 handleRecipeImageError 切换 fallback；再失败就显示 emoji 占位
  */
 function getRecipeImageSources(recipe, sizeName) {
   if (!recipe || !recipe.title) return ["", ""];
+  const size = sizeName || "square";
+
+  // 1) 优先使用后端 AI 搜索后持久化保存的真实图 URL（已带精搜关键词）
+  if (recipe && recipe._imgSources && Array.isArray(recipe._imgSources[size]) && recipe._imgSources[size].length > 0) {
+    const arr = recipe._imgSources[size];
+    return [arr[0] || "", arr[1] || arr[0] || ""];
+  }
+
   const title = recipe.title || "";
-  const { w, h } = _parseImgSize(sizeName);
+  const { w, h } = _parseImgSize(size);
 
-  // Primary：真实图片搜索（loremflickr），中英混合关键词提高中餐命中率
-  const flickrKw = encodeURIComponent(title + ", chinese food, dish, cooking, homemade cuisine, meal");
-  const primary = `https://loremflickr.com/${w}/${h}/${flickrKw}?lock=${encodeURIComponent(_stableHash(title))}`;
+  // Primary：中文关键词（菜名+家常+美食摄影），稳定 lock
+  const flickrKwCn = encodeURIComponent(title + ", 家常菜品, 美食摄影, 俯拍, 自然光线, 真实菜品");
+  const primary = `https://loremflickr.com/${w}/${h}/${flickrKwCn}?lock=${encodeURIComponent(_stableHash(title + "|cn|" + size))}`;
 
-  // Fallback：pollinations.ai 按菜名 AI 生成（始终有效）
-  const prompt =
-    "Professional food photography of " + title + ", authentic Chinese dish, " +
-    "finished plated meal, top-down 45 degree view, natural soft window lighting, " +
-    "shallow depth of field, 85mm lens, high detail, appetizing, vibrant warm colors, clean table setting, no watermark, no text";
-  const fallback =
-    "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) +
-    "?width=" + w +
-    "&height=" + h +
-    "&seed=" + encodeURIComponent(_stableHash(title + "_" + sizeName)) +
-    "&nologo=true&model=flux";
+  // Fallback：英文关键词 + 更大范围的真实图搜索，lock 不同避免重复
+  const flickrKwEn = encodeURIComponent(title + ", chinese authentic dish, food photography, plated meal, natural lighting, home cooked");
+  const fallback = `https://loremflickr.com/${w}/${h}/${flickrKwEn}?lock=${encodeURIComponent(_stableHash(title + "|en|" + size))}`;
 
   return [primary, fallback];
 }

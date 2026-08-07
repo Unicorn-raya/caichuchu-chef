@@ -196,6 +196,128 @@ async def ai_config_status():
     return get_ai_config_status()
 
 
+# ---------- AI 菜谱图片搜索：AI 生成真实图搜索关键词 + loremflickr（Flickr 授权真实图片） ----------
+
+class SearchRecipeImagesRequest(BaseModel):
+    dishes: list[str]
+
+
+# 常用尺寸（与前端 _parseImgSize 保持一致）
+_IMAGE_SIZES: dict[str, tuple[int, int]] = {
+    "square": (512, 512),
+    "square_hd": (720, 720),
+    "landscape_16_9": (960, 540),
+    "landscape_4_3": (800, 600),
+    "portrait_4_3": (600, 800),
+    "portrait_16_9": (540, 960),
+}
+
+
+def _stable_hash(text: str) -> str:
+    """稳定 hash（与前端 _stableHash 算法不同域没关系，只要同菜名同一keyword稳定就行）"""
+    import hashlib
+    return hashlib.md5(text.encode("utf-8")).hexdigest()[:10]
+
+
+def _loremflickr_url(keyword: str, width: int, height: int, lock_suffix: str = "") -> str:
+    """构建基于 Flickr 授权真实图片的 loremflickr URL"""
+    from urllib.parse import quote
+    encoded = quote(keyword)
+    lock = _stable_hash(keyword + "|" + lock_suffix)
+    return f"https://loremflickr.com/{width}/{height}/{encoded}?lock={lock}"
+
+
+def _build_keywords_for_dish(dish_name: str) -> list[str]:
+    """调用 AI 生成 2 组最适合真实图片搜索的关键词；失败则用通用兜底关键词"""
+    if not dish_name:
+        return ["chinese food, dish, cooking, meal"]
+    prompt = (
+        "你是美食图库检索专家。给出中文菜名，请输出该菜在真实图库中最适合的2组搜索关键词。\n"
+        "要求：\n"
+        "1. 只输出JSON数组，不要任何解释文字、注释、Markdown 包裹；\n"
+        "2. 每组是一个字符串短语，中英混合可以；\n"
+        "3. 绝对不要 AI生成、CG、3D渲染、虚拟、卡通、插画、手绘、生图 等风格词；\n"
+        "4. 必须是真实菜品摄影相关，优先包含：烹饪方式/菜系/盛盘角度（45度俯拍、特写）/光线（自然光线）/ 构图（美食摄影）/环境（家常餐桌、木桌、瓷盘、浅盘）；\n"
+        "5. 第一组偏中文关键词、第二组偏英文关键词，确保两个关键词组不要重复，覆盖不同的搜索角度。\n"
+        f"\n菜名：{dish_name}\n"
+        "输出示例（仅示意格式）：\n"
+        '[ "酱爆洋葱炒肉丝 家常炒菜 俯拍 美食摄影 木桌 自然光线 特写", '
+        '"onion shredded pork stir fry chinese authentic dish food photography close up 45 degree" ]'
+    )
+    messages = [
+        {"role": "system", "content": "你是美食图库检索专家，只输出JSON数组。"},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        content = call_ai_proxy(messages)
+        # 容错：剥离可能的 Markdown 代码块
+        if content.startswith("```"):
+            content = content.strip("`")
+            if content.lower().startswith("json"):
+                content = content[4:]
+        content = content.strip()
+        # 找数组
+        import json
+        start = content.find("[")
+        end = content.rfind("]")
+        if start >= 0 and end > start:
+            arr = json.loads(content[start : end + 1])
+            if isinstance(arr, list) and arr:
+                cleaned = [str(x).strip() for x in arr if str(x).strip()]
+                if cleaned:
+                    # 确保至少2组，不够则用菜名通用补齐
+                    base = [dish_name + ", chinese food, dish, cooking, meal, homemade cuisine"]
+                    while len(cleaned) < 2:
+                        cleaned.append(base[0] + f", variant{len(cleaned)}")
+                    return cleaned[:2]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("AI生成菜品图片关键词失败，使用兜底: dish=%s err=%s", dish_name, e)
+    # 兜底关键词：菜名 + 通用美食摄影词
+    kw1 = f"{dish_name}, 家常菜品, 美食摄影, 俯拍, 自然光线, 真实菜品"
+    kw2 = f"{dish_name}, chinese authentic dish, food photography, plated meal, natural light"
+    return [kw1, kw2]
+
+
+def _build_image_map_for_dish(dish_name: str, keywords: list[str]) -> dict[str, list[str]]:
+    """为单个菜生成不同尺寸、不同关键词的真实图片URL映射（每个尺寸2个用于primary/fallback）"""
+    result: dict[str, list[str]] = {}
+    for size_name, (w, h) in _IMAGE_SIZES.items():
+        urls: list[str] = []
+        for idx, kw in enumerate(keywords):
+            urls.append(_loremflickr_url(kw, w, h, lock_suffix=f"{size_name}|{idx}"))
+        # 保证至少2个URL（用不同lock seed的同一关键词）
+        if len(urls) == 1:
+            urls.append(_loremflickr_url(keywords[0], w, h, lock_suffix=f"{size_name}|v2"))
+        result[size_name] = urls
+    return result
+
+
+@app.post("/api/ai/search_recipe_images")
+async def search_recipe_images(request: SearchRecipeImagesRequest):
+    """AI 联网搜索菜谱真实配图：
+    - 用 AI 为每道菜生成最适合真实图搜索的关键词（分中英文两组）
+    - 基于 loremflickr（Flickr 免费授权真实图片库）构建稳定 URL
+    - 返回每个菜 × 每种尺寸 × 2 个 URL（primary / fallback，前端 onerror 切换）
+    注意：此接口只做 URL 构建，不拉取图片二进制，返回速度快。
+    """
+    dishes = [d.strip() for d in request.dishes if d and d.strip()]
+    dishes = list(dict.fromkeys(dishes))  # 去重保序
+    if not dishes:
+        return {"images": {}}
+
+    logger.info("POST /api/ai/search_recipe_images | dishes=%s", dishes)
+    t0 = time.time()
+    images_out: dict[str, dict[str, list[str]]] = {}
+
+    for dish in dishes:
+        keywords = _build_keywords_for_dish(dish)
+        images_out[dish] = _build_image_map_for_dish(dish, keywords)
+
+    elapsed = (time.time() - t0) * 1000
+    logger.info("→ 生成 %d 道菜的真实图关键词, 耗时 %.0fms", len(dishes), elapsed)
+    return {"images": images_out}
+
+
 # ---------- 前端日志收集 ----------
 
 
