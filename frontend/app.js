@@ -6079,6 +6079,8 @@ function toggleChefEnabled(chefId) {
 function moveChefOrder(chefId, direction) {
   ChefManager.moveChef(chefId, direction);
   showChefs();
+  // 顺序变了 → 优先级1厨师可能变了 → 刷新大厨按钮的颜色/呼吸圈配色
+  updateChefFabState();
 }
 
 // 颜色选择弹窗
@@ -7348,9 +7350,13 @@ function updateChefFabState() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
 
+  const allChefs = ChefManager.getAll();
   const enabledChefs = ChefManager.getEnabled();
   const defaultChef = ChefManager.getDefault();
   const defaultEnabled = defaultChef && defaultChef.enabled;
+
+  // 优先级1厨师 = 厨师管理里排第1位的（getAll()[0]），颜色/呼吸圈永远跟他
+  const priority1Chef = allChefs[0] || defaultChef;
 
   if (enabledChefs.length === 0) {
     // 没有启用的厨师：灰色禁用状态
@@ -7368,15 +7374,24 @@ function updateChefFabState() {
   } else {
     fab.classList.remove("chef-fab-disabled");
     const iconEl = fab.querySelector(".chef-agent-fab-icon");
-    // 优先显示默认厨师头像；默认厨师未启用时显示自定义厨师头像
-    const displayChef = defaultEnabled ? defaultChef : enabledChefs[0];
-    if (displayChef.avatar) {
-      iconEl.innerHTML = `<img src="${displayChef.avatar}" class="chef-fab-avatar-img" />`;
+
+    // 头像：优先级1启用就显示他；否则保留原有兜底逻辑（默认启用→默认大厨，否则第一个启用的大厨）
+    let avatarChef;
+    if (priority1Chef && priority1Chef.enabled) {
+      avatarChef = priority1Chef;
+    } else if (defaultEnabled) {
+      avatarChef = defaultChef;
     } else {
-      iconEl.textContent = displayChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
+      avatarChef = enabledChefs[0];
     }
-    // FAB背景色跟随厨师颜色（原样，不做处理）
-    const rawColor = displayChef.color || "#e67e22";
+    if (avatarChef && avatarChef.avatar) {
+      iconEl.innerHTML = `<img src="${avatarChef.avatar}" class="chef-fab-avatar-img" />`;
+    } else {
+      iconEl.textContent = (avatarChef && avatarChef.isDefault === false) ? "🧑‍🍳" : "👨‍🍳";
+    }
+
+    // 颜色（FAB背景 / 按钮阴影 / 呼吸圈描边 / 呼吸圈发光）一律用 优先级1厨师 的颜色
+    const rawColor = (priority1Chef && priority1Chef.color) || "#e67e22";
     fab.style.background = rawColor;
 
     // 呼吸圆环颜色：解析成 RGB → 如果太浅（容易和米色背景融为一体）就加深
