@@ -7247,6 +7247,20 @@ function saveAIModelForm(modelId) {
 // ============================================
 // 厨师FAB状态管理
 // ============================================
+// 大厨FAB：判断"当前页面是否支持大厨功能"（与 handleChefAgentClick 分支一一对应）
+// 功能页有：菜谱详情页 / 冰箱首页 / 食材灵感滑动页 / 发现页 / 日历（任何模式）
+function isChefFabActiveOnCurrentPage() {
+  try {
+    if (ChefAgent && typeof ChefAgent.isOnRecipePage === "function" && ChefAgent.isOnRecipePage()) {
+      return true;
+    }
+  } catch (e) {}
+  if (currentPage === "home") return true;       // 冰箱首页 + 灵感滑动页
+  if (currentPage === "discover") return true;   // 发现页（随机推荐一道菜）
+  if (currentPage === "calendar") return true;   // 日历（timeline/分析 & calendar/月度做菜统计）
+  return false;
+}
+
 function updateChefFabState() {
   const fab = document.getElementById("chefAgentFab");
   if (!fab) return;
@@ -7286,6 +7300,15 @@ function updateChefFabState() {
       const b = parseInt(color.slice(5,7), 16);
       fab.style.boxShadow = `0 4px 16px rgba(${r},${g},${b},0.4)`;
     }
+  }
+
+  // —— 流动彩色线条特效：仅在"禁用状态未启用 + 当前页面支持大厨功能"时显示
+  const shouldPulse = !fab.classList.contains("chef-fab-disabled") && isChefFabActiveOnCurrentPage();
+  const pulseCls = "chef-agent-fab--active-pulse";
+  if (shouldPulse) {
+    fab.classList.add(pulseCls);
+  } else {
+    fab.classList.remove(pulseCls);
   }
 }
 
