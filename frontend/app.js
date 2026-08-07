@@ -140,6 +140,7 @@ const INGREDIENT_CLASS_MAP = {
   // 猪肉类
   "猪肉": { class: "猪肉", category: "meat" },
   "五花肉": { class: "猪肉", category: "meat" },
+  "五花肉条": { class: "猪肉", category: "meat" },
   "排骨": { class: "猪肉", category: "meat" },
   "里脊": { class: "猪肉", category: "meat" },
   "瘦肉": { class: "猪肉", category: "meat" },
@@ -422,6 +423,64 @@ function getIngredientSynonyms(name) {
   const list = _synonymsByCanonical.get(canon);
   return list && list.length > 0 ? list.slice() : [s];
 }
+
+/* ============================================================
+   食材泛化词（菜谱里常见的"统称/占位词"）
+   例如菜谱写 "叶菜类蔬菜" 不能随便拿"芹菜/胡萝卜"就去匹配，
+   必须是下面白名单列出的真实食材才算命中。
+   key = 泛化词；value = { category, matches(ingredient) -> true/false }
+   ============================================================ */
+const GENERALIZED_INGREDIENTS = {
+  "叶菜类蔬菜": {
+    category: "vegetable",
+    // 真正意义上的嫩叶/叶菜：芹菜(茎菜)、胡萝卜(根)、土豆(薯) 等不算
+    matches: (name) => {
+      const cls = (INGREDIENT_CLASS_MAP[name] || {}).class || name;
+      return ["青菜", "小白菜", "上海青", "菠菜", "生菜", "油麦菜", "空心菜", "娃娃菜", "白菜", "韭菜"].includes(cls);
+    }
+  },
+  "绿叶菜": {
+    category: "vegetable",
+    matches: (name) => {
+      const cls = (INGREDIENT_CLASS_MAP[name] || {}).class || name;
+      return ["青菜", "小白菜", "上海青", "菠菜", "生菜", "油麦菜", "空心菜", "韭菜"].includes(cls);
+    }
+  },
+  "时蔬": {
+    category: "vegetable",
+    // 时蔬 = 任意一种新鲜蔬菜（但葱姜蒜/辣椒不算"时蔬主角"）
+    matches: (name) => {
+      const m = INGREDIENT_CLASS_MAP[name];
+      return m && m.category === "vegetable" && !["葱", "姜", "蒜", "辣椒", "花椒"].includes(m.class);
+    }
+  },
+  "时令蔬菜": {
+    category: "vegetable",
+    matches: (name) => {
+      const m = INGREDIENT_CLASS_MAP[name];
+      return m && m.category === "vegetable" && !["葱", "姜", "蒜", "辣椒", "花椒"].includes(m.class);
+    }
+  },
+  "蔬菜类": {
+    category: "vegetable",
+    matches: (name) => {
+      const m = INGREDIENT_CLASS_MAP[name];
+      return m && m.category === "vegetable";
+    }
+  },
+  "肉类": {
+    category: "meat",
+    // 肉类 = 真的有一坨肉（猪牛羊鸡鸭鹅鱼虾蟹…）；"五花肉/里脊肉/肉片/肉馅"等都算
+    matches: (name) => {
+      const m = INGREDIENT_CLASS_MAP[name];
+      if (m && (m.category === "meat" || m.category === "aquatic" || m.class === "猪肉" || m.class === "鸡蛋")) {
+        // 鸡蛋虽然 category=egg 但很多"肉类"是泛指，算上它也合理
+        return true;
+      }
+      return ["猪", "牛", "羊", "鸡", "鸭", "鹅", "鱼", "虾", "蟹", "肉", "排骨", "五花", "里脊", "火腿", "香肠", "培根", "鸡翅", "鸡腿", "牛排", "羊排", "肉馅", "肉沫", "肉末", "腊肠"].some(k => (name || "").includes(k));
+    }
+  },
+};
 
 /**
  * 食材后缀词：包含这些后缀的食材名属于调味品/加工品，
@@ -2215,15 +2274,28 @@ function isMeatDish(recipe) { return isMainDish(recipe); }
 function isVegDish(recipe) { return isSideDish(recipe); }
 
 // 前端本地食材匹配：检查食材是否在库存中
-// —— 三种命中：
+// —— 四层命中，按顺序：
 //   (1) 精确相等（包括调料已被 seasonings Set 合并）
-//   (2) 通过同义词 CanonicalMap 归一到同一个标准名
-//   (3) INGREDIENT_CLASS_MAP 下同一"主类 class"（例如五花肉/猪肉都归到猪肉），视作同一类匹配
+//   (2) 菜谱食材是一个「泛化统称词」（如叶菜类蔬菜/肉类/时蔬）→ 按白名单检查冰箱里是否有对应真实食材
+//   (3) 通过同义词 CanonicalMap 归一到同一个标准名
+//   (4) INGREDIENT_CLASS_MAP 下同一"主类 class"（例如五花肉/猪肉都归到猪肉），视作同一类匹配
 function localItemMatches(inventorySet, item) {
   if (!item) return false;
   const s = String(item).trim();
   if (!s) return false;
   if (inventorySet.has(s)) return true;
+
+  // (2) 泛化统称词（菜谱写的"叶菜类蔬菜/肉类/时蔬"这类）→ 逐项调用白名单
+  const generalized = GENERALIZED_INGREDIENTS[s];
+  if (generalized) {
+    for (const inv of inventorySet) {
+      try {
+        if (generalized.matches(inv)) return true;
+      } catch (e) { /* ignore */ }
+    }
+    // 泛化词不允许"主类 class 再泛一层"，否则会把芹菜当成叶菜类蔬菜
+    return false;
+  }
 
   // 把库存和待检查项都归一到 canonical 比一次
   const canon = canonicalIngredient(s);
@@ -2296,23 +2368,31 @@ function normalizeMissingCore(results) {
   return results;
 }
 
-// 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
-// 检查 allRecipes 中不在 API 结果里的菜谱，如果核心食材全部命中则补充
+// 本地兜底：补充 RAG 可能遗漏的精确匹配/高命中率菜谱
+// 策略两层：
+//   A. 核心食材全部命中（missingCore=0，不含基础调料）→ 强补 + 最高加分
+//   B. 核心命中率 ≥ 70% 且 missingCore ≤ 2 → 补进候选池，避免被后端 RAG 排序漏掉
+//      （例如冰箱里有 豆干+芹菜+猪肉+辣椒，「香干芹菜炒肉」核心齐全却被排在结果150+的情况）
 function supplementExactMatches(apiResults, ingredients) {
   if (!allRecipes || allRecipes.length === 0) return apiResults;
   const resultIds = new Set(apiResults.map((r) => r.recipe.id));
   const inventorySet = new Set(ingredients);
   const supplemented = [...apiResults];
-  let added = 0;
+  let addedA = 0, addedB = 0;
+
+  // 先收集 B 类高命中率候选（按缺失核心食材数升序、核心命中率降序排），最多补 10 条
+  const candidatesB = [];
+
   for (const recipe of allRecipes) {
     if (resultIds.has(recipe.id)) continue;
-    // 检查核心食材是否全部命中（基础调料跳过）
     const coreIng = recipe.coreIngredients || [];
-    const missingCore = coreIng.filter(
-      (i) => !localItemMatches(inventorySet, i) && !isLocalBasicSeasoning(i)
-    );
-    if (missingCore.length === 0 && coreIng.length > 0) {
-      // 核心食材全部命中，补充到结果中
+    const coreNonSeasoning = coreIng.filter(i => !isLocalBasicSeasoning(i));
+    const missingCore = coreNonSeasoning.filter(i => !localItemMatches(inventorySet, i));
+    const hitCore = coreNonSeasoning.length - missingCore.length;
+    const coreCoverage = coreNonSeasoning.length > 0 ? hitCore / coreNonSeasoning.length : 0;
+
+    // —— A 类：核心齐全（强补）——
+    if (missingCore.length === 0 && coreNonSeasoning.length > 0) {
       const required = recipe.requiredIngredients || [];
       const existing = required.filter((i) => localItemMatches(inventorySet, i));
       const missing = required.filter((i) => !localItemMatches(inventorySet, i));
@@ -2321,23 +2401,205 @@ function supplementExactMatches(apiResults, ingredients) {
       const homeBonus = _hr === 2 ? 30 : (_hr === 1 ? 12 : 0);
       supplemented.push({
         recipe,
-        score: coverage * 100 + 20 + homeBonus, // 精确匹配加分+家常菜加分
+        score: coverage * 100 + 40 + homeBonus, // A类比原来+20再多+20，确保排在后端高分水产前面
         matchPercent: Math.round(coverage * 100),
         existing,
         missing,
         missingCore: [],
         missingSeasonings: [],
         optional: recipe.optionalIngredients || [],
-        reason: "食材全部匹配",
+        reason: "核心食材全部匹配(本地兜底)",
         homeRank: _hr,
       });
-      added++;
+      addedA++;
+      continue;
+    }
+
+    // —— B 类：核心命中率够高（70%+ 且缺失≤2）→ 作为候选
+    if (coreCoverage >= 0.7 && missingCore.length <= 2 && coreNonSeasoning.length > 0) {
+      const required = recipe.requiredIngredients || [];
+      const existing = required.filter((i) => localItemMatches(inventorySet, i));
+      const missing = required.filter((i) => !localItemMatches(inventorySet, i));
+      const coverage = required.length > 0 ? existing.length / required.length : 0;
+      const _hr = getHomeRank(recipe);
+      const homeBonus = _hr === 2 ? 20 : (_hr === 1 ? 10 : 0);
+      candidatesB.push({
+        recipe,
+        score: coreCoverage * 70 + coverage * 40 - missingCore.length * 20 + homeBonus,
+        matchPercent: Math.round(coverage * 100),
+        existing,
+        missing,
+        missingCore,
+        missingSeasonings: [],
+        optional: recipe.optionalIngredients || [],
+        reason: `核心覆盖率${Math.round(coreCoverage * 100)}%(本地强相关补充)`,
+        homeRank: _hr,
+        _coreCoverage: coreCoverage,
+        _missingCore: missingCore.length,
+      });
     }
   }
-  if (added > 0) {
-    FrontendLogger.info("api", "本地兜底补充", { added, total: supplemented.length });
+
+  // B 类候选排序：missingCore越少越优先，其次核心覆盖率，最后得分
+  candidatesB.sort((a, b) => {
+    const md = a._missingCore - b._missingCore;
+    if (md !== 0) return md;
+    const cc = b._coreCoverage - a._coreCoverage;
+    if (Math.abs(cc) > 0.001) return cc;
+    return (b.score || 0) - (a.score || 0);
+  });
+  for (const cand of candidatesB.slice(0, 10)) {
+    delete cand._coreCoverage;
+    delete cand._missingCore;
+    supplemented.push(cand);
+    addedB++;
+  }
+
+  if (addedA > 0 || addedB > 0) {
+    FrontendLogger.info("api", "本地兜底补充", { addedA, addedB, total: supplemented.length });
   }
   return supplemented;
+}
+
+/* ============================================================
+   前端重写每条结果的 score：解决后端 RAG 打分与"冰箱食材真实覆盖率"
+   不一致的问题（例：有豆干+芹菜+猪肉+辣椒，香干芹菜炒肉被水产/五花肉挤掉）。
+   打分公式：
+     coreCoverage * 70      —— 核心食材命中率（权重最高，因为核心不全=无法做）
+     + coverage * 40        —— 普通食材命中率
+     + homeRank * 20        —— 家常菜加成（最高40，对应homeRank=2的"经典家常菜"）
+     - missingCore * 25     —— 缺一个核心非调料食材大惩罚
+     + titleHitBonus        —— 标题命中冰箱食材（这道菜就是主角）：+每命中一个8
+     + expiringBonus        —— 使用了临期食材：每命中一个+6
+     - categoryMismatchPenalty —— 菜谱核心主食材的 category，在冰箱里完全没有同 category 主食材
+                                  例如：aquatic（鱼虾水产）冰箱里完全没有鱼/虾/蟹等水产 → 惩罚60
+                                  poultry（禽）冰箱里完全没有鸡鸭 → 惩罚40
+                                  牛羊 冰箱里完全没有 → 惩罚30
+   最终所有结果按新 score 重排。
+   ============================================================ */
+function rescoreResults(results, inventoryIngredients, expiringItems = []) {
+  if (!results || results.length === 0) return results;
+
+  // 冰箱里每个 category 下有哪些真实主类食材（只算非基础调料/非调味料）
+  const invSet = new Set(inventoryIngredients);
+  const inventoryByCategory = new Map();
+  const inventoryCanonClasses = new Set();
+  for (const inv of inventoryIngredients) {
+    if (!inv) continue;
+    if (isLocalBasicSeasoning(inv)) continue;
+    const canon = canonicalIngredient(inv);
+    inventoryCanonClasses.add(canon);
+    const m = INGREDIENT_CLASS_MAP[inv] || INGREDIENT_CLASS_MAP[canon];
+    if (!m) continue;
+    if (!inventoryByCategory.has(m.category)) inventoryByCategory.set(m.category, new Set());
+    inventoryByCategory.get(m.category).add(m.class || canon);
+  }
+
+  const expiringSet = new Set(expiringItems || []);
+  const invNamesForTitleMatch = new Set();
+  for (const inv of inventoryIngredients) {
+    if (!inv) continue;
+    if (isLocalBasicSeasoning(inv)) continue;
+    if (inv.length < 2) continue;
+    invNamesForTitleMatch.add(inv);
+    for (const alias of getIngredientSynonyms(inv)) invNamesForTitleMatch.add(alias);
+    const m = INGREDIENT_CLASS_MAP[inv] || INGREDIENT_CLASS_MAP[canonicalIngredient(inv)];
+    if (m && m.class) invNamesForTitleMatch.add(m.class);
+  }
+
+  for (const r of results) {
+    const recipe = r.recipe;
+    if (!recipe) continue;
+    const required = recipe.requiredIngredients || [];
+    const coreIng = recipe.coreIngredients || [];
+
+    // 1. 先重算一次本地的 existing/missing（避免后端返回的匹配没经过我们的同义词/泛化词逻辑）
+    const existing = required.filter(i => localItemMatches(invSet, i));
+    const missing = required.filter(i => !localItemMatches(invSet, i));
+    const coreNonSeasoning = coreIng.filter(i => !isLocalBasicSeasoning(i));
+    const missingCore = coreNonSeasoning.filter(i => !localItemMatches(invSet, i));
+    const coverage = required.length > 0 ? existing.length / required.length : 0;
+    const coreCoverage = coreNonSeasoning.length > 0
+      ? (coreNonSeasoning.length - missingCore.length) / coreNonSeasoning.length
+      : 0;
+
+    r.existing = existing;
+    r.missing = missing;
+    r.missingCore = missingCore;
+    r.matchPercent = Math.round(coverage * 100);
+
+    // 2. 标题命中冰箱食材的加分（这道菜的主角=冰箱里的食材）
+    let titleHitBonus = 0;
+    const title = recipe.title || "";
+    for (const term of invNamesForTitleMatch) {
+      if (term && term.length >= 2 && title.includes(term)) titleHitBonus += 8;
+    }
+
+    // 3. 临期食材使用加分
+    let expiringBonus = 0;
+    for (const used of existing) {
+      if (expiringSet.has(used)) expiringBonus += 6;
+      const canon = canonicalIngredient(used);
+      if (canon !== used && expiringSet.has(canon)) expiringBonus += 6;
+    }
+
+    // 4. 无关 category 强惩罚：
+    //    核心主食材（core前2个非调料项）所在的 category，
+    //    如果冰箱里完全没有同 category 的任何主食材 → 大惩罚。
+    //    例：核心是["鲤鱼","五花肉"]，鲤鱼=aquatic，冰箱没有aquatic主食材 → 惩罚60
+    //    核心是["鸡腿","土豆"]，鸡腿=poultry，冰箱没poultry → 惩罚40
+    let categoryMismatchPenalty = 0;
+    const mainCores = coreNonSeasoning.slice(0, 3);
+    for (const mc of mainCores) {
+      // 泛化词不参与"冰箱无主食材"判断（泛化词本身是统称）
+      if (GENERALIZED_INGREDIENTS[mc]) continue;
+      const m = INGREDIENT_CLASS_MAP[mc] || INGREDIENT_CLASS_MAP[canonicalIngredient(mc)];
+      if (!m) continue;
+      const cat = m.category;
+      // 基础调料类、蔬菜类、豆制品类/蛋/面/米饭 一般是家里常备/易买到，不存在"完全缺主食材"的惩罚
+      if (!cat || cat === "seasoning" || cat === "vegetable" || cat === "vegetarian" || cat === "egg" || cat === "grain" || cat === "staple") continue;
+      if (cat === "meat" && m.class === "猪肉") {
+        // 猪肉是最常见的冰箱食材，冰箱没猪肉也不做"强惩罚"，只做小罚避免推荐大量猪肉菜
+        if (!(inventoryByCategory.get("meat") || new Set()).has("猪肉")) {
+          categoryMismatchPenalty += 10;
+        }
+        continue;
+      }
+      const hasInventoryInCat = inventoryByCategory.has(cat) && inventoryByCategory.get(cat).size > 0;
+      if (!hasInventoryInCat) {
+        if (cat === "aquatic") categoryMismatchPenalty += 60;
+        else if (cat === "meat" && (m.class === "牛肉" || m.class === "羊肉" || m.class === "兔肉")) categoryMismatchPenalty += 35;
+        else if (cat === "meat") categoryMismatchPenalty += 25;
+        else categoryMismatchPenalty += 20;
+      }
+    }
+
+    const _hr = getHomeRank(recipe);
+    const homeRankBonus = _hr * 20; // homeRank=2 → +40, =1 → +20, =0 → 0
+
+    const newScore =
+      coreCoverage * 70 +
+      coverage * 40 +
+      homeRankBonus +
+      titleHitBonus +
+      expiringBonus -
+      missingCore.length * 25 -
+      categoryMismatchPenalty;
+
+    // 避免后端原来很高的 score（999 这种）干扰 → 直接覆盖
+    r.score = newScore;
+    r._debug = r._debug || {};
+    r._debug.coreCoverage = Math.round(coreCoverage * 100);
+    r._debug.coverage = Math.round(coverage * 100);
+    r._debug.missingCore = missingCore.length;
+    r._debug.catPenalty = categoryMismatchPenalty;
+    r._debug.titleHit = titleHitBonus;
+    r._debug.expiring = expiringBonus;
+    r._debug.homeRank = homeRankBonus;
+    r.homeRank = _hr;
+  }
+
+  return results;
 }
 
 // 组合类型标签
@@ -2540,6 +2802,8 @@ async function generateAIRecommendedMenu() {
       const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
       const supplemented = supplementExactMatches(rawResults, allIngredients);
       const processed = applyDietAndAllergens(supplemented);
+      // —— 关键修复：重算每条结果的 score（按核心覆盖率 + 无关category 大惩罚）
+      rescoreResults(processed, allIngredients, expiringItems);
       normalizeMissingCore(processed);
       searchResults = buildDualMenuCombinations(processed);
       renderSwipePage();
@@ -2795,6 +3059,10 @@ async function generateMenu() {
     const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
     const processed = applyDietAndAllergens(supplemented);
+    // —— 关键修复：重算每条结果的 score（按核心覆盖率 + 无关category 大惩罚）
+    //    之前后端 RAG 会把 sortScore 高的水产/肉菜排在前面，哪怕冰箱根本没有鱼虾；
+    //    重算后会给「水产类菜 冰箱完全没水产」扣 -60 分，鲤鱼这类菜就沉底了。
+    rescoreResults(processed, allIngredients, expiringItems);
     // 规范化：API 结果可能只有 missing（含基础调料），需补充 missingCore（排除基础调料的核心缺失）
     normalizeMissingCore(processed);
     // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
