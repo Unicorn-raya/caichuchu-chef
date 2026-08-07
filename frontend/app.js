@@ -7280,6 +7280,8 @@ function updateChefFabState() {
     }
     fab.style.background = "";
     fab.style.boxShadow = "";
+    fab.style.setProperty("--chef-ring-color", "rgba(120, 120, 120, 0.6)");
+    fab.style.setProperty("--chef-ring-color-rgb-a", "rgba(120, 120, 120, 0.3)");
   } else {
     fab.classList.remove("chef-fab-disabled");
     const iconEl = fab.querySelector(".chef-agent-fab-icon");
@@ -7291,18 +7293,22 @@ function updateChefFabState() {
       iconEl.textContent = displayChef.isDefault ? "👨‍🍳" : "🧑‍🍳";
     }
     // FAB背景色跟随厨师颜色
-    const color = displayChef.color || "var(--carrot)";
+    const color = displayChef.color || "#e67e22";
     fab.style.background = color;
-    // 将hex颜色转为半透明rgba用于阴影
+    // 将hex颜色转为半透明rgba用于阴影 & 呼吸圆环发光
+    let ringRgbA = "rgba(230, 126, 34, 0.55)";
     if (color.startsWith("#") && color.length === 7) {
       const r = parseInt(color.slice(1,3), 16);
       const g = parseInt(color.slice(3,5), 16);
       const b = parseInt(color.slice(5,7), 16);
       fab.style.boxShadow = `0 4px 16px rgba(${r},${g},${b},0.4)`;
+      ringRgbA = `rgba(${r},${g},${b},0.6)`;
     }
+    fab.style.setProperty("--chef-ring-color", color);
+    fab.style.setProperty("--chef-ring-color-rgb-a", ringRgbA);
   }
 
-  // —— 流动彩色线条特效：仅在"禁用状态未启用 + 当前页面支持大厨功能"时显示
+  // —— 呼吸圆环特效：仅在"禁用状态未启用 + 当前页面支持大厨功能"时显示
   const shouldPulse = !fab.classList.contains("chef-fab-disabled") && isChefFabActiveOnCurrentPage();
   const pulseCls = "chef-agent-fab--active-pulse";
   if (shouldPulse) {
