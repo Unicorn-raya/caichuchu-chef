@@ -230,8 +230,15 @@ const INGREDIENT_CLASS_MAP = {
   // 豆制品
   "豆腐": { class: "豆腐", category: "vegetarian" },
   "豆干": { class: "豆腐", category: "vegetarian" },
+  "香干": { class: "豆腐", category: "vegetarian" }, // 豆干别名（五香熏豆干）
+  "豆腐干": { class: "豆腐", category: "vegetarian" },
+  "熏干": { class: "豆腐", category: "vegetarian" },
+  "茶干": { class: "豆腐", category: "vegetarian" },
+  "素鸡": { class: "豆腐", category: "vegetarian" },
   "豆皮": { class: "豆腐", category: "vegetarian" },
   "千张": { class: "豆腐", category: "vegetarian" },
+  "百叶": { class: "豆腐", category: "vegetarian" }, // 千张别名
+  "油豆腐": { class: "豆腐", category: "vegetarian" },
   "腐竹": { class: "豆腐", category: "vegetarian" },
   "日本豆腐": { class: "豆腐", category: "vegetarian" },
   // 蔬菜类
@@ -262,6 +269,9 @@ const INGREDIENT_CLASS_MAP = {
   "上海青": { class: "青菜", category: "vegetable" },
   "菠菜": { class: "菠菜", category: "vegetable" },
   "芹菜": { class: "芹菜", category: "vegetable" },
+  "香芹": { class: "芹菜", category: "vegetable" },  // 芹菜别名（小香芹）
+  "西芹": { class: "芹菜", category: "vegetable" },
+  "水芹": { class: "芹菜", category: "vegetable" },
   "韭菜": { class: "韭菜", category: "vegetable" },
   "豆角": { class: "豆角", category: "vegetable" },
   "四季豆": { class: "豆角", category: "vegetable" },
@@ -304,15 +314,114 @@ const INGREDIENT_CLASS_MAP = {
   "竹笋": { class: "笋", category: "vegetable" },
   "芦笋": { class: "芦笋", category: "vegetable" },
   "葱": { class: "葱", category: "seasoning" },
+  "大葱": { class: "葱", category: "seasoning" },
+  "香葱": { class: "葱", category: "seasoning" },
+  "小葱": { class: "葱", category: "seasoning" },
   "姜": { class: "姜", category: "seasoning" },
+  "生姜": { class: "姜", category: "seasoning" },
   "蒜": { class: "蒜", category: "seasoning" },
   "大蒜": { class: "蒜", category: "seasoning" },
+  "蒜头": { class: "蒜", category: "seasoning" },
   "花椒": { class: "花椒", category: "seasoning" },
   "八角": { class: "八角", category: "seasoning" },
   "桂皮": { class: "桂皮", category: "seasoning" },
   "香叶": { class: "香叶", category: "seasoning" },
   "大料": { class: "八角", category: "seasoning" },
 };
+
+/* ============================================================
+   食材同义词规范化（Canonical Map）
+   每个等价类选一个「标准名」canonical：
+   - 冰箱名字典查不到标准名，就用原词
+   - localItemMatches / getIngredientSearchTerms 都基于它做
+   新增同义词只需要在下面数组里加一条等价组即可
+   ============================================================ */
+const INGREDIENT_SYNONYM_GROUPS = [
+  // 番茄家族
+  ["西红柿", "番茄", "蕃茄", "洋柿子"],
+  // 蛋家族
+  ["鸡蛋", "蛋", "鸡子"],
+  // 葱家族
+  ["葱", "大葱", "香葱", "小葱", "葱花", "青葱"],
+  // 姜家族
+  ["姜", "生姜", "老姜", "仔姜", "姜片", "姜丝", "姜块"],
+  // 蒜家族
+  ["蒜", "大蒜", "蒜头", "蒜瓣", "大蒜瓣", "蒜米"],
+  // 食用油家族
+  ["食用油", "植物油", "油", "菜籽油", "花生油", "大豆油", "色拉油"],
+  // 调味品
+  ["盐", "食盐", "精盐"],
+  ["糖", "白糖", "白砂糖"],
+  // 豆干家族（用户特别关注：豆干 === 香干 === 豆腐干 …）
+  ["豆干", "香干", "豆腐干", "熏干", "茶干", "素鸡", "白干", "干豆腐"],
+  // 千张/豆腐皮家族
+  ["千张", "豆皮", "豆腐皮", "百叶"],
+  // 油豆腐家族
+  ["油豆腐", "豆腐泡"],
+  // 芹菜家族
+  ["芹菜", "香芹", "西芹", "水芹", "青芹"],
+  // 土豆家族
+  ["土豆", "马铃薯", "洋芋"],
+  // 萝卜家族
+  ["胡萝卜", "红萝卜", "红菜头"], // 注意白萝卜/红萝卜已归"萝卜"class，这里只处理胡萝卜
+  ["萝卜", "白萝卜", "青萝卜"],
+  // 黄瓜家族
+  ["黄瓜", "青瓜"],
+  // 青椒家族
+  ["青椒", "菜椒", "灯笼椒", "柿子椒"],
+  // 白菜家族
+  ["白菜", "大白菜"],
+  // 青菜家族
+  ["青菜", "小白菜", "上海青"],
+  // 豆角家族
+  ["豆角", "四季豆", "扁豆"],
+  // 花菜家族（西兰花≠花菜，不要加入；各自用 INGREDIENT_CLASS_MAP 做不同映射）
+  ["花菜", "菜花", "花椰菜"],
+  // 莲藕家族
+  ["莲藕", "藕"],
+  // 蒜薹家族
+  ["蒜苔", "蒜薹"],
+  // 包菜家族
+  ["包菜", "卷心菜", "圆白菜", "甘蓝"],
+  // 木耳家族
+  ["木耳", "黑木耳"],
+  // 玉米家族
+  ["玉米", "玉米粒"],
+  // 竹笋家族
+  ["笋", "竹笋"],
+];
+
+// 构建 CanonicalMap：每个别名 → 等价类第一个（标准名）
+// 同时构建 CanonicalSynonyms：标准名 → 完整别名数组（含标准名自己）
+const _canonicalMap = new Map();
+const _synonymsByCanonical = new Map();
+for (const group of INGREDIENT_SYNONYM_GROUPS) {
+  if (!group || group.length === 0) continue;
+  const canonical = group[0];
+  _synonymsByCanonical.set(canonical, group.slice());
+  for (const alias of group) {
+    _canonicalMap.set(alias, canonical);
+  }
+}
+
+/** 把任意食材名归一到标准名；找不到就返回原词 */
+function canonicalIngredient(name) {
+  if (name == null) return name;
+  const s = String(name).trim();
+  if (!s) return s;
+  const canon = _canonicalMap.get(s);
+  return canon != null ? canon : s;
+}
+
+/** 返回食材名的完整同义词组（含原词），无同义词就返回 [原词] */
+function getIngredientSynonyms(name) {
+  if (name == null) return [];
+  const s = String(name).trim();
+  if (!s) return [];
+  const canon = canonicalIngredient(s);
+  const list = _synonymsByCanonical.get(canon);
+  return list && list.length > 0 ? list.slice() : [s];
+}
 
 /**
  * 食材后缀词：包含这些后缀的食材名属于调味品/加工品，
@@ -335,14 +444,24 @@ function isCondimentMatch(ingredient, searchTerm) {
 }
 
 /**
- * 获取食材的搜索扩展词列表：原词 + 所属主类
- * 例如："五花肉" → ["五花肉", "猪肉"]
+ * 获取食材的搜索扩展词列表：原词 + 所有同义词 + 所属主类
+ * 例如："香干" → ["香干","豆干","豆腐干","熏干","茶干","素鸡","白干","干豆腐","豆腐"]
+ * 例如："芹菜" → ["芹菜","香芹","西芹","水芹","青芹"]
  */
 function getIngredientSearchTerms(name) {
-  const terms = [name];
-  const mapped = INGREDIENT_CLASS_MAP[name];
-  if (mapped && !terms.includes(mapped.class)) {
-    terms.push(mapped.class);
+  const terms = [];
+  const addTerm = (t) => {
+    if (t && !terms.includes(t)) terms.push(t);
+  };
+  // 1) 原词
+  addTerm(name);
+  // 2) 同义词组
+  for (const alias of getIngredientSynonyms(name)) addTerm(alias);
+  // 3) 主类（INGREDIENT_CLASS_MAP 下挂的 class）
+  //    注意：同义词可能不同写法映射到不同条目，只要能命中 class 就加入
+  for (const t of [name, canonicalIngredient(name)]) {
+    const mapped = INGREDIENT_CLASS_MAP[t];
+    if (mapped && mapped.class) addTerm(mapped.class);
   }
   return terms;
 }
@@ -2095,20 +2214,41 @@ function isSideDish(recipe) {
 function isMeatDish(recipe) { return isMainDish(recipe); }
 function isVegDish(recipe) { return isSideDish(recipe); }
 
-// 前端本地食材匹配：检查食材是否在库存中（简化版，不做等价类/泛化匹配）
+// 前端本地食材匹配：检查食材是否在库存中
+// —— 三种命中：
+//   (1) 精确相等（包括调料已被 seasonings Set 合并）
+//   (2) 通过同义词 CanonicalMap 归一到同一个标准名
+//   (3) INGREDIENT_CLASS_MAP 下同一"主类 class"（例如五花肉/猪肉都归到猪肉），视作同一类匹配
 function localItemMatches(inventorySet, item) {
-  if (inventorySet.has(item)) return true;
-  // 检查别名
-  const aliases = [
-    ["番茄", "西红柿"], ["蕃茄", "西红柿"], ["蛋", "鸡蛋"],
-    ["大葱", "葱"], ["香葱", "葱"], ["小葱", "葱"], ["葱花", "葱"],
-    ["生姜", "姜"], ["大蒜", "蒜"], ["植物油", "食用油"], ["油", "食用油"],
-    ["食盐", "盐"], ["白糖", "糖"],
-  ];
-  for (const [from, to] of aliases) {
-    if (item === from && inventorySet.has(to)) return true;
-    if (item === to && inventorySet.has(from)) return true;
+  if (!item) return false;
+  const s = String(item).trim();
+  if (!s) return false;
+  if (inventorySet.has(s)) return true;
+
+  // 把库存和待检查项都归一到 canonical 比一次
+  const canon = canonicalIngredient(s);
+  if (canon !== s && inventorySet.has(canon)) return true;
+  // 反向：如果冰箱里放的是别名，菜谱写的是标准名，同样命中
+  // 做法：把库存每一项的 canonical 先算一次（懒缓存避免重复）
+  if (!inventorySet._canonCache) {
+    const cache = new Set();
+    for (const inv of inventorySet) {
+      cache.add(canonicalIngredient(inv));
+      // 主类 class 合入缓存，同主类也视为命中
+      const mapped = INGREDIENT_CLASS_MAP[inv];
+      if (mapped && mapped.class) cache.add(mapped.class);
+      const canonMapped = INGREDIENT_CLASS_MAP[canonicalIngredient(inv)];
+      if (canonMapped && canonMapped.class) cache.add(canonMapped.class);
+    }
+    inventorySet._canonCache = cache;
   }
+  const cache = inventorySet._canonCache;
+  if (cache.has(canon)) return true;
+  // 如果 item 本身有主类 class，也跟缓存的 class 集合对一次
+  const m1 = INGREDIENT_CLASS_MAP[s];
+  if (m1 && m1.class && cache.has(m1.class)) return true;
+  const m2 = INGREDIENT_CLASS_MAP[canon];
+  if (m2 && m2.class && cache.has(m2.class)) return true;
   return false;
 }
 
