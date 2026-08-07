@@ -636,6 +636,35 @@ body {
   transform: scale(0.95);
 }
 
+/* 顶部导航右上角：危险操作按钮（清空记录等） */
+.swipe-header-danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #fff;
+  color: var(--danger, #e74c3c);
+  border: 1px solid rgba(231, 76, 60, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(231, 76, 60, 0.1);
+  transition: transform 0.15s, box-shadow 0.2s, background 0.2s, color 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.swipe-header-danger-btn:hover {
+  background: var(--danger, #e74c3c);
+  color: #fff;
+  transform: scale(1.06);
+  box-shadow: 0 4px 10px rgba(231, 76, 60, 0.25);
+}
+
+.swipe-header-danger-btn:active {
+  transform: scale(0.95);
+}
+
 /* 标签筛选条 */
 .tag-filter-bar {
   display: flex;

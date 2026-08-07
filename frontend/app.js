@@ -2582,6 +2582,50 @@ function deleteAIRecipe(recipeId) {
   localStorage.setItem(AI_RECIPES_KEY, JSON.stringify(list));
 }
 
+/**
+ * 清空未收藏的 AI 搜索菜谱（保留 isFavorite(id) 为 true 的菜谱）
+ * 调用前应先二次确认。
+ */
+function clearUnfavoritedAIRecipes() {
+  const all = getAIRecipes();
+  if (!all.length) return { removed: 0, kept: 0 };
+  const kept = all.filter(r => isFavorite(r.id));
+  const removed = all.length - kept.length;
+  localStorage.setItem(AI_RECIPES_KEY, JSON.stringify(kept));
+  FrontendLogger.info("ai-recipe", "清空未收藏AI菜谱", { removed, kept: kept.length });
+  return { removed, kept: kept.length };
+}
+
+/**
+ * 在"联网搜索"页顶部点击清空按钮：先二次确认，再执行清理，最后刷新列表并提示
+ */
+function confirmClearAIRecipes() {
+  const all = getAIRecipes();
+  if (!all.length) return;
+  const favoriteCount = all.reduce((n, r) => n + (isFavorite(r.id) ? 1 : 0), 0);
+  const clearCount = all.length - favoriteCount;
+  if (clearCount <= 0) {
+    showToast("没有需要清理的菜谱（全部已收藏）");
+    return;
+  }
+  const ok = window.confirm(
+    `确认清空未收藏的联网搜索记录？\n\n` +
+    `共 ${all.length} 条：\n` +
+    `  • 将清理 ${clearCount} 条未收藏的菜谱\n` +
+    `  • 保留 ${favoriteCount} 条已收藏的菜谱\n\n` +
+    `此操作不可撤销。`
+  );
+  if (!ok) return;
+  const res = clearUnfavoritedAIRecipes();
+  showToast(
+    res.removed > 0
+      ? `已清理 ${res.removed} 条未收藏记录，保留 ${res.kept} 条收藏菜谱`
+      : "没有需要清理的记录"
+  );
+  // 重新渲染当前"联网搜索"页
+  showAIRecipeCategory();
+}
+
 async function generateMenu() {
   const ingredients = fridge.map((i) => i.name);
   // 调料算入库存食材参与推荐
@@ -4121,7 +4165,17 @@ function showAIRecipeCategory() {
           返回
         </button>
         <div class="swipe-header-title">🌐 联网搜索</div>
-        <div style="width:50px"></div>
+        ${aiRecipes.length > 0 ? `
+          <button class="swipe-header-danger-btn" title="清空未收藏的AI菜谱" onclick="confirmClearAIRecipes()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/>
+              <path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
+        ` : `<div style="width:32px;flex-shrink:0"></div>`}
       </div>
       <div class="recipe-list" style="padding:20px" id="aiRecipeList">
         ${aiRecipes.length === 0 ? `
