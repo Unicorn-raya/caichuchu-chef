@@ -1598,6 +1598,14 @@ function renderHome() {
           </svg>
           一键生成今晚菜单
         </button>
+        ${_creatorMode ? `
+          <div style="margin-top:14px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
+            <a href="javascript:debugLocalRecipeRanking(0)" style="color:#38bdf8;font-size:12px;text-decoration:none;background:rgba(14,165,233,0.08);padding:6px 12px;border-radius:100px">🧪 跑单元测试 场景A</a>
+            <a href="javascript:debugLocalRecipeRanking(1)" style="color:#f97316;font-size:12px;text-decoration:none;background:rgba(249,115,22,0.08);padding:6px 12px;border-radius:100px">🧪 场景B 豆干+洋葱</a>
+            <a href="javascript:debugLocalRecipeRanking(2)" style="color:#22c55e;font-size:12px;text-decoration:none;background:rgba(34,197,94,0.08);padding:6px 12px;border-radius:100px">🧪 场景C 仅芹菜</a>
+            <a href="javascript:debugLocalRecipeRanking(3)" style="color:#eab308;font-size:12px;text-decoration:none;background:rgba(234,179,8,0.08);padding:6px 12px;border-radius:100px">🧪 场景D 西红柿鸡蛋</a>
+          </div>
+        ` : ""}
       </div>
 
       <div class="fridge-section" onclick="clearShakeIfActive()">
@@ -5364,6 +5372,250 @@ var _aboutClickTimer = null;
 
 var _fridgeDemoActive = false;
 var _fridgeBackup = null;
+
+/* ============================================================
+   冰箱演示场景（创作者模式下一键切换/验证修复用例）
+   每个场景：{ label, items: [{ name, daysAgoAdded }] }
+     daysAgoAdded = 多少天前放进去的，用来触发 expiring / expired 状态
+     （保质期默认豆干类 7 天，叶菜 3-5 天，肉类 3 天；<=2 天算临期）
+   想加新场景只在这个数组里 push。
+   ============================================================ */
+const FRIDGE_DEMO_SCENARIOS = [
+  {
+    key: "dougan_case1",
+    label: "场景A：豆干+芹菜+猪肉+辣椒 → 验证「香干芹菜炒肉」必推",
+    desc: "这个场景是用户本次反馈的核心用例：必须把香干芹菜炒肉推上来，不能再出现香煎五花肉抢前排，更不能出现红烧鲤鱼等水产菜。",
+    items: [
+      // 豆干：3 天前放入（默认保质期7天 → 还剩4天，新鲜；如果想测 expiringBonus 用 daysAgo=6）
+      { name: "豆干", daysAgoAdded: 1 },
+      // 芹菜：1 天前放入（叶菜 5 天保质期 → 新鲜）
+      { name: "芹菜", daysAgoAdded: 1 },
+      // 猪肉：1 天前放入
+      { name: "猪肉", daysAgoAdded: 1 },
+      // 辣椒：1 天前
+      { name: "辣椒", daysAgoAdded: 1 },
+      // 加一点点家里常备的基础调料（非冰箱但能保证 coverage 分数更贴近真实：其实冰箱里不需要写，这里可选加上更严谨）
+      // （我们在推荐里会把葱姜蒜盐油视为基础调料，不写也不影响 missingCore）
+    ],
+    expected: {
+      shouldTop: ["香干芹菜炒肉", "芹菜炒香干", "香芹炒肉", "芹菜炒肉", "辣椒炒肉"],
+      shouldNotTop: ["香煎五花肉", "红烧鲤鱼", "清蒸鲈鱼", "水油焖蔬菜"],
+    }
+  },
+  {
+    key: "dougan_only_onion",
+    label: "场景B：只有豆干+洋葱 → 验证「香干芹菜炒肉」确实不应出现",
+    desc: "因为缺香芹/芹菜 + 缺猪肉（两个核心非调料食材），所以香干芹菜炒肉不应该被推出。这用来验证\"不会为了推而推\"的边界。",
+    items: [
+      { name: "豆干", daysAgoAdded: 2 },
+      { name: "洋葱", daysAgoAdded: 2 },
+    ],
+    expected: {
+      shouldNotContain: ["香干芹菜炒肉"],
+      // 应该推荐只用豆干+洋葱，或只缺极少基础调料的菜
+      shouldTop: ["洋葱炒豆干", "香干炒洋葱"],
+    }
+  },
+  {
+    key: "celery_only",
+    label: "场景C：只有芹菜 → 验证「水油焖蔬菜」不会出现（芹菜不是叶菜类蔬菜）",
+    desc: "之前的 bug：芹菜会被泛化匹配成「叶菜类蔬菜」，推水油焖蔬菜。修复后芹菜只命中芹菜类/茎菜类菜谱。",
+    items: [
+      { name: "芹菜", daysAgoAdded: 1 },
+    ],
+    expected: {
+      shouldNotContain: ["水油焖蔬菜"],
+      shouldTop: ["芹菜炒肉", "香芹炒豆干", "凉拌芹菜"],
+    }
+  },
+  {
+    key: "classic_西红柿鸡蛋",
+    label: "场景D：西红柿+鸡蛋 → 验证经典菜",
+    desc: "最常见的回归场景：必须把西红柿炒鸡蛋推到第 1 位。",
+    items: [
+      { name: "西红柿", daysAgoAdded: 2 },
+      { name: "鸡蛋", daysAgoAdded: 0 },
+    ],
+    expected: {
+      shouldTop: ["西红柿炒鸡蛋", "番茄炒蛋", "番茄鸡蛋汤"],
+    }
+  },
+];
+
+// 在创作者模式下，"✨ 演示"按钮点击时如果是开启，弹出场景选择。
+// 为了避免引入弹框组件，这里做一个极简 prompt：循环询问场景 index。
+function _pickFridgeDemoScenarioIdx() {
+  var msg = "冰箱演示场景选择（输入数字后点确定）：\n\n";
+  FRIDGE_DEMO_SCENARIOS.forEach((s, i) => { msg += "  " + (i + 1) + ". " + s.label + "\n"; });
+  msg += "\n直接回车 = 默认 场景A（豆干+芹菜+猪肉+辣椒）";
+  try {
+    var r = prompt(msg, "1");
+    if (r == null) return -1;
+    var n = parseInt(String(r).trim() || "1", 10);
+    if (!isNaN(n) && n >= 1 && n <= FRIDGE_DEMO_SCENARIOS.length) return n - 1;
+  } catch (e) {}
+  return 0;
+}
+
+/**
+ * 把 FRIDGE_DEMO_SCENARIOS[idx] 写进 fridge：
+ * - 先备份原冰箱
+ * - 清空 fridge 再写入场景 items（为了结果可复现，清空而非追加）
+ * - daysAgoAdded 转 addedAt = Date.now()/1000 - daysAgo*86400
+ */
+function applyFridgeDemoScenario(idx) {
+  const scene = FRIDGE_DEMO_SCENARIOS[idx];
+  if (!scene) return;
+  _fridgeBackup = JSON.parse(JSON.stringify(fridge));
+  const now = Date.now() / 1000;
+  fridge = scene.items.map(function (it) {
+    return { name: it.name, addedAt: now - (it.daysAgoAdded || 0) * 86400 };
+  });
+  saveFridge();
+  _fridgeDemoActive = true;
+  showToast("已加载场景：" + scene.label.split("：")[0]);
+}
+
+// 冰箱演示：升级为多场景
+function toggleFridgeDemo() {
+  if (_fridgeDemoActive) {
+    // 恢复
+    if (_fridgeBackup !== null) {
+      fridge = _fridgeBackup;
+      saveFridge();
+      _fridgeBackup = null;
+    }
+    _fridgeDemoActive = false;
+    showToast("已恢复冰箱数据");
+  } else {
+    const idx = _pickFridgeDemoScenarioIdx();
+    if (idx < 0) return;
+    applyFridgeDemoScenario(idx);
+  }
+  renderPage("home");
+}
+
+/* ============================================================
+   纯前端单元测试（无需后端 / 无需联网）
+   调用：debugLocalRecipeRanking();
+   直接在 Console 打印 香干芹菜炒肉 vs 香煎五花肉 vs 红烧鲤鱼 的
+   supplement + rescore 后得分对比，用来本地一按就验证修复。
+   ============================================================ */
+function debugLocalRecipeRanking(scenarioKeyOrIdx) {
+  if (!allRecipes || allRecipes.length === 0) {
+    console.warn("[debugLocalRecipeRanking] allRecipes 未加载，先等页面 ready 再调");
+    return {};
+  }
+
+  // 允许传场景 key 或 index；不传默认场景A
+  let scene = FRIDGE_DEMO_SCENARIOS[0];
+  if (typeof scenarioKeyOrIdx === "number") {
+    scene = FRIDGE_DEMO_SCENARIOS[scenarioKeyOrIdx] || scene;
+  } else if (typeof scenarioKeyOrIdx === "string") {
+    scene = FRIDGE_DEMO_SCENARIOS.find(s => s.key === scenarioKeyOrIdx) || scene;
+  }
+
+  const now = Date.now() / 1000;
+  const inv = scene.items.map(it => ({
+    name: it.name,
+    addedAt: now - (it.daysAgoAdded || 0) * 86400,
+  }));
+  const invNames = inv.map(i => i.name);
+  const expiring = inv.filter(i => {
+    const shelfLife = (shelfLifeData && shelfLifeData[i.name]) || 7;
+    const daysLeft = shelfLife - ((now - i.addedAt) / 86400);
+    return daysLeft <= 2 && daysLeft > 0;
+  }).map(i => i.name);
+  const expiringNames = expiring.length > 0 ? expiring : null;
+
+  console.group("%c🧪 debugLocalRecipeRanking — 场景：" + scene.label, "color:#2563eb;font-size:14px;font-weight:700");
+  console.log("冰箱食材：", invNames);
+  if (expiringNames) console.log("临期食材（会触发 expiringBonus）：", expiringNames);
+  else console.log("临期食材：无");
+
+  // Step1：模拟 supplementExactMatches（API 为空，只看本地兜底补进哪些核心齐全/高命中菜）
+  const raw = supplementExactMatches([], invNames);
+  console.log("supplementExactMatches 补进菜数：" + raw.length);
+
+  // Step2：rescore
+  rescoreResults(raw, invNames, expiringNames || []);
+
+  // Step3：按 score 排序
+  raw.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  // Step4：重点看用户关心的三道菜
+  const focusTitles = ["香干芹菜炒肉", "香煎五花肉", "红烧鲤鱼", "水油焖蔬菜", "芹菜炒香干", "香芹炒肉", "辣椒炒肉"];
+  console.group("📌 重点菜得分明细");
+  for (const t of focusTitles) {
+    const r = raw.find(x => x.recipe && x.recipe.title === t);
+    if (!r) {
+      console.log("  " + t + "：❌ 未进入 supplement 候选池（不是本地兜底高命中菜，属于正常，得查后端 RAG 是否返回）");
+    } else {
+      const d = r._debug || {};
+      console.log(
+        "  " + t +
+        " → score=%c" + Math.round(r.score) + "%c" +
+        " | coreCov=" + (d.coreCoverage || 0) + "%" +
+        " cov=" + (d.coverage || 0) + "%" +
+        " missingCore=" + (d.missingCore || 0) +
+        " titleHit=+" + (d.titleHit || 0) +
+        " expiring=+" + (d.expiring || 0) +
+        " homeRank=+" + (d.homeRank || 0) +
+        " catPenalty=-" + (d.catPenalty || 0) +
+        " | rank=#" + (raw.indexOf(r) + 1),
+        "color:#16a34a;font-weight:700", ""
+      );
+    }
+  }
+  console.groupEnd();
+
+  console.group("🔥 Top 12 本地兜底高分菜");
+  raw.slice(0, 12).forEach((r, i) => {
+    const d = r._debug || {};
+    console.log(
+      "  #" + (i + 1) + " " + r.recipe.title +
+      "  score=" + Math.round(r.score) +
+      "  coreCov=" + (d.coreCoverage || 0) + "%" +
+      "  missingCore=" + (d.missingCore || 0) +
+      "  catPenalty=" + (d.catPenalty || 0) +
+      "  reason=" + (r.reason || "")
+    );
+  });
+  console.groupEnd();
+
+  // Expected 断言
+  console.group("✅ 断言（Expected）");
+  const exp = scene.expected || {};
+  const topTitles = raw.slice(0, 6).map(r => r.recipe.title);
+  const allTitles = new Set(raw.map(r => r.recipe.title));
+  if (exp.shouldTop) {
+    for (const name of exp.shouldTop) {
+      const ok = topTitles.includes(name) || allTitles.has(name);
+      console.log((ok ? "  ✔ " : "  ⚠ ") + name + " 应在前列 / 应进入候选 → " + (ok ? "通过" : "（候选池里未出现：可能是后端才返回的菜，本地纯兜底不可见）"));
+    }
+  }
+  if (exp.shouldNotTop) {
+    for (const name of exp.shouldNotTop) {
+      const badIdx = topTitles.indexOf(name);
+      console.log((badIdx === -1 ? "  ✔ " : "  ❌ ") + name + " 不应在前6 → " + (badIdx === -1 ? "通过" : ("实际排在 #" + (badIdx + 1) + "！BUG")));
+    }
+  }
+  if (exp.shouldNotContain) {
+    for (const name of exp.shouldNotContain) {
+      const bad = allTitles.has(name);
+      console.log((!bad ? "  ✔ " : "  ❌ ") + name + " 不应进入候选池 → " + (!bad ? "通过" : "候选池里仍然有！BUG"));
+    }
+  }
+  console.groupEnd();
+
+  console.groupEnd();
+  return { scene, invNames, expiringNames, ranked: raw.slice(0, 20) };
+}
+
+// 暴露到 window 方便 Console 调用
+window.debugLocalRecipeRanking = debugLocalRecipeRanking;
+window.FRIDGE_DEMO_SCENARIOS = FRIDGE_DEMO_SCENARIOS;
+window.applyFridgeDemoScenario = applyFridgeDemoScenario;
 
 var _chefsDemoActive = false;
 var _chefsBackup = null;
