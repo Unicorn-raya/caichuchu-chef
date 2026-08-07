@@ -353,6 +353,20 @@ const INGREDIENT_SYNONYM_GROUPS = [
   // 调味品
   ["盐", "食盐", "精盐"],
   ["糖", "白糖", "白砂糖"],
+  // —— 猪肉家族 ——
+  ["猪肉", "五花肉", "五花肉条", "猪五花", "瘦肉", "肥肉", "里脊肉", "里脊", "排骨", "猪排",
+    "肉片", "肉丝", "肉丁", "肉末", "肉沫", "肉馅", "猪蹄", "肘子", "扣肉",
+    "腊肉", "腊肠", "培根", "咸肉", "蹄髈", "猪皮", "梅条肉", "梅花肉"],
+  // —— 鸡肉家族 ——
+  ["鸡肉", "大鸡腿", "鸡腿", "鸡翅", "鸡中翅", "翅中", "翅根", "鸡胸肉", "鸡胸",
+    "整鸡", "土鸡", "三黄鸡", "鸡丁", "鸡丝", "鸡爪", "凤爪"],
+  // —— 牛肉家族 ——
+  ["牛肉", "牛腱子", "牛腩", "牛排", "肥牛", "肥牛卷", "牛肉片", "牛肉丝", "牛肉粒",
+    "牛肋排", "牛里脊", "牛舌", "牛仔骨", "牛尾"],
+  // —— 羊肉家族 ——
+  ["羊肉", "羊排", "羊腿", "羊肉串", "羊肉片", "羊蝎子", "羊腩", "肥羊卷", "羊腰"],
+  // —— 鸭肉家族 ——
+  ["鸭肉", "鸭腿", "鸭翅", "鸭脖", "鸭胸", "整鸭", "老鸭"],
   // 豆干家族（用户特别关注：豆干 === 香干 === 豆腐干 …）
   ["豆干", "香干", "豆腐干", "熏干", "茶干", "素鸡", "白干", "干豆腐"],
   // 千张/豆腐皮家族
@@ -2343,15 +2357,32 @@ function computeExistingMissing(recipe) {
   };
 }
 
-// 前端版基础调料判断
+// 前端版基础调料判断 —— 走 Canonical + 同义词，避免 "蒜头/生姜/花椒粉" 这类没在 Set 里漏判
 function isLocalBasicSeasoning(item) {
-  const basic = new Set([
+  if (!item) return false;
+  const s = String(item).trim();
+  if (!s) return false;
+  // 严格相等 & 白名单
+  const BASIC_SEASONING_STRICT = new Set([
     "盐", "糖", "冰糖", "白糖", "酱油", "生抽", "老抽", "醋", "料酒",
     "食用油", "植物油", "油", "葱", "姜", "蒜", "辣椒", "花椒", "八角",
     "桂皮", "香叶", "淀粉", "蚝油", "豆瓣酱", "味精", "鸡精",
-    "芝麻", "香油", "清水", "蜂蜜",
+    "芝麻", "香油", "清水", "蜂蜜", "胡椒", "胡椒粉", "孜然", "五香粉",
+    "辣椒粉", "花椒粉", "小米辣", "朝天椒", "干辣椒", "鸡粉",
   ]);
-  return basic.has(item);
+  if (BASIC_SEASONING_STRICT.has(s)) return true;
+  // 归一到 canonical 再查
+  const canon = canonicalIngredient(s);
+  if (canon !== s && BASIC_SEASONING_STRICT.has(canon)) return true;
+  // 泛化：命中葱姜蒜/辣椒/盐/糖/油的同义词组（通过 INGREDIENT_CLASS_MAP 的 category=seasoning）
+  const m1 = INGREDIENT_CLASS_MAP[s];
+  if (m1 && m1.category === "seasoning") return true;
+  const m2 = INGREDIENT_CLASS_MAP[canon];
+  if (m2 && m2.category === "seasoning") return true;
+  // 再兜底：如果食材名的同义组 canonical 命中 BASIC_SEASONING_STRICT 也算
+  const synoCanon = _canonicalMap.get(s);
+  if (synoCanon && BASIC_SEASONING_STRICT.has(synoCanon)) return true;
+  return false;
 }
 
 // 规范化 missingCore：API 结果可能只有 missing（含基础调料），需补充 missingCore
@@ -2847,6 +2878,7 @@ async function generateAIRecommendedMenu() {
         const coverage = required.length > 0 ? existing.length / required.length : 0;
         return {
           recipe,
+          // 先给一个兼容旧逻辑的初分，后面会被 rescoreResults 覆盖重算
           score: coverage * 100,
           matchPercent: Math.round(coverage * 100),
           existing,
@@ -2869,6 +2901,40 @@ async function generateAIRecommendedMenu() {
     }
     if (!dish2Rec) {
       dish2Rec = buildVirtualRecipe(aiResult.dish2, aiResult.dish2_ingredients || [], allIngredients, aiResult.dish2_steps || [], dish2Imgs);
+    }
+
+    // —— 关键：对 AI 本地匹配的两道菜也走同一套重评分公式，杜绝 AI 自由推荐
+    //    "香煎五花肉" 因 coverage*100 看起来分高、实则缺核心生菜 (missingCore=1)
+    //    或无关 category (水产冰箱没鱼) 等情况被原样送上。
+    const recsToRescore = [dish1Rec, dish2Rec].filter(Boolean);
+    rescoreResults(recsToRescore, allIngredients, expiringItems);
+    dish1Rec = recsToRescore[0] || dish1Rec;
+    dish2Rec = recsToRescore[1] || dish2Rec;
+
+    // —— 强保护：如果 AI 推荐的任意一道菜缺失核心太多 (missingCore≥2)，
+    //    说明 AI 瞎推荐了用户根本做不了的菜，自动 fallback 到本地+后端的双菜 pipeline。
+    const aiRecipes = [dish1Rec, dish2Rec].filter(Boolean);
+    const anyBad = aiRecipes.some(r => (r.missingCore || []).length >= 2);
+    const bothLocal = aiRecipes.length === 2 && aiRecipes.every(r => r.recipe && r.recipe.id && !String(r.recipe.id).startsWith("ai_"));
+    if (anyBad) {
+      FrontendLogger.warning("menu", "AI 推荐菜品缺核心食材≥2，自动 fallback 到本地默认双菜推荐", {
+        dish1: dish1Rec?.recipe?.title, missing1: dish1Rec?.missingCore?.length,
+        dish2: dish2Rec?.recipe?.title, missing2: dish2Rec?.missingCore?.length,
+      });
+      const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
+      const supplemented = supplementExactMatches(rawResults, allIngredients);
+      const processed = applyDietAndAllergens(supplemented);
+      rescoreResults(processed, allIngredients, expiringItems);
+      normalizeMissingCore(processed);
+      searchResults = buildDualMenuCombinations(processed);
+      // 但优先把 AI 给的理由塞进去，若第一组合存在就挂一个辅助理由
+      if (searchResults[0] && aiResult.reason) {
+        searchResults[0].aiReason = aiResult.reason + "（AI 自由推荐缺食材，已自动改为匹配冰箱食材的本地组合）";
+      }
+      selectedTags = [];
+      swipeIndex = 0;
+      renderSwipePage();
+      return;
     }
 
     const combo = buildCombo([dish1Rec, dish2Rec], "ai");
