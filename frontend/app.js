@@ -2670,6 +2670,7 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
     const fakeCoreRatio = coreIng.length > 0
       ? (coreNonSeasoning.length / coreIng.length)
       : 1;
+    const _hr = getHomeRank(recipe);
     let fakeCorePenalty = 0;
     let effHomeRank = _hr;
     if (fakeCoreRatio <= 0.25) {
