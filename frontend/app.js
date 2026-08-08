@@ -2647,11 +2647,38 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
       }
     }
 
-    const _hr = getHomeRank(recipe);
-    const homeRankBonus = _hr * 15; // homeRank=2 → +30, =1 → +15, =0 → 0
-    // 降权原因：homeRank=2 仅凭标题含"红烧肉"等关键词就拿 +40 太高，
-    // 会压过真正核心匹配更好的菜（如 香干芹菜炒肉 3个核心全命中 vs 徽派红烧肉 1个）。
-    // 降到 *15 后 homeRank=2 → +30, homeRank=1 → +15, 差距从 20 缩到 15。
+    // 4.5 "伪核心"强惩罚 —— 这是本次修复的核心：
+    //     徽派红烧肉这样的菜，在 coreIngredients 里塞了大量基础调料：
+    //       core=[五花肉, 白砂糖, 姜, 蒜头, 葱, 五香粉] 共6个
+    //       → 过滤调料后 coreNonSeasoning 只剩 [五花肉]（1个）
+    //       → 非调料占比 = 1/6 = 16.7%
+    //     这相当于作者"水"了 coreIngredients，把基础调料当核心，
+    //     导致 coreCoverage=100%（看起来全中，其实只真命中了五花肉1个），
+    //     同时 homeRank=2（"红烧肉"关键词）拿到 +30 加成，还能进 supplementExactMatches 的
+    //     Tier-A（核心全部命中），和真正命中3+核心的香干芹菜炒肉抢前排。
+    //
+    //   规则：
+    //     coreNonSeasoningRatio = coreNonSeasoning.length / coreIngredients.length
+    //     - 0%~25%  : 认定「伪核心」→ fakeCorePenalty = -30，并且 homeRank 强制降为 0（不享受关键词家常菜加成）
+    //     - 25%~50% : 轻度怀疑 → fakeCorePenalty = -10
+    //     - 50%+    : 正常 → 不惩罚
+    //   典型例子：
+    //     徽派红烧肉      : 1/6 = 16.7%  → 伪核心 → -30 + homeRank→0
+    //     香干芹菜炒肉    : 3/6 = 50.0%  → 正常  → 0 惩罚
+    //     芹菜炒香干      : 2/4 = 50%    → 正常
+    //     回锅肉 / 小炒肉 : 正常 2~3个 / 4~5 = 40~60% → 轻度 或 正常
+    const fakeCoreRatio = coreIng.length > 0
+      ? (coreNonSeasoning.length / coreIng.length)
+      : 1;
+    let fakeCorePenalty = 0;
+    let effHomeRank = _hr;
+    if (fakeCoreRatio <= 0.25) {
+      fakeCorePenalty = 30;
+      effHomeRank = 0;
+    } else if (fakeCoreRatio <= 0.5) {
+      fakeCorePenalty = 10;
+    }
+    const effHomeRankBonus = effHomeRank * 15;
 
     // 5. 核心命中数加分：每命中一个非调料核心食材 +8
     //    这是解决"徽派红烧肉 trick"的关键：
@@ -2663,10 +2690,11 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
     const newScore =
       coreCoverage * 70 +
       coverage * 40 +
-      homeRankBonus +
+      effHomeRankBonus +
       titleHitBonus +
       expiringBonus +
       coreMatchBonus -
+      fakeCorePenalty -
       missingCore.length * 25 -
       categoryMismatchPenalty;
 
@@ -2679,10 +2707,13 @@ function rescoreResults(results, inventoryIngredients, expiringItems = []) {
     r._debug.catPenalty = categoryMismatchPenalty;
     r._debug.titleHit = titleHitBonus;
     r._debug.expiring = expiringBonus;
-    r._debug.homeRank = homeRankBonus;
+    r._debug.homeRank = effHomeRankBonus;
+    r._debug.rawHomeRank = _hr;
     r._debug.coreMatchBonus = coreMatchBonus;
     r._debug.matchedCoreCount = matchedCoreCount;
-    r.homeRank = _hr;
+    r._debug.fakeCorePenalty = fakeCorePenalty;
+    r._debug.fakeCoreRatio = Math.round(fakeCoreRatio * 100);
+    r.homeRank = effHomeRank;
   }
 
   return results;
@@ -2742,8 +2773,11 @@ function buildMenuCombinations(results) {
       score: Math.round(r.score * 100) / 100,
       coreCov: d.coreCoverage, cov: d.coverage,
       missingCore: d.missingCore, homeRank: r.homeRank,
+      rawHomeRank: d.rawHomeRank,
       titleHit: d.titleHit, coreMatchBonus: d.coreMatchBonus,
       matchedCoreCount: d.matchedCoreCount, catPenalty: d.catPenalty,
+      fakeCoreRatio: (d.fakeCoreRatio || 0) + "%",
+      fakeCorePenalty: d.fakeCorePenalty || 0,
     };
   });
   FrontendLogger.info("menu", "buildMenuCombinations top3", top);
@@ -5592,23 +5626,40 @@ function debugLocalRecipeRanking(scenarioKeyOrIdx) {
   }).map(i => i.name);
   const expiringNames = expiring.length > 0 ? expiring : null;
 
+  // 🔴 关键修复：和真实 generateMenu 一致，用 [...fridgeNames, ...用户调料/常备调料] 参与推荐
+  // 老的 debugLocalRecipeRanking 只用 invNames（冰箱4样），导致 coverage 和 titleHit/categoryByCategory
+  // 和真实用户点击"一键生成今晚菜单"看到的推荐分数结构完全不一致。
+  const _MANDATORY_SEASONINGS = [
+    ...(typeof DEFAULT_SEASONINGS !== "undefined" ? DEFAULT_SEASONINGS : []),
+    "葱", "姜", "蒜", "料酒", "花椒", "八角", "桂皮", "香叶",
+    "五香粉", "胡椒粉", "辣椒粉", "花椒粉", "辣椒", "干辣椒",
+    "小米辣", "米醋", "味精", "鸡精", "香油", "冰糖", "蜂蜜",
+    "淀粉", "生粉", "鸡粉", "醋", "白砂糖",
+  ];
+  const seaSet = new Set([
+    ...(typeof seasonings !== "undefined" && Array.isArray(seasonings) ? seasonings : []),
+    ..._MANDATORY_SEASONINGS,
+  ]);
+  const allInv = [...invNames, ...seaSet];
+
   console.group("%c🧪 debugLocalRecipeRanking — 场景：" + scene.label, "color:#2563eb;font-size:14px;font-weight:700");
   console.log("冰箱食材：", invNames);
+  console.log("参与推荐的基础调料（合并进allIngredients）：", [...seaSet]);
   if (expiringNames) console.log("临期食材（会触发 expiringBonus）：", expiringNames);
   else console.log("临期食材：无");
 
   // Step1：模拟 supplementExactMatches（API 为空，只看本地兜底补进哪些核心齐全/高命中菜）
-  const raw = supplementExactMatches([], invNames);
+  const raw = supplementExactMatches([], allInv);
   console.log("supplementExactMatches 补进菜数：" + raw.length);
 
   // Step2：rescore
-  rescoreResults(raw, invNames, expiringNames || []);
+  rescoreResults(raw, allInv, expiringNames || []);
 
   // Step3：按 score 排序
   raw.sort((a, b) => (b.score || 0) - (a.score || 0));
 
   // Step4：重点看用户关心的三道菜
-  const focusTitles = ["香干芹菜炒肉", "香煎五花肉", "红烧鲤鱼", "水油焖蔬菜", "芹菜炒香干", "香芹炒肉", "辣椒炒肉"];
+  const focusTitles = ["香干芹菜炒肉", "徽派红烧肉", "香煎五花肉", "红烧鲤鱼", "水油焖蔬菜", "芹菜炒香干", "香芹炒肉", "辣椒炒肉"];
   console.group("📌 重点菜得分明细");
   for (const t of focusTitles) {
     const r = raw.find(x => x.recipe && x.recipe.title === t);
@@ -5624,7 +5675,10 @@ function debugLocalRecipeRanking(scenarioKeyOrIdx) {
         " missingCore=" + (d.missingCore || 0) +
         " titleHit=+" + (d.titleHit || 0) +
         " expiring=+" + (d.expiring || 0) +
-        " homeRank=+" + (d.homeRank || 0) +
+        " homeRank=+" + (d.homeRank || 0) + " (raw="+ (d.rawHomeRank ?? "?") + ")" +
+        " coreMatch=+" + (d.coreMatchBonus || 0) +
+        " coresMatched=" + (d.matchedCoreCount || 0) +
+        " fakeCore=" + (d.fakeCoreRatio || 0) + "%/-" + (d.fakeCorePenalty || 0) +
         " catPenalty=-" + (d.catPenalty || 0) +
         " | rank=#" + (raw.indexOf(r) + 1),
         "color:#16a34a;font-weight:700", ""
