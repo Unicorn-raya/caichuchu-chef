@@ -2412,9 +2412,11 @@ function normalizeMissingCore(results) {
   for (const r of results) {
     if (Array.isArray(r.missingCore)) continue;
     const core = (r.recipe && r.recipe.coreIngredients) || [];
-    const coreSet = new Set(core);
+    // 归一化比较：core 可能写"芹菜"而 required/missing 写"香芹"，
+    // 严格相等会漏判 missingCore，两侧都过 canonicalIngredient
+    const coreCanonSet = new Set(core.map((c) => canonicalIngredient(c)));
     r.missingCore = (r.missing || []).filter(
-      (i) => coreSet.has(i) && !isLocalBasicSeasoning(i)
+      (i) => coreCanonSet.has(canonicalIngredient(i)) && !isLocalBasicSeasoning(i)
     );
   }
   return results;
