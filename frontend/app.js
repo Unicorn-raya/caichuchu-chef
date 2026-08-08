@@ -2436,7 +2436,7 @@ function supplementExactMatches(apiResults, ingredients) {
   const candidatesB = [];
 
   for (const recipe of allRecipes) {
-    if (resultIds.has(recipe.id)) continue;
+    const alreadyInResults = resultIds.has(recipe.id);
     const coreIng = recipe.coreIngredients || [];
     const coreNonSeasoning = coreIng.filter(i => !isLocalBasicSeasoning(i));
     const missingCore = coreNonSeasoning.filter(i => !localItemMatches(inventorySet, i));
@@ -2489,7 +2489,7 @@ function supplementExactMatches(apiResults, ingredients) {
     }
 
     // —— B 类：核心命中率够高（70%+ 且缺失≤2）→ 作为候选
-    if (coreCoverage >= 0.7 && missingCore.length <= 2 && coreNonSeasoning.length > 0) {
+    if (!alreadyInResults && coreCoverage >= 0.7 && missingCore.length <= 2 && coreNonSeasoning.length > 0) {
       const required = recipe.requiredIngredients || [];
       const existing = required.filter((i) => localItemMatches(inventorySet, i));
       const missing = required.filter((i) => !localItemMatches(inventorySet, i));
@@ -2939,10 +2939,12 @@ async function generateAIRecommendedMenu() {
       // 解析失败则使用默认推荐
       const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
       const supplemented = supplementExactMatches(rawResults, allIngredients);
-      const processed = applyDietAndAllergens(supplemented);
+      let processed = applyDietAndAllergens(supplemented);
       // —— 关键修复：重算每条结果的 score（按核心覆盖率 + 无关category 大惩罚）
       rescoreResults(processed, allIngredients, expiringItems);
       normalizeMissingCore(processed);
+      // 硬过滤：移除冰箱完全缺失 category 的菜
+      processed = processed.filter(r => ((r._debug?.catPenalty) || 0) < 60);
       searchResults = buildDualMenuCombinations(processed);
       renderSwipePage();
       return;
@@ -3019,20 +3021,29 @@ async function generateAIRecommendedMenu() {
     dish2Rec = recsToRescore[1] || dish2Rec;
 
     // —— 强保护：如果 AI 推荐的任意一道菜缺失核心太多 (missingCore≥2)，
+    //    或者冰箱完全缺失该菜核心主食材的 category（如推荐了鱼但冰箱没水产），
     //    说明 AI 瞎推荐了用户根本做不了的菜，自动 fallback 到本地+后端的双菜 pipeline。
     const aiRecipes = [dish1Rec, dish2Rec].filter(Boolean);
-    const anyBad = aiRecipes.some(r => (r.missingCore || []).length >= 2);
+    const anyBad = aiRecipes.some(r => {
+      const mc = (r.missingCore || []).length;
+      const catPen = (r._debug?.catPenalty) || 0;
+      // missingCore >= 2 → 缺太多核心食材
+      // catPenalty >= 60 → 冰箱完全没有该菜核心主食材的 category（如水产）
+      return mc >= 2 || catPen >= 60;
+    });
     const bothLocal = aiRecipes.length === 2 && aiRecipes.every(r => r.recipe && r.recipe.id && !String(r.recipe.id).startsWith("ai_"));
     if (anyBad) {
-      FrontendLogger.warning("menu", "AI 推荐菜品缺核心食材≥2，自动 fallback 到本地默认双菜推荐", {
-        dish1: dish1Rec?.recipe?.title, missing1: dish1Rec?.missingCore?.length,
-        dish2: dish2Rec?.recipe?.title, missing2: dish2Rec?.missingCore?.length,
+      FrontendLogger.warning("menu", "AI 推荐菜品缺核心食材/缺主食材category，自动 fallback 到本地默认双菜推荐", {
+        dish1: dish1Rec?.recipe?.title, missing1: dish1Rec?.missingCore?.length, catPen1: dish1Rec?._debug?.catPenalty,
+        dish2: dish2Rec?.recipe?.title, missing2: dish2Rec?.missingCore?.length, catPen2: dish2Rec?._debug?.catPenalty,
       });
       const rawResults = await searchRecipes(allIngredients, "scrappy", [], 30, false, expiringItems);
       const supplemented = supplementExactMatches(rawResults, allIngredients);
-      const processed = applyDietAndAllergens(supplemented);
+      let processed = applyDietAndAllergens(supplemented);
       rescoreResults(processed, allIngredients, expiringItems);
       normalizeMissingCore(processed);
+      // 同样的硬过滤：移除冰箱完全缺失 category 的菜
+      processed = processed.filter(r => ((r._debug?.catPenalty) || 0) < 60);
       searchResults = buildDualMenuCombinations(processed);
       // 但优先把 AI 给的理由塞进去，若第一组合存在就挂一个辅助理由
       if (searchResults[0] && aiResult.reason) {
@@ -3231,13 +3242,27 @@ async function generateMenu() {
     // 本地兜底：补充 RAG 可能遗漏的精确匹配菜谱
     const supplemented = supplementExactMatches(rawResults, allIngredients);
     // 应用饮食偏好（硬过滤）+ 过敏源（标识 + 排序降权）
-    const processed = applyDietAndAllergens(supplemented);
+    let processed = applyDietAndAllergens(supplemented);
     // —— 关键修复：重算每条结果的 score（按核心覆盖率 + 无关category 大惩罚）
     //    之前后端 RAG 会把 sortScore 高的水产/肉菜排在前面，哪怕冰箱根本没有鱼虾；
     //    重算后会给「水产类菜 冰箱完全没水产」扣 -60 分，鲤鱼这类菜就沉底了。
     rescoreResults(processed, allIngredients, expiringItems);
     // 规范化：API 结果可能只有 missing（含基础调料），需补充 missingCore（排除基础调料的核心缺失）
     normalizeMissingCore(processed);
+    // —— 硬过滤：移除「冰箱完全缺失核心主食材 category」的菜 —
+    //    rescoreResults 给了 -60 惩罚但后端原始 score 可能很高（如 999），-60 不够压到 0 以下。
+    //    直接从推荐队列中移除：核心食材包含 aquatic/meat(非猪肉) 等冰箱完全没有的 category 的菜。
+    const beforeFilter = processed.length;
+    processed = processed.filter(r => {
+      const d = r._debug || {};
+      // catPenalty >= 60 意味着冰箱完全没有该菜核心主食材的 category（如水产）
+      if ((d.catPenalty || 0) >= 60) {
+        FrontendLogger.info("menu", "硬过滤移除", { title: r.recipe?.title, catPenalty: d.catPenalty });
+        return false;
+      }
+      return true;
+    });
+    FrontendLogger.info("menu", "硬过滤结果", { before: beforeFilter, after: processed.length });
     // 保存原始搜索结果（已应用偏好/过敏源），供标签筛选使用
     allSearchResults = processed;
     // 生成菜单推荐（取排名最前的2道菜）
