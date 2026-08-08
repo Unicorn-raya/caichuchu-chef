@@ -18,10 +18,10 @@
     </div>
   </div>
   <script>
-    // 立即判断是否需要跳过开场动画，避免黑色闪烁
+    // 立即判断是否需要跳过开场动画，避免黑色闪烁（每次浏览器会话首次打开播放）
     (function() {
       try {
-        if (localStorage.getItem("caichuchu_boot_shown_ever")) {
+        if (sessionStorage.getItem("caichuchu_boot_shown_session")) {
           var o = document.getElementById("bootOverlay");
           if (o) o.style.display = "none";
         }

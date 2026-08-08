@@ -788,12 +788,12 @@ async function showBootAnimation() {
   const overlay = document.getElementById("bootOverlay");
   if (!overlay) return;
 
-  // 已显示过动画则直接跳过，也处理 inline script 已设 display:none 的情况
-  if (localStorage.getItem("caichuchu_boot_shown_ever")) {
+  // 本次会话已显示过动画则直接跳过，也处理 inline script 已设 display:none 的情况
+  if (sessionStorage.getItem("caichuchu_boot_shown_session")) {
     if (overlay.parentNode) overlay.remove();
     return;
   }
-  localStorage.setItem("caichuchu_boot_shown_ever", "1");
+  sessionStorage.setItem("caichuchu_boot_shown_session", "1");
 
   // 白天（6-18点）用页面背景色 + 黑色logo，夜晚用黑色背景 + 白色logo
   const h = new Date().getHours();
