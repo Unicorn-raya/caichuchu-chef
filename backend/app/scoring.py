@@ -61,6 +61,18 @@ ALIAS_MAP: dict[str, str] = {
     "鲈鱼": "鱼",
     "带鱼": "鱼",
     "鳕鱼": "鱼",
+    # 芹菜家族归一（修复：菜谱写"香芹"而冰箱放"芹菜"时识别不到）
+    "香芹": "芹菜",
+    "西芹": "芹菜",
+    "水芹": "芹菜",
+    "青芹": "芹菜",
+    # 蒜头归一（修复：菜谱 core 里"蒜头"与"蒜"并列时，蒜头被误算成缺失核心食材）
+    "蒜头": "蒜",
+    # 豆制品归一（豆干=香干，五香熏豆干的别称）
+    "香干": "豆干",
+    "豆腐干": "豆干",
+    "熏干": "豆干",
+    "茶干": "豆干",
 }
 
 # ============================================
@@ -86,7 +98,11 @@ EQUIVALENCE_GROUPS: list[list[str]] = [
     ["辣椒", "干辣椒", "小米辣", "小米椒", "青椒", "彩椒"],
     ["葱", "大葱", "小葱", "香葱", "葱花"],
     ["姜", "生姜", "姜片", "姜末"],
-    ["蒜", "大蒜", "蒜瓣", "蒜末"],
+    ["蒜", "大蒜", "蒜瓣", "蒜末", "蒜头"],
+    # 芹菜家族互换
+    ["芹菜", "香芹", "西芹", "水芹", "青芹"],
+    # 豆制品互换（豆干=香干）
+    ["豆干", "香干", "豆腐干", "熏干", "茶干"],
     # 酱油类
     ["酱油", "生抽", "老抽"],
     # 食用油类
@@ -218,7 +234,7 @@ BASIC_SEASONINGS: set[str] = {
     "醋", "香醋", "料酒", "黄酒", "米酒", "食用油", "植物油", "花生油", "菜籽油", "橄榄油", "油",
     "葱", "大葱", "小葱", "香葱", "葱花",
     "姜", "生姜", "姜片", "姜末",
-    "蒜", "大蒜", "蒜瓣", "蒜末",
+    "蒜", "大蒜", "蒜瓣", "蒜末", "蒜头",
     "辣椒", "干辣椒", "小米辣", "小米椒",
     "花椒", "八角", "桂皮", "香叶", "丁香", "草果", "小茴香", "五香粉", "十三香",
     "胡椒粉", "白胡椒粉", "黑胡椒粉", "白胡椒", "黑胡椒", "胡椒",
@@ -232,6 +248,22 @@ BASIC_SEASONINGS: set[str] = {
 
 # 水类食材：自动视为已有，不作为缺失食材
 WATER_ITEMS: set[str] = {"水", "清水", "开水", "温水", "凉水", "热水", "冷水", "饮用水", "沸水", "100°C沸水", "30°C温水"}
+
+# 水产食材集合：用于"冰箱完全没有水产时，硬淘汰水产类菜谱"
+# 修复场景：冰箱只有 豆干+芹菜+猪肉+辣椒 时，后端仍把「红烧鲤鱼」排进前3——
+# 因为它的 core=[葱,鲤鱼,五花肉,姜,蒜,干辣椒] 只有"鲤鱼"一个非调料核心缺失，
+# scrappy 模式 missing_core≤2 放行，-40 惩罚被 consumption_bonus(~100) 和
+# 家常菜加成(+30) 轻松盖过。用户根本没有鱼，这道菜完全做不了，必须硬淘汰。
+AQUATIC_INGREDIENTS: set[str] = {
+    "鱼", "鲤鱼", "草鱼", "鲫鱼", "鲈鱼", "带鱼", "鳕鱼", "黄花鱼", "桂鱼",
+    "三文鱼", "金枪鱼", "鳗鱼", "鲶鱼", "罗非鱼", "黑鱼", "武昌鱼", "多宝鱼",
+    "泥鳅", "黄鳝", "鳝鱼", "鱼头", "鱼片", "鱼丸",
+    "虾", "虾仁", "活虾", "明虾", "基围虾", "黑虎虾", "河虾", "海虾", "龙虾", "皮皮虾", "虾皮",
+    "螃蟹", "蟹", "大闸蟹", "梭子蟹", "蟹柳",
+    "扇贝", "蛤蜊", "花蛤", "蛏子", "青口", "生蚝", "牡蛎", "蚝", "鲍鱼", "海螺",
+    "鱿鱼", "墨鱼", "章鱼", "八爪鱼", "海参", "海蜇", "海带", "紫菜",
+    "甲鱼", "牛蛙", "田螺",
+}
 
 # 标点/数量修饰词，用于判断食材名是否带修饰（如"生抽3汤匙"）
 
@@ -390,6 +422,16 @@ def score_recipe(
     ]
     missing_seasonings = [item for item in recipe.seasonings if not item_matches(inventory, item)]
 
+    # —— 水产硬规则：冰箱完全没有任何水产食材时，水产类菜谱直接淘汰 ——
+    # 修复场景：冰箱=豆干+芹菜+猪肉+辣椒，红烧鲤鱼 core 只有"鲤鱼"一个非调料缺失，
+    # 老逻辑 missing_core=1 ≤2 放行，-40 惩罚被 consumption_bonus(~100) + 家常菜
+    # 加成(+30) 盖过，导致红烧鲤鱼排进前3。用户没鱼就是做不了，直接 None。
+    if recipe.category == "aquatic":
+        inv_norms = {normalize_item(i) for i in inventory}
+        has_aquatic = any(norm in AQUATIC_INGREDIENTS for norm in inv_norms)
+        if not has_aquatic:
+            return None
+
     # 核心食材命中数（排除水类，水是免费资源不计入消耗）
     core_hits = len([item for item in recipe.coreIngredients if item_matches(inventory, item) and normalize_item(item) not in WATER_ITEMS])
     seasoning_hits = len([item for item in recipe.seasonings if item_matches(inventory, item)])
@@ -438,6 +480,24 @@ def score_recipe(
     # 家常菜加分：常见家常菜 +30，一般主菜 +12，非主菜 +0
     # 让常见菜获得合理优势，但不会让完全不匹配的家常菜压过完美匹配的菜
     _hr = home_main_dish_rank(recipe)
+
+    # —— 「伪核心」规则：coreIngredients 里非调料食材占比过低时，取消关键词家常菜加成 ——
+    # 修复场景：徽派红烧肉 core=[五花肉,白砂糖,姜,蒜头,葱,五香粉] 共6项，
+    # 过滤基础调料后只剩 [五花肉] 1 项 → 非调料占比 1/6 = 16.7%。
+    # 这种"核心里塞满调料"的菜仅靠标题含"红烧肉"关键词就拿到 homeRank=2 的 +30 加成，
+    # 会以微弱分差压过真正命中 3 个非调料核心的香干芹菜炒肉（rank=1 只 +12）。
+    # 规则：非调料核心占比 ≤25% → 强制 rank=0；≤50% → rank 封顶为 1。
+    _non_seasoning_core = [
+        item for item in recipe.coreIngredients if not is_basic_seasoning(item)
+    ]
+    _fake_core_ratio = (
+        len(_non_seasoning_core) / len(recipe.coreIngredients)
+        if recipe.coreIngredients else 1.0
+    )
+    if _fake_core_ratio <= 0.25:
+        _hr = 0
+    elif _fake_core_ratio <= 0.5:
+        _hr = min(_hr, 1)
     score += {2: 30, 1: 12, 0: 0}.get(_hr, 0)
 
     # 生成推荐理由（支持临期食材信息）
@@ -466,7 +526,7 @@ def score_recipe(
         "missingSeasonings": missing_seasonings,
         "optional": recipe.optionalIngredients,
         "reason": reason,
-        "homeRank": home_main_dish_rank(recipe),
+        "homeRank": _hr,
     }
 
 
